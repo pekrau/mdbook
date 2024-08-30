@@ -35,7 +35,7 @@ def get_book(reload=False):
         _book = Book(ABSDIRPATH)
         return _book
 
-def get_references_book(reload=False):
+def get_references(reload=False):
     "Get the references book, cached."
     global _references
     absdirpath = os.path.join(ABSDIRPATH, constants.REFERENCES_DIRNAME)
@@ -84,8 +84,7 @@ def nav(item=None, label=None, commands=None):
              Li(A(Tx("References"), href="/references"))]
     if commands:
         items.append(Li(Details(Summary(Tx("Commands")),
-                                Ul(*[Li(A(Tx(c[0]), href=c[1])) for c in commands],
-                                   dir="rtl"),
+                                Ul(*[Li(c) for c in commands], dir="rtl"),
                                 cls="dropdown")))
     entries.append(Ul(*items))
     return Nav(*entries, style=nav_style)
@@ -115,7 +114,7 @@ def contents(items):
 def get(reload:str=None):
     "Home page; index of sections and texts."
     return (Title("mdbook"),
-            Header(nav(commands=[(Tx("Update"), "/?reload=yes")]), cls="container"),
+            Header(nav(commands=[A(Tx("Update"), href="/?reload=yes")]), cls="container"),
             Main(contents(get_book(reload=reload).items), cls="container")
             )
 
@@ -158,8 +157,16 @@ def get():
 def get(reload:str=None):
     "List of references."
     items = []
-    for ref in get_references_book(reload=reload).items:
-        parts = [Strong(ref["id"], style="color: royalblue;")]
+    for ref in get_references(reload=reload).items:
+        parts = [A(Strong(ref["id"], style="color: royalblue;"),
+                   href=f'/reference/{ref["id"].replace(" ", "_")}'),
+                 NotStr("&nbsp;"),
+                 Small(A("Clipboard", 
+                         href="#",
+                         cls="to_clipboard secondary", 
+                         data_clipboard_text=f'[@{ref["id"]}]')),
+                 NotStr("&nbsp;"),
+                 ]
         if ref.get("authors"):
             authors = [short_name(a) for a in ref["authors"]]
             if len(authors) > 4:
@@ -191,13 +198,13 @@ def get(reload:str=None):
             parts.append(A(ref["url"], href=ref["url"]))
             if ref.get("accessed"):
                 parts.append(f'(Accessed: {ref["accessed"]})')
-        parts.append(A(Tx("Details"), 
-                       href=f'/reference/{ref["id"].replace(" ", "_")}',
-                       cls="secondary"))
         items.append(P(*parts, id=ref["id"].replace(" ", "_")))
     return (Title(Tx("References")),
+            Script(src="/clipboard.min.js"),
+            Script("new ClipboardJS('.to_clipboard');"),
             Header(nav(label=Tx("References"),
-                       commands=[(Tx("Update"), "/references?reload=yes")]),
+                       commands=[A(Tx("Update"), href="/references?reload=yes"),
+                                 ]),
                    cls="container"),
             Main(*items, cls="container")
             )
@@ -205,7 +212,7 @@ def get(reload:str=None):
 @rt("/reference/{refid:str}")
 def get(refid:str, reload:str=None):
     "Reference details."
-    ref = get_references_book(reload)[refid.replace("_", " ")]
+    ref = get_references(reload)[refid.replace("_", " ")]
     rows = [Tr(Td(Tx("Authors")), Td("; ".join(ref.get("authors") or [])))]
     for key in ["year", "title", "type", "edition_published", "language", "date",
                 "keywords", "journal", "volume", "number", "pages", "publisher"]:
@@ -228,10 +235,18 @@ def get(refid:str, reload:str=None):
                             href=constants.DOI.format(value=ref["doi"])))))
     if ref.get("url"):
         rows.append(Tr(Td("Url"),
-                       Td(A(ref["url"], href=href["url"]))))
+                       Td(A(ref["url"], href=ref["url"]))))
     return (Title(refid),
+            Script(src="/clipboard.min.js"),
+            Script("new ClipboardJS('.to_clipboard');"),
             Header(nav(label=ref["id"],
-                       commands=[(Tx("Update"), f"/reference/{refid}?reload=yes")]),
+                       commands=[A(Tx("Update"), 
+                                   href=f"/reference/{refid}?reload=yes"),
+                                 A(Tx("Clipboard"),
+                                   href="#",
+                                   cls="to_clipboard", 
+                                   data_clipboard_text=f'[@{ref["id"]}]')
+                                 ]),
                    cls="container"),
             Main(Table(*rows),
                  Div(NotStr(ref.html)),
