@@ -103,6 +103,7 @@ class Book:
         return False
 
     def read(self):
+        "Read all items from files. Set up references and indexed lookups."
         self.items = []
 
         # Section and Text instances for directories and files that actually exist.
@@ -124,6 +125,34 @@ class Book:
         self.lookup = {}
         for item in self.all_items:
             self.lookup[item.fullname] = item
+
+        self.references = {}
+        for item in self.all_texts:
+            self.find_references(item, item.ast)
+
+        self.indexed = {}
+        for item in self.all_texts:
+            self.find_indexed(item, item.ast)
+
+    def find_references(self, item, ast):
+        try:
+            for child in ast["children"]:
+                if isinstance(child, str): continue
+                if child["element"] == "reference":
+                    self.references.setdefault(child["reference"], set()).add(item)
+                self.find_references(item, child)
+        except KeyError:
+            pass
+
+    def find_indexed(self, item, ast):
+        try:
+            for child in ast["children"]:
+                if isinstance(child, str): continue
+                if child["element"] == "indexed":
+                    self.indexed.setdefault(child["canonical"], set()).add(item)
+                self.find_indexed(item, child)
+        except KeyError:
+            pass
 
     def get(self, fullname, default=None):
         return self.lookup.get(fullname, default)

@@ -42,6 +42,20 @@ class SuperscriptRenderer:
         return f"<sup>{self.render_children(element)}</sup>"
 
 
+class Emdash(marko.inline.InlineElement):
+    "Markdown extension for em-dash."
+
+    pattern = re.compile(r"(?<!-)(---)(?!-)")
+    parse_children = False
+
+
+class EmdashRenderer:
+    "Output em-dash character."
+
+    def render_emdash(self, element):
+        return chr(0x2014)
+
+
 class Indexed(marko.inline.InlineElement):
     "Markdown extension for indexed term."
 
@@ -84,8 +98,12 @@ html_converter = marko.Markdown()
 html_converter.use("footnote")
 html_converter.use(
     marko.helpers.MarkoExtension(
-        elements=[Subscript, Superscript, Indexed, Reference],
-        renderer_mixins=[SubscriptRenderer, SuperscriptRenderer, IndexedRenderer, ReferenceRenderer],
+        elements=[Subscript, Superscript, Emdash, Indexed, Reference],
+        renderer_mixins=[SubscriptRenderer,
+                         SuperscriptRenderer,
+                         EmdashRenderer,
+                         IndexedRenderer,
+                         ReferenceRenderer],
     )
 )
 

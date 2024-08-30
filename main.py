@@ -105,7 +105,7 @@ def contents(items):
         else:
             parts.append(Li(A(str(item),
                               style=f"color: {item.status.color};",
-                              href=f"/view/{item.urlpath}"),
+                              href=f"/text/{item.urlpath}"),
                             NotStr("&nbsp;&nbsp;&nbsp;"),
                             Small(length, style="color: silver;")))
     return Ol(*parts)
@@ -118,7 +118,7 @@ def get(reload:str=None):
             Main(contents(get_book(reload=reload).items), cls="container")
             )
 
-@rt("/view/{path:path}")
+@rt("/text/{path:path}")
 def get(path:str):
     "View the text."
     text = get_book()[path]
@@ -148,9 +148,17 @@ def get():
 @rt("/index")
 def get():
     "Index page."
+    items = []
+    for key, texts in sorted(get_book().indexed.items(), key=lambda tu: tu[0].lower()):
+        links = []
+        for text in sorted(texts, key=lambda t: t.ordinal):
+            if links:
+                links.append(Br())
+            links.append(A(text.fullname, href=f"/text/{text.fullname}"))
+        items.append(Li(Strong(key), Br(), Small(*links)))
     return (Title(Tx("Index")),
             Header(nav(label=Tx("Index")), cls="container"),
-            Main(cls="container")
+            Main(Ul(*items), cls="container")
             )
 
 @rt("/references")
@@ -158,13 +166,14 @@ def get(reload:str=None):
     "List of references."
     items = []
     for ref in get_references(reload=reload).items:
-        parts = [A(Strong(ref["id"], style="color: royalblue;"),
-                   href=f'/reference/{ref["id"].replace(" ", "_")}'),
+        parts = [Img(src="/clipboard.svg",
+                     title="Refid to clipboard",
+                     style="cursor: pointer;",
+                     cls="to_clipboard", 
+                     data_clipboard_text=f'[@{ref["id"]}]'),
                  NotStr("&nbsp;"),
-                 Small(A("Clipboard", 
-                         href="#",
-                         cls="to_clipboard secondary", 
-                         data_clipboard_text=f'[@{ref["id"]}]')),
+                 A(Strong(ref["id"], style="color: royalblue;"),
+                   href=f'/reference/{ref["id"].replace(" ", "_")}'),
                  NotStr("&nbsp;"),
                  ]
         if ref.get("authors"):
@@ -198,6 +207,14 @@ def get(reload:str=None):
             parts.append(A(ref["url"], href=ref["url"]))
             if ref.get("accessed"):
                 parts.append(f'(Accessed: {ref["accessed"]})')
+
+        texts = get_book().references.get(ref["id"], [])
+        links = []
+        for text in sorted(texts, key=lambda t: t.ordinal):
+            if links:
+                links.append(Br())
+            links.append(A(text.fullname, href=f"/text/{text.fullname}"))
+        parts.append(Small(Br(), *links))
         items.append(P(*parts, id=ref["id"].replace(" ", "_")))
     return (Title(Tx("References")),
             Script(src="/clipboard.min.js"),
