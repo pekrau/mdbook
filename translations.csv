@@ -27,9 +27,11 @@ number,nummer
 pages,sidor
 date,datum
 update,uppdatera
-commands,kommandon
-edition published,upplaga publicerad
+edition published,utgåva publicerad
 publisher,förlag
 type,typ
 words,ord
 characters,tecken
+edit,redigera
+actions,åtgärder
+settings,inställningar

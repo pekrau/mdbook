@@ -3,7 +3,7 @@
 import functools
 import os
 
-VERSION = (0, 2, 0)
+VERSION = (0, 3, 0)
 __version__ = ".".join([str(n) for n in VERSION])
 
 
@@ -39,7 +39,10 @@ EM_DASH = "\u2014"
 class Status:
     @classmethod
     def lookup(cls, name, default=None):
-        return STATUS_LOOKUP.get(name) or default
+        if name:
+            return STATUS_LOOKUP.get(name) or default
+        else:
+            return min(STATUSES)
 
     def __init__(self, name, ordinal, color):
         self.name = name
@@ -53,6 +56,8 @@ class Status:
         return self.name
 
     def __eq__(self, other):
+        if not isinstance(other, Status):
+            return False
         return self.name == other.name
 
     def __ne__(self, other):
@@ -73,6 +78,7 @@ PROOFS = Status("proofs", 7, "yellowgreen")
 FINAL = Status("final", 8, "black")
 STATUSES = (STARTED, OUTLINE, INCOMPLETE, DRAFT, WRITTEN, REVISED, DONE, PROOFS, FINAL)
 STATUS_LOOKUP = dict([(s.name, s) for s in STATUSES])
+STATUS_LOOKUP.update(dict([(str(s), s) for s in STATUSES]))
 
 REFERENCE_MAX_AUTHORS = 5
 ARTICLE = "article"

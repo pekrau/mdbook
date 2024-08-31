@@ -26,7 +26,6 @@ class Book:
         self.title = os.path.basename(absdirpath)
         self.subtitle = None
         self.authors = []
-        self.display_heading_ordinal = False
         self.read()
         try:
             with open(os.path.join(absdirpath, "setup.yaml")) as infile:
@@ -108,6 +107,9 @@ class Book:
 
         # Section and Text instances for directories and files that actually exist.
         for itemname in sorted(os.listdir(self.absdirpath)):
+            # Skip emacs temporary edit file.
+            if itemname.startswith(".#"):
+                continue
             # Skip hard-wired special directories.
             if itemname == constants.ARCHIVE_DIRNAME:
                 continue
@@ -345,14 +347,6 @@ class Item:
         return tuple(reversed(result))
 
     @property
-    def heading(self):
-        "Return heading, containing ordinal if so set, and title of this item."
-        if self.book.display_heading_ordinal:
-            return f'{".".join([str(i) for i in self.ordinal])}. {self.title}'
-        else:
-            return self.title
-
-    @property
     def prev(self):
         "Previous sibling or None."
         index = self.index
@@ -377,7 +371,7 @@ class Item:
 
     @property
     def chapter(self):
-        "Top-level section/text for this item; possibly itself."
+        "Top-level section or text for this item; possibly itself."
         item = self
         while item.parent is not self.book:
             item = item.parent
@@ -661,7 +655,7 @@ class Text(Item):
 
     def __len__(self):
         "Number of characters in Markdown content."
-        return self.n_characters
+        return len(self.content)
 
     def __getitem__(self, key):
         return self.frontmatter[key]
@@ -682,6 +676,10 @@ class Text(Item):
         "Return list of all sub-items that are texts. Self *is* included."
         return [self]
 
+    @property
+    def n_words(self):
+        return len(self.content.split())
+
     def get(self, key, default=None):
         try:
             return self[key]
@@ -692,7 +690,7 @@ class Text(Item):
         return self.frontmatter.pop(key, default)
 
     def get_status(self):
-        return constants.Status.lookup(self.get("status"), default=constants.STARTED)
+        return constants.Status.lookup(self.get("status"))
 
     def set_status(self, status):
         if type(status) == str:
@@ -713,17 +711,15 @@ class Text(Item):
 
     def read(self):
         with open(self.abspath) as infile:
-            content = infile.read()
-        match = FRONTMATTER.match(content)
+            self.content = infile.read()
+        match = FRONTMATTER.match(self.content)
         if match:
             self.frontmatter = yaml.safe_load(match.group(1))
-            content = content[match.start(2) :]
+            self.content = self.content[match.start(2) :]
         else:
             self.frontmatter = {}
-        self.n_characters = len(content)
-        self.n_words = len(content.split())
-        self.html = markdown.convert_to_html(content)
-        self.ast = markdown.convert_to_ast(content)
+        self.html = markdown.convert_to_html(self.content)
+        self.ast = markdown.convert_to_ast(self.content)
 
     def get_setup(self):
         "Create the setup file entry for this text."
@@ -747,25 +743,30 @@ class Text(Item):
         self.book = None
         self.parent = None
 
-    def write(self, content=""):
-        """Write the text, with current frontmatter and the given Markdown content."
+    def write(self, content=None):
+        """Write the text, with current frontmatter and the given Markdown content.
+        If no Markdown content is provided, then use the current.
         Do some cleanup:
         - Strip each line from the right.
         - Do not write out multiple empty lines after another.
         """
         with open(self.abspath, "w") as outfile:
-            outfile.write("---\n")
-            outfile.write(yaml.dump(self.frontmatter))
-            outfile.write("---\n")
-            prev_empty = False
-            for line in content.split("\n"):
-                line = line.rstrip()
-                empty = not bool(line)
-                if empty and prev_empty:
-                    continue
-                prev_empty = empty
-                outfile.write(line)
-                outfile.write("\n")
+            if self.frontmatter:
+                outfile.write("---\n")
+                outfile.write(yaml.dump(self.frontmatter))
+                outfile.write("---\n")
+            if content is None:
+                outfile.write(self.content or "")
+            else:
+                prev_empty = False
+                for line in content.split("\n"):
+                    line = line.rstrip()
+                    empty = not bool(line)
+                    if empty and prev_empty:
+                        continue
+                    prev_empty = empty
+                    outfile.write(line)
+                    outfile.write("\n")
 
     def check_integrity(self):
         super().check_integrity()

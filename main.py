@@ -64,7 +64,7 @@ def short_name(name):
 def thousands(i):
     return f"{i:,}".replace(",", ".")
 
-def nav(item=None, label=None, commands=None):
+def nav(item=None, label=None, actions=None):
     "The standard navigation bar."
     entries = [Ul(Li(Img(src="/favicon.ico")),
                   Li(A(get_book().title, href="/")))]
@@ -82,9 +82,9 @@ def nav(item=None, label=None, commands=None):
     items = [Li(A(Tx("Title"), href="/title")),
              Li(A(Tx("Index"), href="/index")),
              Li(A(Tx("References"), href="/references"))]
-    if commands:
-        items.append(Li(Details(Summary(Tx("Commands")),
-                                Ul(*[Li(c) for c in commands], dir="rtl"),
+    if actions:
+        items.append(Li(Details(Summary(Tx("Actions")),
+                                Ul(*[Li(c) for c in actions], dir="rtl"),
                                 cls="dropdown")))
     entries.append(Ul(*items))
     return Nav(*entries, style=nav_style)
@@ -114,18 +114,62 @@ def contents(items):
 def get(reload:str=None):
     "Home page; index of sections and texts."
     return (Title("mdbook"),
-            Header(nav(commands=[A(Tx("Update"), href="/?reload=yes")]), cls="container"),
+            Header(nav(actions=[A(Tx("Update"), href="/?reload=yes")]), cls="container"),
             Main(contents(get_book(reload=reload).items), cls="container")
             )
 
-@rt("/text/{path:path}")
-def get(path:str):
-    "View the text."
+@rt("/text/{path:path}", methods=["get", "post"])
+def view(path:str, content:str=None, status:str=None):
+    "View the text, or save it from an edit."
     text = get_book()[path]
     text.read()
+    if status is not None:
+        ic(status)
+        text.status = status
+        text.write()
+    if content is not None:
+        text.write(content=content)
+        text.read()
     return (Title(text.title),
-            Header(nav(text), cls="container"),
+            Header(nav(text, actions=[A(Tx("Edit"), href=f"/edit/{path}"),
+                                      A(Tx("Settings"), href=f"/settings/{path}")]),
+                   cls="container"),
             Main(NotStr(text.html), cls="container")
+            )
+
+@rt("/edit/{path:path}")
+def get(path:str):
+    "Edit the text."
+    text = get_book()[path]
+    text.read()
+    return (Title("mdbook"),
+            Header(nav(label=f'{Tx("Edit")} {text.fullname}'), cls="container"),
+            Main(Form(Textarea(NotStr(text.content), name="content", rows="36"),
+                      Button("Save"),
+                      action=f"/text/{path}",
+                      method="post"),
+                 cls="container"),
+            )
+
+@rt("/settings/{path:path}")
+def get(path:str):
+    text = get_book()[path]
+    text.read()
+    labels = []
+    for status in constants.STATUSES:
+        if status == text.status:
+            labels.append(Label(Input(type="radio", name="status", value=str(status), checked=True),
+                                Span(Tx(str(status)), style=f"color: {status.color};")))
+        else:
+            labels.append(Label(Input(type="radio", name="status", value=str(status)),
+                                Span(Tx(str(status)), style=f"color: {status.color};")))
+    return (Title("mdbook"),
+            Header(nav(label=f'{Tx("Settings")} {text.fullname}'), cls="container"),
+            Main(Form(Fieldset(Legend("Status"), *labels),
+                      Button("Save"),
+                      action=f"/text/{path}",
+                      method="post"),
+                 cls="container"),
             )
 
 @rt("/title")
@@ -137,8 +181,8 @@ def get():
     for author in get_book().authors:
         segments.append(H3(author))
     segments.append(Table(
-        Tr(Th(Tx("Words")), Td(thousands(get_book().n_words))),
-        Tr(Th(Tx("Characters")), Td(thousands(len(get_book()))))
+        Tr(Td(Tx("Words")), Td(thousands(get_book().n_words))),
+        Tr(Td(Tx("Characters")), Td(thousands(len(get_book()))))
     ))
     return (Title(Tx("Title")),
             Header(nav(label=Tx("Title")), cls="container"),
@@ -220,8 +264,7 @@ def get(reload:str=None):
             Script(src="/clipboard.min.js"),
             Script("new ClipboardJS('.to_clipboard');"),
             Header(nav(label=Tx("References"),
-                       commands=[A(Tx("Update"), href="/references?reload=yes"),
-                                 ]),
+                       actions=[A(Tx("Update"), href="/references?reload=yes"),]),
                    cls="container"),
             Main(*items, cls="container")
             )
@@ -257,13 +300,13 @@ def get(refid:str, reload:str=None):
             Script(src="/clipboard.min.js"),
             Script("new ClipboardJS('.to_clipboard');"),
             Header(nav(label=ref["id"],
-                       commands=[A(Tx("Update"), 
-                                   href=f"/reference/{refid}?reload=yes"),
-                                 A(Tx("Clipboard"),
-                                   href="#",
-                                   cls="to_clipboard", 
-                                   data_clipboard_text=f'[@{ref["id"]}]')
-                                 ]),
+                       actions=[A(Tx("Update"), 
+                                  href=f"/reference/{refid}?reload=yes"),
+                                A(Tx("Clipboard"),
+                                  href="#",
+                                  cls="to_clipboard", 
+                                  data_clipboard_text=f'[@{ref["id"]}]')
+                                ]),
                    cls="container"),
             Main(Table(*rows),
                  Div(NotStr(ref.html)),
