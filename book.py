@@ -27,12 +27,6 @@ class Book:
         self.subtitle = None
         self.authors = []
         self.read()
-        try:
-            with open(os.path.join(absdirpath, "setup.yaml")) as infile:
-                setup = yaml.safe_load(infile)
-                self.apply_setup(setup)
-        except FileNotFoundError:
-            pass
 
     def __str__(self):
         return self.title
@@ -159,30 +153,30 @@ class Book:
     def get(self, fullname, default=None):
         return self.lookup.get(fullname, default)
 
-    def get_setup(self):
-        "Create the setup file 'book' entry."
+    def get_settings(self):
+        "Create the book entry for the settings file."
         return dict(title=self.title,
                     subtitle=self.subtitle,
                     authors=self.authors,
                     language=self.language,
-                    items=[i.get_setup() for i in self.items])
+                    items=[i.get_settings() for i in self.items])
 
-    def apply_setup(self, setup):
-        "Apply general setup; change the order of the items."
-        self.title = setup["book"].get("title")
-        self.subtitle = setup["book"].get("subtitle")
-        self.authors = setup["book"].get("authors") or []
-        self.language = setup["book"].get("language")
+    def apply_settings(self, settings):
+        "Apply general settings; change the order of the items."
+        self.title = settings["book"].get("title")
+        self.subtitle = settings["book"].get("subtitle")
+        self.authors = settings["book"].get("authors") or []
+        self.language = settings["book"].get("language")
         original = dict([(i.title, i) for i in self.items])
         self.items = []
-        for ordered in setup["book"].get("items", []):
+        for ordered in settings["book"].get("items", []):
             try:
                 item = original.pop(ordered["title"])
             except KeyError:
                 pass
             else:
                 self.items.append(item)
-                item.apply_setup(ordered)
+                item.apply_settings(ordered)
         self.items.extend(original.values())
 
     def create_text(self, title, anchor=None):
@@ -347,6 +341,11 @@ class Item:
         return tuple(reversed(result))
 
     @property
+    def heading(self):
+        "Title preceded by ordinal."
+        return ".".join([str(i) for i in self.ordinal]) + " " + self.title
+
+    @property
     def prev(self):
         "Previous sibling or None."
         index = self.index
@@ -411,25 +410,15 @@ class Item:
             unit = "secs"
         return f"{value:.0f} {unit}"
 
-    @property
-    def is_shown(self):
-        "Are all parent sections open?"
-        parent = self.parent
-        while parent is not self.book:
-            if not parent.open:
-                return False
-            parent = parent.parent
-        return True
-
     def read(self):
         "To be implemented by inheriting classes."
         raise NotImplementedError
 
-    def get_setup(self):
+    def get_settings(self):
         "To be implemented by inheriting classes."
         raise NotImplementedError
 
-    def apply_setup(self, setup):
+    def apply_settings(self, settings):
         "To be implemented by inheriting classes."
         raise NotImplementedError
 
@@ -544,7 +533,6 @@ class Section(Item):
 
     def __init__(self, book, parent, title):
         self.items = []
-        self.open = False
         super().__init__(book, parent, title)
 
     def __len__(self):
@@ -597,28 +585,26 @@ class Section(Item):
             else:
                 pass
 
-    def get_setup(self):
-        "Create the setup file entry for this section."
+    def get_settings(self):
+        "Create the entry for this section for the settings file."
         return dict(
             type="section",
             title=self.title,
-            open=self.open,
-            items=[i.get_setup() for i in self.items],
+            items=[i.get_settings() for i in self.items],
         )
 
-    def apply_setup(self, setup):
-        assert setup["type"] == "section"
-        self.open = bool(setup.get("open"))
+    def apply_settings(self, settings):
+        assert settings["type"] == "section"
         original = dict([(i.title, i) for i in self.items])
         self.items = []
-        for ordered in setup["items"]:
+        for ordered in settings["items"]:
             try:
                 item = original.pop(ordered["title"])
             except KeyError:
                 pass
             else:
                 self.items.append(item)
-                item.apply_setup(ordered)
+                item.apply_settings(ordered)
         self.items.extend(original.values())
 
     def copy(self, newtitle):
@@ -721,12 +707,12 @@ class Text(Item):
         self.html = markdown.convert_to_html(self.content)
         self.ast = markdown.convert_to_ast(self.content)
 
-    def get_setup(self):
-        "Create the setup file entry for this text."
+    def get_settings(self):
+        "Create the entry for this text for the settings file."
         return dict(type="text", title=self.title, status=repr(self.status))
 
-    def apply_setup(self, setup):
-        assert setup["type"] == "text"
+    def apply_settings(self, settings):
+        assert settings["type"] == "text"
 
     def copy(self, newtitle):
         newabspath = super().copy(newtitle)

@@ -4,21 +4,25 @@ from icecream import ic
 
 import os.path
 
+import docx
+import docx.oxml
+import yaml
+
 from fasthtml.common import *
 
 import constants
-from book import Book
-from translator import Translator
+import docx_creator
+import utils
 
+from book import Book
+
+Tx = utils.Tx
 
 ABSDIRPATH = "/home/pekrau/Dropbox/texter/lejonen"
-
-NAV_STYLE = "outline-color: {color}; outline-width:8px; outline-style:solid; padding:0px 10px; border-radius:5px;"
+SETTINGSPATH = os.path.join(ABSDIRPATH, constants.SETTINGS_FILENAME)
 
 
 app, rt = fast_app(live=True)
-
-Tx = Translator(constants.TRANSLATIONS_FILE)
 
 def get_book(reload=False):
     "Get the book contents, cached."
@@ -33,7 +37,19 @@ def get_book(reload=False):
     except NameError:
         ic("reloading book")
         _book = Book(ABSDIRPATH)
+        _book.apply_settings(read_settings())
         return _book
+
+def read_settings():
+    try:
+        with open(SETTINGSPATH) as infile:
+            return yaml.safe_load(infile)
+    except FileNotFoundError:
+        return None
+
+def write_settings(settings):
+    with open(SETTINGSPATH, "wb") as outfile:
+        outfile.write(yaml.dump(settings, encoding="utf-8", allow_unicode=True))
 
 def get_references(reload=False):
     "Get the references book, cached."
@@ -52,20 +68,9 @@ def get_references(reload=False):
         return _references
 
 
-def short_name(name):
-    "Return the person name in short form; given names as initials."
-    parts = [p.strip() for p in name.split(",")]
-    if len(parts) == 1:
-        return name
-    initials = [p.strip()[0] for p in parts.pop().split(" ")]
-    parts.append("".join([f"{i}." for i in initials]))
-    return ", ".join(parts)
-
-def thousands(i):
-    return f"{i:,}".replace(",", ".")
-
 def nav(item=None, label=None, actions=None):
     "The standard navigation bar."
+    NAV_STYLE = "outline-color: {color}; outline-width:8px; outline-style:solid; padding:0px 10px; border-radius:5px;"
     entries = [Ul(Li(Img(src="/favicon.ico")),
                   Li(A(get_book().title, href="/")))]
     if item:
@@ -93,8 +98,8 @@ def contents(items):
     "Recursive lists of sections and texts."
     parts = []
     for item in items:
-        n_words = f"{thousands(item.n_words)}"
-        n_characters = f"{thousands(len(item))}"
+        n_words = f"{utils.thousands(item.n_words)}"
+        n_characters = f"{utils.thousands(len(item))}"
         length = f'{n_words} {Tx("words")}; {n_characters} {Tx("characters")}'
         if item.is_section:
             parts.append(Li(str(item),
@@ -114,7 +119,9 @@ def contents(items):
 def get(reload:str=None):
     "Home page; index of sections and texts."
     return (Title("mdbook"),
-            Header(nav(actions=[A(Tx("Update"), href="/?reload=yes")]), cls="container"),
+            Header(nav(actions=[A(Tx("Update"), href="/?reload=yes"),
+                                A(f'{Tx("Create")} DOCX', href="/docx")]),
+                   cls="container"),
             Main(contents(get_book(reload=reload).items), cls="container")
             )
 
@@ -181,8 +188,8 @@ def get():
     for author in get_book().authors:
         segments.append(H3(author))
     segments.append(Table(
-        Tr(Td(Tx("Words")), Td(thousands(get_book().n_words))),
-        Tr(Td(Tx("Characters")), Td(thousands(len(get_book()))))
+        Tr(Td(Tx("Words")), Td(utils.thousands(get_book().n_words))),
+        Tr(Td(Tx("Characters")), Td(utils.thousands(len(get_book()))))
     ))
     return (Title(Tx("Title")),
             Header(nav(label=Tx("Title")), cls="container"),
@@ -221,7 +228,7 @@ def get(reload:str=None):
                  NotStr("&nbsp;"),
                  ]
         if ref.get("authors"):
-            authors = [short_name(a) for a in ref["authors"]]
+            authors = [utils.short_name(a) for a in ref["authors"]]
             if len(authors) > 4:
                 authors = authors[:4] + ["..."]
             parts.append(", ".join(authors))
@@ -311,6 +318,34 @@ def get(refid:str, reload:str=None):
             Main(Table(*rows),
                  Div(NotStr(ref.html)),
                  cls="container"))
+
+@rt("/docx", methods=["get", "post"])
+def docx_export(filename:str=None):
+    settings = read_settings()
+    docx_settings = settings.setdefault("creator", {}).setdefault("docx", {})
+    if filename is None:
+        filename = docx_settings.get("filename", "book.docx")
+        return (Title(f'{Tx("Create")} DOCX'),
+                Header(nav(label=f'{Tx("Create")} DOCX'), cls="container"),
+                Main(Form(Fieldset(
+                    Legend(Tx("File name")),
+                    Input(type="text", name="filename", value=filename),
+                          Button(f'{Tx("Create")} DOCX'),
+                          action="/docx",
+                          method="post"),
+                     cls="container"))
+                )
+    else:
+        docx_settings["filename"] = filename
+        docx_settings["page_break_level"] = 1
+        docx_settings["footnotes"] = constants.FOOTNOTES_EACH_TEXT
+        write_settings(settings)
+        creator = docx_creator.Creator(get_book(), get_references(), settings)
+        creator.write(os.path.join(ABSDIRPATH, filename))
+        return (Title(f'{Tx("Created")} DOCX'),
+                Header(nav(label=f'{Tx("Created")} DOCX'), cls="container"),
+                Main(P(f"Created file '{docx_settings['filename']}'"), cls="container")
+                )
 
 
 if __name__ == "__main__":

@@ -10,7 +10,7 @@ __version__ = ".".join([str(n) for n in VERSION])
 DEFAULT_LANGUAGES = ("sv-SE", "en-GB", "en-US")
 
 MARKDOWN_EXT = ".md"
-CONFIG_FILENAME = "config.yaml"
+SETTINGS_FILENAME = "settings.yaml"
 ARCHIVE_DIRNAME = "au_archive"
 assert os.extsep not in ARCHIVE_DIRNAME
 REFERENCES_DIRNAME = "au_references"
@@ -84,6 +84,82 @@ REFERENCE_MAX_AUTHORS = 5
 ARTICLE = "article"
 BOOK = "book"
 LINK = "link"
-DOI = "https://doi.org/{value}"
-PUBMED = "https://pubmed.ncbi.nlm.nih.gov/{value}"
-ISBN = "https://isbnsearch.org/isbn/{value}"
+
+BOLD = "bold"
+ITALIC = "italic"
+NORMAL = "normal"
+UNDERLINE = "underline"
+
+CODE_STYLE = "mdbook Code"
+CODE_FONT = "FreeMono"
+CODE_LEFT_INDENT = 30
+
+QUOTE_STYLE = "mdbook Quote"
+QUOTE_FONT = "FreeSerif"
+QUOTE_LEFT_INDENT = 30
+QUOTE_RIGHT_INDENT = 70
+
+FONT = "FreeSans"
+FONT_NORMAL_SIZE = 12
+FONT_LARGE_SIZE = FONT_NORMAL_SIZE + 2
+FONT_TITLE_SIZE = 28
+FONT_NORMAL = (FONT, FONT_NORMAL_SIZE)
+FONT_ITALIC = (FONT, FONT_NORMAL_SIZE, ITALIC)
+FONT_BOLD = (FONT, FONT_NORMAL_SIZE, BOLD)
+FONT_LARGE_BOLD = (FONT, FONT_LARGE_SIZE, BOLD)
+FONT_SMALL_SIZE = FONT_NORMAL_SIZE - 2
+FONT_SMALL = (FONT, FONT_SMALL_SIZE)
+
+H1 = dict(
+    tag="h1",
+    font=(FONT, FONT_LARGE_SIZE + 10, BOLD),
+    left_margin=40,
+    spacing=30,
+)
+H2 = dict(
+    tag="h2",
+    font=(FONT, FONT_LARGE_SIZE + 5, BOLD),
+    left_margin=30,
+    spacing=20,
+)
+H3 = dict(
+    tag="h3",
+    font=(FONT, FONT_LARGE_SIZE + 3, BOLD),
+    left_margin=20,
+    spacing=15,
+)
+H4 = dict(
+    tag="h4",
+    font=(FONT, FONT_NORMAL_SIZE, BOLD),
+    left_margin=15,
+    spacing=10,
+)
+H5 = dict(
+    tag="h5",
+    font=(FONT, FONT_NORMAL_SIZE, BOLD),
+    left_margin=10,
+    spacing=5,
+)
+H6 = dict(
+    tag="h6",
+    font=(FONT, FONT_NORMAL_SIZE),
+    left_margin=10,
+    spacing=5,
+)
+H_LOOKUP = dict([(1, H1), (2, H2), (3, H3), (4, H4), (5, H5), (6, H6)])
+MAX_H_LEVEL = max(H_LOOKUP)
+
+FOOTNOTES_EACH_TEXT = "After each text"
+FOOTNOTES_EACH_CHAPTER = "After each chapter"
+FOOTNOTES_END_OF_BOOK = "At end of book"
+FOOTNOTES_DISPLAY = (
+    FOOTNOTES_EACH_TEXT,
+    FOOTNOTES_EACH_CHAPTER,
+    FOOTNOTES_END_OF_BOOK,
+)
+
+REFERENCE_LINKS = [
+    ("doi", "DOI", "https://doi.org/{value}"),
+    ("pmid", "PubMed", "https://pubmed.ncbi.nlm.nih.gov/{value}"),
+    ("isbn", "ISBN", "https://isbnsearch.org/isbn/{value}"),
+]

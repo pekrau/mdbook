@@ -1,4 +1,4 @@
-"Markdown parser setup."
+"Markdown parser."
 
 import re
 
@@ -7,7 +7,10 @@ import marko.ast_renderer
 import marko.inline
 import marko.helpers
 import marko.ext.gfm
+
 import yaml
+
+import constants
 
 
 class Subscript(marko.inline.InlineElement):
@@ -53,7 +56,7 @@ class EmdashRenderer:
     "Output em-dash character."
 
     def render_emdash(self, element):
-        return chr(0x2014)
+        return constants.EM_DASH
 
 
 class Indexed(marko.inline.InlineElement):
