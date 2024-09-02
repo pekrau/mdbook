@@ -500,7 +500,7 @@ class Creator:
             )
         )
         run = self.paragraph.add_run(ast["term"])
-        font = self.settings["creator"]["docx"]["indexed_font"]
+        font = self.settings["creator"]["docx"].get("indexed_font")
         if font == constants.ITALIC:
             run.italic = True
         elif font == constants.BOLD:
@@ -540,7 +540,7 @@ class Creator:
     def render_reference(self, ast):
         self.referenced.add(ast["reference"])
         run = self.paragraph.add_run(ast["reference"])
-        font = self.settings["creator"]["docx"]["references_font"]
+        font = self.settings["creator"]["docx"].get("reference_font")
         if font == constants.ITALIC:
             run.italic = True
         elif font == constants.BOLD:

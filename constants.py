@@ -3,7 +3,7 @@
 import functools
 import os
 
-VERSION = (0, 3, 0)
+VERSION = (0, 4, 0)
 __version__ = ".".join([str(n) for n in VERSION])
 
 
@@ -109,6 +109,12 @@ FONT_BOLD = (FONT, FONT_NORMAL_SIZE, BOLD)
 FONT_LARGE_BOLD = (FONT, FONT_LARGE_SIZE, BOLD)
 FONT_SMALL_SIZE = FONT_NORMAL_SIZE - 2
 FONT_SMALL = (FONT, FONT_SMALL_SIZE)
+
+NORMAL = "normal"
+ITALIC = "italic"
+BOLD = "bold"
+UNDERLINE = "underline"
+FONT_STYLES = (NORMAL, ITALIC, BOLD, UNDERLINE)
 
 H1 = dict(
     tag="h1",

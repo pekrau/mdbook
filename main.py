@@ -120,7 +120,7 @@ def get(reload:str=None):
     "Home page; index of sections and texts."
     return (Title("mdbook"),
             Header(nav(actions=[A(Tx("Update"), href="/?reload=yes"),
-                                A(f'{Tx("Create")} DOCX', href="/docx")]),
+                                A(f'{Tx("Write")} DOCX', href="/docx")]),
                    cls="container"),
             Main(contents(get_book(reload=reload).items), cls="container")
             )
@@ -320,31 +320,96 @@ def get(refid:str, reload:str=None):
                  cls="container"))
 
 @rt("/docx", methods=["get", "post"])
-def docx_export(filename:str=None):
+def docx_export(filename:str=None,
+                page_break_level:int=None,
+                footnotes:str=None,
+                indexed_font:str=None,
+                reference_font:str=None):
     settings = read_settings()
     docx_settings = settings.setdefault("creator", {}).setdefault("docx", {})
     if filename is None:
         filename = docx_settings.get("filename", "book.docx")
-        return (Title(f'{Tx("Create")} DOCX'),
-                Header(nav(label=f'{Tx("Create")} DOCX'), cls="container"),
-                Main(Form(Fieldset(
-                    Legend(Tx("File name")),
-                    Input(type="text", name="filename", value=filename),
-                          Button(f'{Tx("Create")} DOCX'),
-                          action="/docx",
-                          method="post"),
-                     cls="container"))
+        page_break_level = docx_settings.get("page_break_level", 1)
+        page_break_options = []
+        for value in range(0, 7):
+            if value == page_break_level:
+                page_break_options.append(Option(str(value), selected=True))
+            else:
+                page_break_options.append(Option(str(value)))
+        footnotes = docx_settings.get("footnotes", constants.FOOTNOTES_EACH_TEXT)
+        footnotes_options = []
+        for value in constants.FOOTNOTES_DISPLAY:
+            if value == footnotes:
+                footnotes_options.append(Option(Tx(value), value=value, selected=True))
+            else:
+                footnotes_options.append(Option(Tx(value), value=value))
+        indexed_font = docx_settings.get("indexed_font", constants.NORMAL)
+        indexed_options = []
+        for value in constants.FONT_STYLES:
+            if value == indexed_font:
+                indexed_options.append(Option(Tx(value), value=value, selected=True))
+            else:
+                indexed_options.append(Option(Tx(value), value=value))
+        reference_font = docx_settings.get("reference_font", constants.NORMAL)
+        reference_options = []
+        for value in constants.FONT_STYLES:
+            if value == reference_font:
+                reference_options.append(Option(Tx(value), value=value, selected=True))
+            else:
+                reference_options.append(Option(Tx(value), value=value))
+        return (Title(f'{Tx("Write")} DOCX'),
+                Header(nav(label=f'{Tx("Write")} DOCX'), cls="container"),
+                Main(Form(
+                    Fieldset(
+                        Legend(Tx("Page break level")),
+                        Select(*page_break_options,
+                               name="page_break_level",
+                               aria_label=Tx("Page break level")),
+                    ),
+                    Fieldset(
+                        Legend(Tx("Footnotes")),
+                        Select(*footnotes_options,
+                               name="footnotes",
+                               aria_label=Tx("Footnotes"))
+                    ),
+                    Fieldset(
+                        Legend(Tx("Indexed font")),
+                        Select(*indexed_options,
+                               name="indexed_font",
+                               aria_label=Tx("Indexed font"))
+                    ),
+                    Fieldset(
+                        Legend(Tx("Reference font")),
+                        Select(*reference_options,
+                               name="reference_font",
+                               aria_label=Tx("Reference font"))
+                    ),
+                    Fieldset(
+                        Legend(Tx("File name")),
+                        Input(type="text", name="filename", value=filename),
+                    ),
+                    Button(f'{Tx("Create")} DOCX'),
+                    action="/docx",
+                    method="post"),
+                     cls="container")
                 )
     else:
         docx_settings["filename"] = filename
-        docx_settings["page_break_level"] = 1
-        docx_settings["footnotes"] = constants.FOOTNOTES_EACH_TEXT
+        docx_settings["page_break_level"] = page_break_level
+        docx_settings["footnotes"] = footnotes
+        docx_settings["indexed_font"] = indexed_font
+        docx_settings["reference_font"] = reference_font
         write_settings(settings)
         creator = docx_creator.Creator(get_book(), get_references(), settings)
         creator.write(os.path.join(ABSDIRPATH, filename))
-        return (Title(f'{Tx("Created")} DOCX'),
-                Header(nav(label=f'{Tx("Created")} DOCX'), cls="container"),
-                Main(P(f"Created file '{docx_settings['filename']}'"), cls="container")
+        return (Title(f'{Tx("Written")} DOCX'),
+                Header(nav(label=f'{Tx("Written")} DOCX'), cls="container"),
+                Main(P(f'{Tx("Page break level")}: {page_break_level}'),
+                     P(f'{Tx("Footnotes")}: {Tx(footnotes)}'),
+                     P(f'{Tx("Indexed font")}: {Tx(indexed_font)}'),
+                     P(f'{Tx("Reference font")}: {Tx(reference_font)}'),
+                     P(f'{Tx("File name")}: {filename}'),
+                     cls="container")
                 )
 
 

@@ -36,5 +36,18 @@ edit,redigera
 actions,åtgärder
 settings,inställningar
 create,skapa
+created,skapad
 file name,filnamn
 footnotes,fotnoter
+page break level,nivå för radbrytning
+after each text,efter varje text
+after each chapter,efter varje kapitel
+at end of book,i slutet av boken
+indexed font,typsnitt för indexerad
+reference font,typsnitt för referens
+normal,normal
+italic,kursiv
+bold,fetstil
+underline,understruken
+write,skriv
+written,skrivit
