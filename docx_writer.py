@@ -26,13 +26,13 @@ class Writer:
 
     def write(self, filepath):
         "Write the DOCS file."
+        # Key: fullname; value: dict(label, ast_children)
+        self.footnotes = {}
+        # Reference ids
+        self.referenced = set()
         # Key: canonical; value: dict(id, fullname, ordinal)
         self.indexed = {}
         self.indexed_count = 0
-        # Reference ids
-        self.referenced = set()
-        # Key: fullname; value: dict(label, ast_children)
-        self.footnotes = {}
 
         self.document = docx.Document()
 
@@ -74,7 +74,7 @@ class Writer:
         # Set Dublin core metadata.
         if self.book.language:
             self.document.core_properties.language = self.book.language
-        self.document.core_properties.modified = datetime.datetime.now()
+            self.document.core_properties.modified = datetime.datetime.now()
         # XXX authors
 
         self.write_title_page()
@@ -325,16 +325,6 @@ class Writer:
                 any_item = True
             except KeyError:
                 pass
-
-    def write_reference_xrefs(self, paragraph, entries):
-        run = paragraph.add_run()
-        run.add_break(docx.enum.text.WD_BREAK.LINE)
-        paragraph.add_run("\t")
-        entries.sort(key=lambda e: e["ordinal"])
-        for entry in entries:
-            paragraph.add_run(entry["heading"])
-            if entry is not entries[-1]:
-                paragraph.add_run(", ")
 
     def write_indexed(self):
         self.document.add_page_break()

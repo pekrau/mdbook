@@ -14,26 +14,6 @@ import constants
 
 Tx = utils.Tx
 
-HREF_COLOR = (20, 20, 255)
-THEMATIC_BREAK_INDENT = 100
-
-PAGE_NUMBER = "Page number"
-TEXT_FULL_NAME = "Text full name"
-TEXT_HEADING = "Text heading"
-INDEXED_XREF_DISPLAY = (
-    PAGE_NUMBER,
-    TEXT_FULL_NAME,
-    TEXT_HEADING,
-)
-
-NO_XREF = "No xrefs"
-REFERENCES_XREF_DISPLAY = (
-    NO_XREF,
-    PAGE_NUMBER,
-    TEXT_FULL_NAME,
-    TEXT_HEADING,
-)
-
 
 class Writer:
     "PDF writer."
@@ -56,13 +36,13 @@ class Writer:
     def write_attempt(self, contents_pages, filepath):
         "Attempt at writing PDF given the number of content pages to use."
         self.list_stack = []
+        # Key: fullname; value: dict(label, number, ast_children)
+        self.footnotes = {}
+        # Reference ids
+        self.referenced = set()
         # Key: canonical; value: dict(ordinal, fullname, heading, page)
         self.indexed = {}
         self.indexed_count = 0
-        # Reference ids
-        self.referenced = set()
-        # Key: fullname; value: dict(label, number, ast_children)
-        self.footnotes = {}
 
         self.pdf = fpdf.FPDF(format="a4", unit="pt")
         self.pdf.set_title(self.book.title)
@@ -304,6 +284,7 @@ class Writer:
             else:
                 method(reference)
             self.write_reference_external_links(reference)
+            self.write_reference_xrefs
             self.state.ln(2)
 
     def write_reference_authors(self, reference):
@@ -358,7 +339,7 @@ class Writer:
         except KeyError:
             pass
         try:
-            self.state.set(style="U", text_color=HREF_COLOR)
+            self.state.set(style="U", text_color=constants.PDF_HREF_COLOR)
             self.pdf.cell(
                 h=self.state.line_height * self.state.font_size,
                 text=reference["title"],
@@ -391,7 +372,7 @@ class Writer:
         for pos, (text, url) in enumerate(links):
             if pos != 0:
                 self.state.write(", ")
-            self.state.set(style="U", text_color=HREF_COLOR)
+            self.state.set(style="U", text_color=constants.PDF_HREF_COLOR)
             self.pdf.cell(
                 h=self.state.line_height * self.state.font_size,
                 text=text,
@@ -401,57 +382,28 @@ class Writer:
             self.state.reset()
         self.state.reset()
 
-    def write_reference_xrefs(self, entries):
-        if not entries:
-            return
-        if self.settings["write"]["pdf"]["references_xref"] == NO_XREF:
-            return
-        if self.settings["write"]["pdf"]["references_xref"] == PAGE_NUMBER:
-            key = "page"
-        elif self.settings["write"]["pdf"]["references_xref"] == TEXT_FULL_NAME:
-            key = "fullname"
-        elif self.settings["write"]["pdf"]["references_xref"] == TEXT_HEADING:
-            key = "heading"
-        else:
-            return
-        self.state.set(left_indent=20)
-        self.state.ln()
-        for pos, entry in enumerate(sorted(entries, key=lambda e: e["ordinal"])):
-            if pos != 0:
-                self.state.write(", ")
-            self.state.set(style="U", text_color=HREF_COLOR)
-            self.pdf.cell(
-                h=self.state.line_height * self.state.font_size,
-                text=str(entry[key]),  # Page number is 'int'.
-                link=self.pdf.add_link(page=entry["page"]),
-                new_x=fpdf.enums.XPos.WCONT,
-            )
-            self.state.reset()
-        self.state.reset()
-
     def write_indexed(self):
         self.pdf.add_page()
         self.pdf.start_section(Tx("Index"), level=0)
         self.write_heading(Tx("Index"), 1)
-        if self.settings["write"]["pdf"]["indexed_xref"] == PAGE_NUMBER:
+        indexed_ref = self.settings["write"]["pdf"]["indexed_xref"]
+        if indexed_ref == constants.PDF_PAGE_NUMBER:
             key = "page"
-        elif self.settings["write"]["pdf"]["indexed_xref"] == TEXT_FULL_NAME:
+        elif indexed_xref == constants.PDF_TEXT_FULLNAME:
             key = "fullname"
-        elif self.settings["write"]["pdf"]["indexed_xref"] == TEXT_HEADING:
+        elif indexed_xref == constants.PDF_TEXT_HEADING:
             key = "heading"
         else:
             return
         items = sorted(self.indexed.items(), key=lambda i: i[0].lower())
         for canonical, entries in items:
-            self.state.set(style="B")
             self.state.write(canonical)
-            self.state.reset()
             self.state.write("  ")
             entries.sort(key=lambda e: e["ordinal"])
             for pos, entry in enumerate(entries):
                 if pos != 0:
                     self.state.write(", ")
-                self.state.set(style="U", text_color=HREF_COLOR)
+                self.state.set(style="U", text_color=constants.PDF_HREF_COLOR)
                 self.pdf.cell(
                     h=self.state.line_height * self.state.font_size,
                     text=str(entry[key]),  # Page number is 'int'.
@@ -561,9 +513,9 @@ class Writer:
         self.pdf.set_draw_color(r=128, g=128, b=128)
         width, height = self.pdf.default_page_dimensions
         self.pdf.line(
-            x1=self.pdf.l_margin + THEMATIC_BREAK_INDENT,
+            x1=self.pdf.l_margin + constants.PDF_THEMATIC_BREAK_INDENT,
             y1=self.pdf.y,
-            x2=width - (self.pdf.r_margin + THEMATIC_BREAK_INDENT),
+            x2=width - (self.pdf.r_margin + constants.PDF_THEMATIC_BREAK_INDENT),
             y2=self.pdf.y,
         )
         self.state.ln()
@@ -574,7 +526,7 @@ class Writer:
         for child in ast["children"]:
             if child["element"] == "raw_text":
                 raw_text.append(child["children"])
-        self.state.set(style="U", text_color=HREF_COLOR)
+        self.state.set(style="U", text_color=constants.PDF_HREF_COLOR)
         self.pdf.cell(
             h=self.state.line_height * self.state.font_size,
             text="".join(raw_text),

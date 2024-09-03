@@ -2,7 +2,7 @@
 
 import functools
 
-VERSION = (0, 5, 0)
+VERSION = (0, 6, 0)
 __version__ = ".".join([str(n) for n in VERSION])
 
 
@@ -153,9 +153,9 @@ H6 = dict(
 H_LOOKUP = dict([(1, H1), (2, H2), (3, H3), (4, H4), (5, H5), (6, H6)])
 MAX_H_LEVEL = max(H_LOOKUP)
 
-FOOTNOTES_EACH_TEXT = "After each text"
-FOOTNOTES_EACH_CHAPTER = "After each chapter"
-FOOTNOTES_END_OF_BOOK = "At end of book"
+FOOTNOTES_EACH_TEXT = "after each text"
+FOOTNOTES_EACH_CHAPTER = "after each chapter"
+FOOTNOTES_END_OF_BOOK = "at end of book"
 FOOTNOTES_DISPLAY = (
     FOOTNOTES_EACH_TEXT,
     FOOTNOTES_EACH_CHAPTER,
@@ -170,3 +170,15 @@ REFERENCE_LINKS = dict(
 
 FONTDIR = "/usr/share/fonts/truetype/freefont"
 
+PDF_HREF_COLOR = (20, 20, 255)
+PDF_THEMATIC_BREAK_INDENT = 100
+
+PDF_PAGE_NUMBER = "page number"
+PDF_TEXT_FULLNAME = "text full name"
+PDF_TEXT_HEADING = "text heading"
+
+PDF_INDEXED_XREF_DISPLAY = (
+    PDF_PAGE_NUMBER,
+    PDF_TEXT_FULLNAME,
+    PDF_TEXT_HEADING,
+)
