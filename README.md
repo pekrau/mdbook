@@ -6,7 +6,7 @@ Web display of a book written in Markdown.
 - Indexing of terms.
 - Reference handling.
 - Footnotes.
-- Export of contents to DOCX and PDF files.
+- Write contents to DOCX and PDF files.
 
 Built using Python,
 [FastHTML](https://docs.fastht.ml/),

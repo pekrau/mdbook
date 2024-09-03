@@ -1,4 +1,4 @@
-"DOCX file creation."
+"Write DOCX file."
 
 from icecream import ic
 
@@ -15,19 +15,21 @@ import utils
 Tx = utils.Tx
 
 
-class Creator:
-    "DOCX Creator."
+class Writer:
+    "DOCX writer."
 
     def __init__(self, book, references, settings):
         self.book = book
         self.references = references
         self.settings = settings
+        # XXX set default settings for docx, if not defined
 
     def write(self, filepath):
+        "Write the DOCS file."
         # Key: canonical; value: dict(id, fullname, ordinal)
         self.indexed = {}
         self.indexed_count = 0
-        # Reference id
+        # Reference ids
         self.referenced = set()
         # Key: fullname; value: dict(label, ast_children)
         self.footnotes = {}
@@ -36,12 +38,11 @@ class Creator:
 
         # Set the default document-wide language.
         # From https://stackoverflow.com/questions/36967416/how-can-i-set-the-language-in-text-with-python-docx
-        language = self.settings["book"].get("language")
-        if language:
+        if self.book.language:
             styles_element = self.document.styles.element
             rpr_default = styles_element.xpath("./w:docDefaults/w:rPrDefault/w:rPr")[0]
             lang_default = rpr_default.xpath("w:lang")[0]
-            lang_default.set(docx.oxml.shared.qn("w:val"), language)
+            lang_default.set(docx.oxml.shared.qn("w:val"), self.book.language)
 
         # Set to A4 page size.
         section = self.document.sections[0]
@@ -71,8 +72,8 @@ class Creator:
         style.font.name = constants.QUOTE_FONT
 
         # Set Dublin core metadata.
-        if language:
-            self.document.core_properties.language = language
+        if self.book.language:
+            self.document.core_properties.language = self.book.language
         self.document.core_properties.modified = datetime.datetime.now()
         # XXX authors
 
@@ -95,17 +96,17 @@ class Creator:
 
     def write_title_page(self):
         paragraph = self.document.add_paragraph(style="Title")
-        run = paragraph.add_run(self.settings["book"]["title"])
+        run = paragraph.add_run(self.book.title)
         run.font.size = docx.shared.Pt(28)
         run.font.bold = True
 
-        if self.settings["book"].get("subtitle"):
-            paragraph = self.document.add_paragraph(style=f"Heading 1")
-            paragraph.add_run(self.settings["book"]["subtitle"])
+        if self.book.subtitle:
+            paragraph = self.document.add_paragraph(style="Heading 1")
+            paragraph.add_run(self.book.subtitle)
 
         paragraph.paragraph_format.space_after = docx.shared.Pt(40)
         for author in self.settings["book"]["authors"]:
-            paragraph = self.document.add_paragraph(style=f"Heading 2")
+            paragraph = self.document.add_paragraph(style="Heading 2")
             paragraph.add_run(author)
 
         paragraph = self.document.add_paragraph()
@@ -141,7 +142,7 @@ class Creator:
         run._r.append(fldChar2)
 
     def write_section(self, section, level):
-        if level <= self.settings["creator"]["docx"]["page_break_level"]:
+        if level <= self.settings["write"]["docx"]["page_break_level"]:
             self.document.add_page_break()
         self.write_heading(section.heading, level)
         for item in section.items:
@@ -151,7 +152,7 @@ class Creator:
                 self.write_text(item, level=level + 1)
 
     def write_text(self, text, level):
-        if level <= self.settings["creator"]["docx"]["page_break_level"]:
+        if level <= self.settings["write"]["docx"]["page_break_level"]:
             self.document.add_page_break()
         self.write_heading(text.heading, level)
         self.list_stack = []
@@ -175,7 +176,7 @@ class Creator:
 
     def write_footnotes_text(self, text):
         "Footnotes at end of the text."
-        if self.settings["creator"]["docx"]["footnotes"] != constants.FOOTNOTES_EACH_TEXT:
+        if self.settings["write"]["docx"]["footnotes"] != constants.FOOTNOTES_EACH_TEXT:
             return
         try:
             footnotes = self.footnotes[text.fullname]
@@ -194,7 +195,7 @@ class Creator:
 
     def write_footnotes_chapter(self, item):
         "Footnote definitions at the end of a chapter."
-        if self.settings["creator"]["docx"]["footnotes"] != constants.FOOTNOTES_EACH_CHAPTER:
+        if self.settings["write"]["docx"]["footnotes"] != constants.FOOTNOTES_EACH_CHAPTER:
             return
         try:
             footnotes = self.footnotes[item.chapter.fullname]
@@ -212,7 +213,7 @@ class Creator:
 
     def write_footnotes_book(self):
         "Footnote definitions as a separate section at the end of the book."
-        if self.settings["creator"]["docx"]["footnotes"] != constants.FOOTNOTES_END_OF_BOOK:
+        if self.settings["write"]["docx"]["footnotes"] != constants.FOOTNOTES_END_OF_BOOK:
             return
         self.document.add_page_break()
         self.write_heading(Tx("Footnotes"), 1)
@@ -308,7 +309,10 @@ class Creator:
 
     def write_reference_external_links(self, paragraph, reference):
         any_item = False
-        for key, label, template in constants.REFERENCE_LINKS:
+        if reference.get("url"):
+            add_hyperlink(paragraph, reference["url"], reference["url"])
+            any_item = True
+        for key, (label, template) in constants.REFERENCE_LINKS.items():
             try:
                 value = reference[key]
                 if any_item:
@@ -455,12 +459,15 @@ class Creator:
             self.render(child)
         self.superscript = False
 
+    def render_emdash(self, ast):
+        self.paragraph.add_run(constants.EM_DASH)
+
     def render_thematic_break(self, ast):
         paragraph = self.document.add_paragraph(constants.EM_DASH * 20)
         paragraph.alignment = docx.enum.text.WD_ALIGN_PARAGRAPH.CENTER
 
     def render_link(self, ast):
-        # XXX This handles only raw text within a link, nothing else.
+        # This handles only raw text within a link, nothing else.
         raw_text = []
         for child in ast["children"]:
             if child["element"] == "raw_text":
@@ -500,7 +507,7 @@ class Creator:
             )
         )
         run = self.paragraph.add_run(ast["term"])
-        font = self.settings["creator"]["docx"].get("indexed_font")
+        font = self.settings["write"]["docx"].get("indexed_font")
         if font == constants.ITALIC:
             run.italic = True
         elif font == constants.BOLD:
@@ -511,11 +518,11 @@ class Creator:
     def render_footnote_ref(self, ast):
         # The label is used only for lookup; number is used for output.
         label = ast["label"]
-        if self.settings["creator"]["docx"]["footnotes"] == constants.FOOTNOTES_EACH_TEXT:
+        if self.settings["write"]["docx"]["footnotes"] == constants.FOOTNOTES_EACH_TEXT:
             entries = self.footnotes.setdefault(self.current_text.fullname, {})
             number = len(entries) + 1
             key = label
-        elif self.settings["creator"]["docx"]["footnotes"] in (constants.FOOTNOTES_EACH_CHAPTER,
+        elif self.settings["write"]["docx"]["footnotes"] in (constants.FOOTNOTES_EACH_CHAPTER,
                                             constants.FOOTNOTES_END_OF_BOOK):
             fullname = self.current_text.chapter.fullname
             entries = self.footnotes.setdefault(fullname, {})
@@ -528,10 +535,10 @@ class Creator:
 
     def render_footnote_def(self, ast):
         label = ast["label"]
-        if self.settings["creator"]["docx"]["footnotes"] == constants.FOOTNOTES_EACH_TEXT:
+        if self.settings["write"]["docx"]["footnotes"] == constants.FOOTNOTES_EACH_TEXT:
             fullname = self.current_text.fullname
             key = label
-        elif self.settings["creator"]["docx"]["footnotes"] in (constants.FOOTNOTES_EACH_CHAPTER,
+        elif self.settings["write"]["docx"]["footnotes"] in (constants.FOOTNOTES_EACH_CHAPTER,
                                             constants.FOOTNOTES_END_OF_BOOK):
             fullname = self.current_text.chapter.fullname
             key = f"{fullname}-{label}"
@@ -540,7 +547,7 @@ class Creator:
     def render_reference(self, ast):
         self.referenced.add(ast["reference"])
         run = self.paragraph.add_run(ast["reference"])
-        font = self.settings["creator"]["docx"].get("reference_font")
+        font = self.settings["write"]["docx"].get("reference_font")
         if font == constants.ITALIC:
             run.italic = True
         elif font == constants.BOLD:

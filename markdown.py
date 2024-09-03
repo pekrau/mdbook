@@ -117,7 +117,7 @@ ast_converter = marko.Markdown(renderer=marko.ast_renderer.ASTRenderer)
 ast_converter.use("footnote")
 ast_converter.use(
     marko.helpers.MarkoExtension(
-        elements=[Subscript, Superscript, Indexed, Reference],
+        elements=[Subscript, Superscript, Emdash, Indexed, Reference],
     )
 )
 

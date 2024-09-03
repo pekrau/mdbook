@@ -4,14 +4,12 @@ from icecream import ic
 
 import os.path
 
-import docx
-import docx.oxml
 import yaml
-
 from fasthtml.common import *
 
 import constants
-import docx_creator
+import docx_writer
+import pdf_writer
 import utils
 
 from book import Book
@@ -54,7 +52,6 @@ def write_settings(settings):
 def get_references(reload=False):
     "Get the references book, cached."
     global _references
-    absdirpath = os.path.join(ABSDIRPATH, constants.REFERENCES_DIRNAME)
     if reload:
         try:
             del _references
@@ -64,7 +61,7 @@ def get_references(reload=False):
         return _references
     except NameError:
         ic("reloading references")
-        _references = Book(absdirpath)
+        _references = Book(constants.REFERENCES_DIRPATH)
         return _references
 
 
@@ -120,7 +117,9 @@ def get(reload:str=None):
     "Home page; index of sections and texts."
     return (Title("mdbook"),
             Header(nav(actions=[A(Tx("Update"), href="/?reload=yes"),
-                                A(f'{Tx("Write")} DOCX', href="/docx")]),
+                                A(f'{Tx("Write")} DOCX', href="/docx"),
+                                A(f'{Tx("Write")} PDF', href="/pdf"),
+                                ]),
                    cls="container"),
             Main(contents(get_book(reload=reload).items), cls="container")
             )
@@ -239,6 +238,8 @@ def get(reload:str=None):
         if ref.get("title"):
             parts.append(Br())
             parts.append(ref["title"])
+
+        links = []
         if ref.get("type") == "article":
             parts.append(Br())
             parts.append(I(ref["journal"]))
@@ -253,20 +254,49 @@ def get(reload:str=None):
             parts.append(Br())
             if ref.get("publisher"):
                 parts.append(f'{ref["publisher"]}.')
-        elif ref.get("type") == "link":
+            if ref.get("isbn"):
+                symbol, url = constants.REFERENCE_LINKS["isbn"]
+                url = url.format(value=ref["isbn"])
+                if links:
+                    links.append(", ")
+                links.append(A(f'{symbol}:{ref["isbn"]}', 
+                               href=url.format(value=ref["isbn"])))
+
+        if ref.get("url"):
             parts.append(Br())
             parts.append(A(ref["url"], href=ref["url"]))
             if ref.get("accessed"):
                 parts.append(f'(Accessed: {ref["accessed"]})')
-
-        texts = get_book().references.get(ref["id"], [])
-        links = []
-        for text in sorted(texts, key=lambda t: t.ordinal):
+        if ref.get("doi"):
+            symbol, url = constants.REFERENCE_LINKS["doi"]
+            url = url.format(value=ref["doi"])
             if links:
-                links.append(Br())
-            links.append(A(text.fullname, href=f"/text/{text.fullname}"))
-        parts.append(Small(Br(), *links))
+                links.append(", ")
+            links.append(A(f'{symbol}:{ref["doi"]}', 
+                           href=url.format(value=ref["doi"])))
+        if ref.get("pmid"):
+            symbol, url = constants.REFERENCE_LINKS["pmid"]
+            url = url.format(value=ref["pmid"])
+            if links:
+                links.append(", ")
+            links.append(A(f'{symbol}:{ref["pmid"]}', 
+                           href=url.format(value=ref["pmid"])))
+
+        if links:
+            parts.extend(links)
+
+        xrefs = []
+        texts = get_book().references.get(ref["id"], [])
+        for text in sorted(texts, key=lambda t: t.ordinal):
+            if xrefs:
+                xrefs.append(Br())
+            xrefs.append(A(text.fullname,
+                           cls="secondary",
+                           href=f"/text/{text.fullname}"))
+        if xrefs:
+            parts.append(Small(Br(), *xrefs))
         items.append(P(*parts, id=ref["id"].replace(" ", "_")))
+
     return (Title(Tx("References")),
             Script(src="/clipboard.min.js"),
             Script("new ClipboardJS('.to_clipboard');"),
@@ -289,20 +319,16 @@ def get(refid:str, reload:str=None):
     if ref.get("issn"):
         rows.append(Tr(Td("ISSN"), Td(ref["issn"])))
     if ref.get("isbn"):
-        rows.append(Tr(Td("ISBN"),
-                       Td(A(ref["isbn"],
-                            href=constants.ISBN.format(value=ref["isbn"])))))
+        url = constants.REFERENCE_LINKS["isbn"][1].format(value=ref["isbn"])
+        rows.append(Tr(Td("ISBN"), Td(A(ref["isbn"], href=url))))
     if ref.get("pmid"):
-        rows.append(Tr(Td("PubMed"),
-                       Td(A(ref["pmid"],
-                            href=constants.PUBMED.format(value=ref["pmid"])))))
+        url = constants.REFERENCE_LINKS["pmid"][1].format(value=ref["pmid"])
+        rows.append(Tr(Td("PubMed"), Td(A(ref["pmid"], href=url))))
     if ref.get("doi"):
-        rows.append(Tr(Td("DOI"),
-                       Td(A(ref["doi"],
-                            href=constants.DOI.format(value=ref["doi"])))))
+        url = constants.REFERENCE_LINKS["doi"][1].format(value=ref["doi"])
+        rows.append(Tr(Td("DOI"), Td(A(ref["doi"], href=url))))
     if ref.get("url"):
-        rows.append(Tr(Td("Url"),
-                       Td(A(ref["url"], href=ref["url"]))))
+        rows.append(Tr(Td("Url"), Td(A(ref["url"], href=ref["url"]))))
     return (Title(refid),
             Script(src="/clipboard.min.js"),
             Script("new ClipboardJS('.to_clipboard');"),
@@ -320,11 +346,11 @@ def get(refid:str, reload:str=None):
                  cls="container"))
 
 @rt("/docx", methods=["get", "post"])
-def docx_export(filename:str=None,
-                page_break_level:int=None,
-                footnotes:str=None,
-                indexed_font:str=None,
-                reference_font:str=None):
+def docx_write(filename:str=None,
+               page_break_level:int=None,
+               footnotes:str=None,
+               indexed_font:str=None,
+               reference_font:str=None):
     settings = read_settings()
     docx_settings = settings.setdefault("creator", {}).setdefault("docx", {})
     if filename is None:
@@ -400,14 +426,107 @@ def docx_export(filename:str=None,
         docx_settings["indexed_font"] = indexed_font
         docx_settings["reference_font"] = reference_font
         write_settings(settings)
-        creator = docx_creator.Creator(get_book(), get_references(), settings)
-        creator.write(os.path.join(ABSDIRPATH, filename))
+        writer = docx_writer.Writer(get_book(), get_references(), settings)
+        writer.write(os.path.join(ABSDIRPATH, filename))
         return (Title(f'{Tx("Written")} DOCX'),
                 Header(nav(label=f'{Tx("Written")} DOCX'), cls="container"),
                 Main(P(f'{Tx("Page break level")}: {page_break_level}'),
                      P(f'{Tx("Footnotes")}: {Tx(footnotes)}'),
                      P(f'{Tx("Indexed font")}: {Tx(indexed_font)}'),
                      P(f'{Tx("Reference font")}: {Tx(reference_font)}'),
+                     P(f'{Tx("File name")}: {filename}'),
+                     cls="container")
+                )
+
+@rt("/pdf", methods=["get", "post"])
+def pdf_write(filename:str=None,
+              page_break_level:int=None,
+              footnotes:str=None,
+              indexed_font:str=None,
+              reference_font:str=None):
+    settings = read_settings()
+    pdf_settings = settings.setdefault("write", {}).setdefault("pdf", {})
+    if filename is None:
+        filename = pdf_settings.get("filename", "book.pdf")
+        page_break_level = pdf_settings.get("page_break_level", 1)
+        page_break_options = []
+        for value in range(0, 7):
+            if value == page_break_level:
+                page_break_options.append(Option(str(value), selected=True))
+            else:
+                page_break_options.append(Option(str(value)))
+        footnotes = pdf_settings.get("footnotes", constants.FOOTNOTES_EACH_TEXT)
+        footnotes_options = []
+        for value in constants.FOOTNOTES_DISPLAY:
+            if value == footnotes:
+                footnotes_options.append(Option(Tx(value), value=value, selected=True))
+            else:
+                footnotes_options.append(Option(Tx(value), value=value))
+        # indexed_font = pdf_settings.get("indexed_font", constants.NORMAL)
+        # indexed_options = []
+        # for value in constants.FONT_STYLES:
+        #     if value == indexed_font:
+        #         indexed_options.append(Option(Tx(value), value=value, selected=True))
+        #     else:
+        #         indexed_options.append(Option(Tx(value), value=value))
+        # reference_font = pdf_settings.get("reference_font", constants.NORMAL)
+        # reference_options = []
+        # for value in constants.FONT_STYLES:
+        #     if value == reference_font:
+        #         reference_options.append(Option(Tx(value), value=value, selected=True))
+        #     else:
+        #         reference_options.append(Option(Tx(value), value=value))
+        return (Title(f'{Tx("Write")} PDF'),
+                Header(nav(label=f'{Tx("Write")} PDF'), cls="container"),
+                Main(Form(
+                    Fieldset(
+                        Legend(Tx("Page break level")),
+                        Select(*page_break_options,
+                               name="page_break_level",
+                               aria_label=Tx("Page break level")),
+                    ),
+                    Fieldset(
+                        Legend(Tx("Footnotes")),
+                        Select(*footnotes_options,
+                               name="footnotes",
+                               aria_label=Tx("Footnotes"))
+                    ),
+                    # Fieldset(
+                    #     Legend(Tx("Indexed font")),
+                    #     Select(*indexed_options,
+                    #            name="indexed_font",
+                    #            aria_label=Tx("Indexed font"))
+                    # ),
+                    # Fieldset(
+                    #     Legend(Tx("Reference font")),
+                    #     Select(*reference_options,
+                    #            name="reference_font",
+                    #            aria_label=Tx("Reference font"))
+                    # ),
+                    Fieldset(
+                        Legend(Tx("File name")),
+                        Input(type="text", name="filename", value=filename),
+                    ),
+                    Button(f'{Tx("Create")} PDF'),
+                    action="/pdf",
+                    method="post"),
+                     cls="container")
+                )
+    else:
+        pdf_settings["filename"] = filename
+        pdf_settings["page_break_level"] = page_break_level
+        pdf_settings["footnotes"] = footnotes
+        # pdf_settings["indexed_font"] = indexed_font
+        # pdf_settings["reference_font"] = reference_font
+        write_settings(settings)
+        writer = pdf_writer.Writer(get_book(), get_references(), settings)
+        writer.write(os.path.join(ABSDIRPATH, filename))
+        return (Title(f'{Tx("Written")} PDF'),
+                Header(nav(label=f'{Tx("Written")} PDF'), cls="container"),
+                Main(P(f'{Tx("Page break level")}: {page_break_level}'),
+                     P(f'{Tx("Footnotes")}: {Tx(footnotes)}'),
+                     # P(f'{Tx("Indexed font")}: {Tx(indexed_font)}'),
+                     # P(f'{Tx("Reference font")}: {Tx(reference_font)}'),
                      P(f'{Tx("File name")}: {filename}'),
                      cls="container")
                 )

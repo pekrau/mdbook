@@ -8,6 +8,7 @@ exceptiongroup==1.2.2
 executing==2.0.1
 fastcore==1.7.1
 fastlite==0.0.9
+fpdf==1.7.2
 h11==0.14.0
 httpcore==1.0.5
 httptools==0.6.1

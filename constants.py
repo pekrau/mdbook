@@ -1,9 +1,8 @@
 "Constants."
 
 import functools
-import os
 
-VERSION = (0, 4, 0)
+VERSION = (0, 5, 0)
 __version__ = ".".join([str(n) for n in VERSION])
 
 
@@ -11,10 +10,8 @@ DEFAULT_LANGUAGES = ("sv-SE", "en-GB", "en-US")
 
 MARKDOWN_EXT = ".md"
 SETTINGS_FILENAME = "settings.yaml"
-ARCHIVE_DIRNAME = "au_archive"
-assert os.extsep not in ARCHIVE_DIRNAME
-REFERENCES_DIRNAME = "au_references"
-assert os.extsep not in REFERENCES_DIRNAME
+REFERENCES_DIRPATH = "/home/pekrau/Dropbox/texter/references"
+ARCHIVE_DIRPATH = "/home/pekrau/Dropbox/texter/archive"
 TRANSLATIONS_FILE = "translations.csv"
 
 DATETIME_ISO_FORMAT = "%Y-%m-%d %H:%M:%S"
@@ -96,6 +93,7 @@ CODE_LEFT_INDENT = 30
 
 QUOTE_STYLE = "mdbook Quote"
 QUOTE_FONT = "FreeSerif"
+QUOTE_FONT_SIZE = 14
 QUOTE_LEFT_INDENT = 30
 QUOTE_RIGHT_INDENT = 70
 
@@ -164,8 +162,11 @@ FOOTNOTES_DISPLAY = (
     FOOTNOTES_END_OF_BOOK,
 )
 
-REFERENCE_LINKS = [
-    ("doi", "DOI", "https://doi.org/{value}"),
-    ("pmid", "PubMed", "https://pubmed.ncbi.nlm.nih.gov/{value}"),
-    ("isbn", "ISBN", "https://isbnsearch.org/isbn/{value}"),
-]
+REFERENCE_LINKS = dict(
+    doi=("DOI", "https://doi.org/{value}"),
+    pmid=("PubMed", "https://pubmed.ncbi.nlm.nih.gov/{value}"),
+    isbn=("ISBN", "https://isbnsearch.org/isbn/{value}"),
+)
+
+FONTDIR = "/usr/share/fonts/truetype/freefont"
+

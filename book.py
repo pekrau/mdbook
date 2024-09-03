@@ -26,6 +26,7 @@ class Book:
         self.title = os.path.basename(absdirpath)
         self.subtitle = None
         self.authors = []
+        self.language = None
         self.read()
 
     def __str__(self):
@@ -103,11 +104,6 @@ class Book:
         for itemname in sorted(os.listdir(self.absdirpath)):
             # Skip emacs temporary edit file.
             if itemname.startswith(".#"):
-                continue
-            # Skip hard-wired special directories.
-            if itemname == constants.ARCHIVE_DIRNAME:
-                continue
-            if itemname == constants.REFERENCES_DIRNAME:
                 continue
 
             itempath = os.path.join(self.absdirpath, itemname)
