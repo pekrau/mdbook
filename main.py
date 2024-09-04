@@ -46,6 +46,7 @@ def read_settings():
         return None
 
 def write_settings(settings):
+    settings["book"] = get_book().get_settings()
     with open(SETTINGSPATH, "wb") as outfile:
         outfile.write(yaml.dump(settings, encoding="utf-8", allow_unicode=True))
 
@@ -91,27 +92,6 @@ def nav(item=None, label=None, actions=None):
     entries.append(Ul(*items))
     return Nav(*entries, style=nav_style)
 
-def contents(items):
-    "Recursive lists of sections and texts."
-    parts = []
-    for item in items:
-        n_words = f"{utils.thousands(item.n_words)}"
-        n_characters = f"{utils.thousands(len(item))}"
-        length = f'{n_words} {Tx("words")}; {n_characters} {Tx("characters")}'
-        if item.is_section:
-            parts.append(Li(str(item),
-                            NotStr("&nbsp;&nbsp;&nbsp;"),
-                            Small(length, style="color: silver;"),
-                            style=f"color: {item.status.color};",))
-            parts.append(contents(item.items))
-        else:
-            parts.append(Li(A(str(item),
-                              style=f"color: {item.status.color};",
-                              href=f"/text/{item.urlpath}"),
-                            NotStr("&nbsp;&nbsp;&nbsp;"),
-                            Small(length, style="color: silver;")))
-    return Ol(*parts)
-
 @rt("/")
 def get(reload:str=None):
     "Home page; list of sections and texts."
@@ -121,21 +101,43 @@ def get(reload:str=None):
                                 A(f'{Tx("Write")} PDF', href="/pdf"),
                                 ]),
                    cls="container"),
-            Main(contents(get_book(reload=reload).items), cls="container")
+            Main(toc(get_book(reload=reload).items), cls="container")
             )
 
+def toc(items):
+    "Recursive lists of sections and texts."
+    parts = []
+    for item in items:
+        n_words = f"{utils.thousands(item.n_words)}"
+        n_characters = f"{utils.thousands(len(item))}"
+        length = f'{n_words} {Tx("words")}; {n_characters} {Tx("characters")}'
+        if item.is_section:
+            parts.append(Li(A(str(item),
+                              style=f"color: {item.status.color};",
+                              href=f"/section/{item.urlpath}"),
+                            NotStr("&nbsp;&nbsp;&nbsp;"),
+                            Small(length, style="color: silver;"),
+                            style=f"color: {item.status.color};",))
+            parts.append(toc(item.items))
+        else:
+            parts.append(Li(A(str(item),
+                              style=f"color: {item.status.color};",
+                              href=f"/text/{item.urlpath}"),
+                            NotStr("&nbsp;&nbsp;&nbsp;"),
+                            Small(length, style="color: silver;")))
+    return Ol(*parts)
+
 @rt("/text/{path:path}", methods=["get", "post"])
-def view(path:str, content:str=None, status:str=None):
-    "View the text, or save it from an edit."
+def view_text(path:str, content:str=None, status:str=None, title:str=None):
+    "View the text, or edit and save."
     text = get_book()[path]
     text.read()
-    if status is not None:
-        ic(status)
-        text.status = status
-        text.write()
     if content is not None:
         text.write(content=content)
         text.read()
+    if status is not None:
+        text.status = status
+        text.write()
     return (Title(text.title),
             Header(nav(text, actions=[A(Tx("Edit"), href=f"/edit/{path}"),
                                       A(Tx("Settings"), href=f"/settings/{path}")]),
@@ -147,6 +149,7 @@ def view(path:str, content:str=None, status:str=None):
 def get(path:str):
     "Edit the text."
     text = get_book()[path]
+    assert text.is_text
     text.read()
     return (Title("mdbook"),
             Header(nav(label=f'{Tx("Edit")} {text.fullname}'), cls="container"),
@@ -155,6 +158,16 @@ def get(path:str):
                       action=f"/text/{path}",
                       method="post"),
                  cls="container"),
+            )
+
+@rt("/section/{path:path}", methods=["get", "post"])
+def view_section(path:str,title:str=None):
+    "View the section, or edit and save."
+    section = get_book()[path]
+    assert section.is_section
+    return (Title(section.title),
+            Header(nav(section), cls="container"),
+            Main(toc(section.items), cls="container")
             )
 
 @rt("/settings/{path:path}")
@@ -439,7 +452,7 @@ def pdf_write(filename:str=None,
               page_break_level:int=None,
               contents_pages:bool=False,
               footnotes:str=None,
-              indexed_ref:str=None):
+              indexed_xref:str=None):
     settings = read_settings()
     pdf_settings = settings.setdefault("write", {}).setdefault("pdf", {})
     if filename is None:
@@ -495,8 +508,8 @@ def pdf_write(filename:str=None,
                         Select(*footnotes_options, name="footnotes")
                     ),
                     Fieldset(
-                        Legend(Tx("Display of indexed usage")),
-                        Select(*indexed_options, name="indexed_ref")
+                        Legend(Tx("Display of indexed term reference")),
+                        Select(*indexed_options, name="indexed_xref")
                     ),
                     Button(f'{Tx("Create")} PDF'),
                     action="/pdf",
@@ -507,6 +520,7 @@ def pdf_write(filename:str=None,
         pdf_settings["filename"] = filename
         pdf_settings["page_break_level"] = page_break_level
         pdf_settings["footnotes"] = footnotes
+        pdf_settings["indexed_xref"] = indexed_xref
         write_settings(settings)
         writer = pdf_writer.Writer(get_book(), get_references(), settings)
         writer.write(os.path.join(ABSDIRPATH, filename))
@@ -516,7 +530,7 @@ def pdf_write(filename:str=None,
                      P(f'{Tx("Page break level")}: {page_break_level}'),
                      P(f'{Tx("Contents pages")}: {Tx(str(contents_pages))}'),
                      P(f'{Tx("Footnotes")}: {Tx(footnotes.capitalize())}'),
-                     P(f'{Tx("Indexed display")}: {Tx(indexed_xref.capitalize())}'),
+                     P(f'{Tx("Indexed reference display")}: {Tx(indexed_xref.capitalize())}'),
                      cls="container")
                 )
 

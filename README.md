@@ -8,7 +8,10 @@ Web display of a book written in Markdown.
 - Footnotes.
 - Write contents to DOCX and PDF files.
 
-Built using Python,
-[FastHTML](https://docs.fastht.ml/),
-[pico CSS](https://picocss.com/) and
-[Marko](https://marko-py.readthedocs.io/).
+Written in Python using
+
+- [FastHTML](https://docs.fastht.ml/)
+- [pico CSS](https://picocss.com/)
+- [Marko](https://marko-py.readthedocs.io/)
+- [python-docx](https://python-docx.readthedocs.io/en/latest/)
+- [fpdf2](https://py-pdf.github.io/fpdf2/index.html)

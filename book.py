@@ -164,6 +164,7 @@ class Book:
         self.authors = settings["book"].get("authors") or []
         self.language = settings["book"].get("language")
         original = dict([(i.title, i) for i in self.items])
+        # Re-order items according to settings file.
         self.items = []
         for ordered in settings["book"].get("items", []):
             try:
@@ -173,6 +174,7 @@ class Book:
             else:
                 self.items.append(item)
                 item.apply_settings(ordered)
+        # Append items not referenced in the settings file.
         self.items.extend(original.values())
 
     def create_text(self, title, anchor=None):
@@ -430,15 +432,14 @@ class Item:
         newabspath = os.path.join(self.parent.abspath, self.filename(newtitle))
         if os.path.exists(newabspath):
             raise ValueError("The title is already in use.")
-        oldfullnames = [self.fullname] + [i.fullname for i in self.all_items]
+        items = [self] + self.all_items
+        ic(items)
+        for item in items:
+            self.book.lookup.pop(item.fullname)
         oldabspath = self.abspath
         self.title = newtitle
         os.rename(oldabspath, self.abspath)
-        self.replace_in_lookup(oldfullnames)
-
-    def replace_in_lookup(self, oldfullnames):
-        for oldfullname in oldfullnames:
-            item = self.book.lookup.pop(oldfullname)
+        for item in items:
             self.book.lookup[item.fullname] = item
 
     def move_up(self):
@@ -470,7 +471,9 @@ class Item:
         if os.path.exists(newabspath):
             raise ValueError("Item cannot be moved up due to title collision.")
         oldabspath = self.abspath
-        oldfullnames = [self.fullname] + [i.fullname for i in self.all_items]
+        items = [self] + self.all_items
+        for item in items:
+            self.book.lookup.pop(item.fullname)
         before = self.parent.next
         self.parent.items.remove(self)
         if before:
@@ -479,7 +482,8 @@ class Item:
             self.parent.parent.items.append(self)
         self.parent = self.parent.parent
         os.rename(oldabspath, self.abspath)
-        self.replace_in_lookup(oldfullnames)
+        for item in items:
+            self.book.lookup[item.fullname] = item
 
     def move_to_section(self, section):
         """Move this item one level down to the given section.
@@ -493,13 +497,16 @@ class Item:
         newabspath = os.path.join(section.abspath, self.filename())
         if os.path.exists(newabspath):
             raise ValueError("Item cannot be moved down due to title collision.")
+        items = [self] + self.all_items
+        for item in items:
+            self.book.lookup.pop(item.fullname)
         oldabspath = self.abspath
-        oldfullnames = [self.fullname] + [i.fullname for i in self.all_items]
         self.parent.items.remove(self)
         section.items.append(self)
         self.parent = section
         os.rename(oldabspath, self.abspath)
-        self.replace_in_lookup(oldfullnames)
+        for item in items:
+            self.book.lookup[item.fullname] = item
 
     def copy(self, newtitle):
         "Common code for section and text copy operations."
@@ -584,13 +591,11 @@ class Section(Item):
     def get_settings(self):
         "Create the entry for this section for the settings file."
         return dict(
-            type="section",
             title=self.title,
             items=[i.get_settings() for i in self.items],
         )
 
     def apply_settings(self, settings):
-        assert settings["type"] == "section"
         original = dict([(i.title, i) for i in self.items])
         self.items = []
         for ordered in settings["items"]:
@@ -705,10 +710,10 @@ class Text(Item):
 
     def get_settings(self):
         "Create the entry for this text for the settings file."
-        return dict(type="text", title=self.title, status=repr(self.status))
+        return dict(title=self.title, status=repr(self.status))
 
     def apply_settings(self, settings):
-        assert settings["type"] == "text"
+        pass
 
     def copy(self, newtitle):
         newabspath = super().copy(newtitle)

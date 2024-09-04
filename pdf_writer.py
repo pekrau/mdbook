@@ -284,7 +284,6 @@ class Writer:
             else:
                 method(reference)
             self.write_reference_external_links(reference)
-            self.write_reference_xrefs
             self.state.ln(2)
 
     def write_reference_authors(self, reference):
@@ -298,6 +297,7 @@ class Writer:
             self.state.write(utils.short_name(author))
 
     def write_reference_article(self, reference):
+        "Write data for reference of type 'article'."
         self.state.write(f" ({reference['year']})")
         try:
             self.state.write(" " + reference["title"].strip(".") + ".")
@@ -323,6 +323,7 @@ class Writer:
             pass
 
     def write_reference_book(self, reference):
+        "Write data for reference of type 'book'."
         self.state.write(f" ({reference['year']}).")
         self.state.set(style="I")
         self.state.write(" " + reference["title"].strip(".") + ". ")
@@ -333,6 +334,7 @@ class Writer:
             pass
 
     def write_reference_link(self, reference):
+        "Write data for reference of type 'link'."
         self.state.write(f" ({reference['year']}).")
         try:
             self.state.write(" " + reference["title"].strip(".") + ". ")
@@ -386,8 +388,8 @@ class Writer:
         self.pdf.add_page()
         self.pdf.start_section(Tx("Index"), level=0)
         self.write_heading(Tx("Index"), 1)
-        indexed_ref = self.settings["write"]["pdf"]["indexed_xref"]
-        if indexed_ref == constants.PDF_PAGE_NUMBER:
+        indexed_xref = self.settings["write"]["pdf"]["indexed_xref"]
+        if indexed_xref == constants.PDF_PAGE_NUMBER:
             key = "page"
         elif indexed_xref == constants.PDF_TEXT_FULLNAME:
             key = "fullname"
