@@ -1,11 +1,10 @@
 "View of Markdown book contents."
 
-from icecream import ic
-
 import os.path
 
-import yaml
 from fasthtml.common import *
+import bibtexparser
+import yaml
 
 import constants
 import docx_writer
@@ -33,7 +32,6 @@ def get_book(reload=False):
     try:
         return _book
     except NameError:
-        ic("reloading book")
         _book = Book(ABSDIRPATH)
         _book.apply_settings(read_settings())
         return _book
@@ -61,7 +59,6 @@ def get_references(reload=False):
     try:
         return _references
     except NameError:
-        ic("reloading references")
         _references = Book(constants.REFERENCES_DIRPATH)
         return _references
 
@@ -93,15 +90,15 @@ def nav(item=None, label=None, actions=None):
     return Nav(*entries, style=nav_style)
 
 @rt("/")
-def get(reload:str=None):
+def get():
     "Home page; list of sections and texts."
+    book = get_book(reload=True)
     return (Title("mdbook"),
-            Header(nav(actions=[A(Tx("Update"), href="/?reload=yes"),
-                                A(f'{Tx("Write")} DOCX', href="/docx"),
+            Header(nav(actions=[A(f'{Tx("Write")} DOCX', href="/docx"),
                                 A(f'{Tx("Write")} PDF', href="/pdf"),
                                 ]),
                    cls="container"),
-            Main(toc(get_book(reload=reload).items), cls="container")
+            Main(toc(book.items), cls="container")
             )
 
 def toc(items):
@@ -209,10 +206,11 @@ def get():
             )
 
 @rt("/references")
-def get(reload:str=None):
+def get():
     "List of references."
+    references = get_references(reload=True)
     items = []
-    for ref in get_references(reload=reload).items:
+    for ref in references.items:
         parts = [Img(src="/clipboard.svg",
                      title="Refid to clipboard",
                      style="cursor: pointer;",
@@ -295,10 +293,8 @@ def get(reload:str=None):
         items.append(P(*parts, id=ref["id"].replace(" ", "_")))
 
     return (Title(Tx("References")),
-            Script(src="/clipboard.min.js"),
-            Script("new ClipboardJS('.to_clipboard');"),
             Header(nav(label=Tx("References"),
-                       actions=[A(Tx("Update"), href="/references?reload=yes"),]),
+                       actions=[A(Tx("Add BibTex"), href="/bibtex")]),
                    cls="container"),
             Main(*items, cls="container")
             )
@@ -330,18 +326,99 @@ def get(refid:str, reload:str=None):
             Script(src="/clipboard.min.js"),
             Script("new ClipboardJS('.to_clipboard');"),
             Header(nav(label=ref["id"],
-                       actions=[A(Tx("Update"), 
-                                  href=f"/reference/{refid}?reload=yes"),
-                                A(Tx("Clipboard"),
+                       actions=[A(Tx("Clipboard"),
                                   href="#",
                                   cls="to_clipboard", 
-                                  data_clipboard_text=f'[@{ref["id"]}]')
+                                  data_clipboard_text=f'[@{ref["id"]}]'),
+                                A(Tx("Reload"), 
+                                  href=f"/reference/{refid}?reload=yes"),
                                 ]),
                    cls="container"),
             Main(Table(*rows),
                  Div(NotStr(ref.html)),
                  cls="container"))
 
+@rt("/bibtex", methods=["get", "post"])
+def bibtex(data:str=None):
+    "Add reference using BibTex data."
+    result = []
+    if data:
+        for entry in bibtexparser.parse_string(data).entries:
+            authors = utils.cleanup(entry.fields_dict["author"].value)
+            authors = [a.strip() for a in authors.split(" and ")]
+            year = entry.fields_dict["year"].value.strip()
+            name = authors[0].split(",")[0].strip()
+            for char in [""] + list("abcdefghijklmnopqrstuvxyz"):
+                id = f"{name} {year}{char}"
+                if get_references().get(id) is None:
+                    break
+            else:
+                raise ValueError(f"Could not form unique id for {name} {year}.")
+            new = dict(id=id, type=entry.entry_type, authors=authors, year=year)
+            for key, field in entry.fields_dict.items():
+                if key == "author":
+                    continue
+                value = utils.cleanup(field.value).strip()
+                if value:
+                    new[key] = value
+            # Split keywords into a list.
+            try:
+                new["keywords"] = [
+                    k.strip() for k in new["keywords"].split(";")
+                ]
+            except KeyError:
+                pass
+            # Change month into date; sometimes has day number.
+            try:
+                month = new.pop("month")
+            except KeyError:
+                pass
+            else:
+                parts = month.split("#")
+                if len(parts) == 2:
+                    month = constants.MONTHS[parts[1].strip().lower()]
+                    day = int("".join([c for c in parts[0] if c in string.digits]))
+                else:
+                    month = constants.MONTHS[parts[0].strip().lower()]
+                    day = 0
+                new["date"] = f"{year}-{month:02d}-{day:02d}"
+            # Change page numbers double dash to single dash.
+            try:
+                pages = new.pop("pages")
+            except KeyError:
+                pass
+            else:
+                new["pages"] = pages.replace("--", "-")
+            abstract = new.pop("abstract", None)
+            reference = get_references().create_text(new["id"])
+            for key, value in new.items():
+                reference[key] = value
+            if abstract:
+                reference.write("**Abstract**\n\n" + abstract)
+            else:
+                reference.write()
+            get_references(reload=True)
+            result.append(reference)
+        return (Title("Added reference(s)"),
+                Header(nav(label="Added reference(s)"), cls="container"),
+                Main(Ul(
+                    *[Li(A(r["id"], href=f'/reference/{r["id"]}')) for r in result]),
+                     cls="container")
+                )
+    else:
+        return (Title("Add reference"),
+                Header(nav(label="Add reference"), cls="container"),
+                Main(Form(
+                    Fieldset(
+                        Legend("Bibtex data"),
+                        Textarea(name="data", rows="20")
+                    ),
+                    Button("Add"),
+                    action=f"/bibtex",
+                    method="post"),
+                     cls="container")
+                )
+9780393427967
 @rt("/index")
 def get():
     "Index page."

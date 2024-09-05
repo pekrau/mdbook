@@ -1,6 +1,7 @@
 "Various simple utility functions."
 
 import constants
+import latex_utf8
 from translator import Translator
 
 Tx = Translator(constants.TRANSLATIONS_FILE)
@@ -17,3 +18,6 @@ def short_name(name):
 def thousands(i):
     return f"{i:,}".replace(",", ".")
 
+def cleanup(value):
+    "Convert LaTeX characters to UTF-8, remove newlines and normalize blanks."
+    return latex_utf8.from_latex_to_utf8(" ".join(value.split()))
