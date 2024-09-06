@@ -4,7 +4,7 @@ import constants
 import latex_utf8
 from translator import Translator
 
-Tx = Translator(constants.TRANSLATIONS_FILE)
+Tx = Translator(constants.TRANSLATIONS_FILEPATH)
 
 def short_name(name):
     "Return the person name in short form; given names as initials."

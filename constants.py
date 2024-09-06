@@ -1,8 +1,9 @@
 "Constants."
 
 import functools
+import os.path
 
-VERSION = (0, 8, 0)
+VERSION = (0, 9, 0)
 __version__ = ".".join([str(n) for n in VERSION])
 
 
@@ -12,7 +13,8 @@ MARKDOWN_EXT = ".md"
 SETTINGS_FILENAME = "settings.yaml"
 REFERENCES_DIRPATH = "/home/pekrau/Dropbox/texter/references"
 ARCHIVE_DIRPATH = "/home/pekrau/Dropbox/texter/archive"
-TRANSLATIONS_FILE = "translations.csv"
+
+TRANSLATIONS_FILEPATH = os.path.join(os.path.split(__file__)[0], "translations.csv")
 
 DATETIME_ISO_FORMAT = "%Y-%m-%d %H:%M:%S"
 MONTHS = {
@@ -156,7 +158,7 @@ MAX_H_LEVEL = max(H_LOOKUP)
 FOOTNOTES_EACH_TEXT = "after each text"
 FOOTNOTES_EACH_CHAPTER = "after each chapter"
 FOOTNOTES_END_OF_BOOK = "at end of book"
-FOOTNOTES_DISPLAY = (
+FOOTNOTES_LOCATIONS = (
     FOOTNOTES_EACH_TEXT,
     FOOTNOTES_EACH_CHAPTER,
     FOOTNOTES_END_OF_BOOK,

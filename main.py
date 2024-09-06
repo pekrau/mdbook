@@ -7,17 +7,16 @@ import bibtexparser
 import yaml
 
 import constants
-import docx_writer
-import pdf_writer
+import docx_creator
+import pdf_creator
 import utils
 
 from book import Book
 
 Tx = utils.Tx
 
-ABSDIRPATH = "/home/pekrau/Dropbox/texter/lejonen"
-SETTINGSPATH = os.path.join(ABSDIRPATH, constants.SETTINGS_FILENAME)
-
+HOMEPATH = os.getcwd()
+SETTINGSPATH = os.path.join(HOMEPATH, constants.SETTINGS_FILENAME)
 
 app, rt = fast_app(live=True)
 
@@ -32,7 +31,7 @@ def get_book(reload=False):
     try:
         return _book
     except NameError:
-        _book = Book(ABSDIRPATH)
+        _book = Book(HOMEPATH)
         _book.apply_settings(read_settings())
         return _book
 
@@ -94,8 +93,8 @@ def get():
     "Home page; list of sections and texts."
     book = get_book(reload=True)
     return (Title("mdbook"),
-            Header(nav(actions=[A(f'{Tx("Write")} DOCX', href="/docx"),
-                                A(f'{Tx("Write")} PDF', href="/pdf"),
+            Header(nav(actions=[A(f'{Tx("Create")} DOCX', href="/docx"),
+                                A(f'{Tx("Create")} PDF', href="/pdf"),
                                 ]),
                    cls="container"),
             Main(toc(book.items), cls="container")
@@ -303,7 +302,16 @@ def get():
 def get(refid:str, reload:str=None):
     "Reference details."
     ref = get_references(reload)[refid.replace("_", " ")]
-    rows = [Tr(Td(Tx("Authors")), Td("; ".join(ref.get("authors") or [])))]
+    rows = [Tr(Td(Tx("Identifier")),
+               Td(Img(src="/clipboard.svg",
+                     title="Refid to clipboard",
+                     style="cursor: pointer;",
+                     cls="to_clipboard", 
+                     data_clipboard_text=f'[@{ref["id"]}]'),
+                  NotStr("&nbsp;"),
+                  f'[@{ref["id"]}]')),
+            Tr(Td(Tx("Authors")), Td("; ".join(ref.get("authors") or [])))
+            ]
     for key in ["year", "title", "type", "edition_published", "language", "date",
                 "keywords", "journal", "volume", "number", "pages", "publisher"]:
         value = ref.get(key)
@@ -421,7 +429,7 @@ def bibtex(data:str=None):
 9780393427967
 @rt("/index")
 def get():
-    "Index page."
+    "Page listing the indexed terms."
     items = []
     for key, texts in sorted(get_book().indexed.items(), key=lambda tu: tu[0].lower()):
         links = []
@@ -435,182 +443,175 @@ def get():
             Main(Ul(*items), cls="container")
             )
 
-@rt("/docx", methods=["get", "post"])
-def docx_write(filename:str=None,
-               page_break_level:int=None,
-               footnotes:str=None,
-               reference_font:str=None,
-               indexed_font:str=None):
+@rt("/docx")
+def get():
+    "Get the parameters for outputting DOCX file."
     settings = read_settings()
-    docx_settings = settings.setdefault("creator", {}).setdefault("docx", {})
-    if filename is None:
-        filename = docx_settings.get("filename", "book.docx")
-        page_break_level = docx_settings.get("page_break_level", 1)
-        page_break_options = []
-        for value in range(0, 7):
-            if value == page_break_level:
-                page_break_options.append(Option(str(value), selected=True))
-            else:
-                page_break_options.append(Option(str(value)))
-        footnotes = docx_settings.get("footnotes", constants.FOOTNOTES_EACH_TEXT)
-        footnotes_options = []
-        for value in constants.FOOTNOTES_DISPLAY:
-            if value == footnotes:
-                footnotes_options.append(Option(Tx(value.capitalize()),
-                                                value=value, selected=True))
-            else:
-                footnotes_options.append(Option(Tx(value.capitalize()), value=value))
-        reference_font = docx_settings.get("reference_font", constants.NORMAL)
-        reference_options = []
-        for value in constants.FONT_STYLES:
-            if value == reference_font:
-                reference_options.append(Option(Tx(value.capitalize()),
-                                                value=value, selected=True))
-            else:
-                reference_options.append(Option(Tx(value.capitalize())))
-        indexed_font = docx_settings.get("indexed_font", constants.NORMAL)
-        indexed_options = []
-        for value in constants.FONT_STYLES:
-            if value == indexed_font:
-                indexed_options.append(Option(Tx(value.capitalize()), 
-                                              value=value, selected=True))
-            else:
-                indexed_options.append(Option(Tx(value.capitalize()),
-                                              value=value))
-        return (Title(f'{Tx("Write")} DOCX'),
-                Header(nav(label=f'{Tx("Write")} DOCX'), cls="container"),
-                Main(Form(
+    docx_settings = settings.setdefault("create", {}).setdefault("docx", {})
+    page_break_level = docx_settings.get("page_break_level", 1)
+    page_break_options = []
+    for value in range(0, 7):
+        if value == page_break_level:
+            page_break_options.append(Option(str(value), selected=True))
+        else:
+            page_break_options.append(Option(str(value)))
+    footnotes_location = docx_settings.get("footnotes_location", constants.FOOTNOTES_EACH_TEXT)
+    footnotes_options = []
+    for value in constants.FOOTNOTES_LOCATIONS:
+        if value == footnotes_location:
+            footnotes_options.append(Option(Tx(value.capitalize()),
+                                            value=value, selected=True))
+        else:
+            footnotes_options.append(Option(Tx(value.capitalize()), value=value))
+    reference_font = docx_settings.get("reference_font", constants.NORMAL)
+    reference_options = []
+    for value in constants.FONT_STYLES:
+        if value == reference_font:
+            reference_options.append(Option(Tx(value.capitalize()),
+                                            value=value, selected=True))
+        else:
+            reference_options.append(Option(Tx(value.capitalize())))
+    indexed_font = docx_settings.get("indexed_font", constants.NORMAL)
+    indexed_options = []
+    for value in constants.FONT_STYLES:
+        if value == indexed_font:
+            indexed_options.append(Option(Tx(value.capitalize()), 
+                                          value=value, selected=True))
+        else:
+            indexed_options.append(Option(Tx(value.capitalize()),
+                                          value=value))
+    return (Title(f'{Tx("Create")} DOCX'),
+            Header(nav(label=f'{Tx("Create")} DOCX'), cls="container"),
+            Main(Form(
                     Fieldset(
-                        Legend(Tx("File name")),
-                        Input(type="text", name="filename", value=filename),
-                    ),
-                    Fieldset(
-                        Legend(Tx("Page break level")),
-                        Select(*page_break_options, name="page_break_level")
-                    ),
-                    Fieldset(
-                        Legend(Tx("Footnotes")),
-                        Select(*footnotes_options, name="footnotes")
-                    ),
-                    Fieldset(
-                        Legend(Tx("Reference font")),
-                        Select(*reference_options, name="reference_font")
-                    ),
-                    Fieldset(
-                        Legend(Tx("Indexed font")),
-                        Select(*indexed_options, name="indexed_font")
-                    ),
-                    Button(f'{Tx("Create")} DOCX'),
-                    action="/docx",
-                    method="post"),
-                     cls="container")
-                )
-    else:
-        docx_settings["filename"] = filename
-        docx_settings["page_break_level"] = page_break_level
-        docx_settings["footnotes"] = footnotes
-        docx_settings["reference_font"] = reference_font
-        docx_settings["indexed_font"] = indexed_font
-        write_settings(settings)
-        writer = docx_writer.Writer(get_book(), get_references(), settings)
-        writer.write(os.path.join(ABSDIRPATH, filename))
-        return (Title(f'{Tx("Written")} DOCX'),
-                Header(nav(label=f'{Tx("Written")} DOCX'), cls="container"),
-                Main(P(f'{Tx("File name")}: {filename}'),
-                     P(f'{Tx("Page break level")}: {page_break_level}'),
-                     P(f'{Tx("Footnotes")}: {Tx(footnotes.capitalize())}'),
-                     P(f'{Tx("Reference font")}: {Tx(reference_font.capitalize())}'),
-                     P(f'{Tx("Indexed font")}: {Tx(indexed_font.capitalize())}'),
-                     cls="container")
-                )
+                    Legend(Tx("Page break level")),
+                    Select(*page_break_options, name="page_break_level")
+                ),
+                Fieldset(
+                    Legend(Tx("Footnotes location")),
+                    Select(*footnotes_options, name="footnotes_location")
+                ),
+                Fieldset(
+                    Legend(Tx("Reference font")),
+                    Select(*reference_options, name="reference_font")
+                ),
+                Fieldset(
+                    Legend(Tx("Indexed font")),
+                    Select(*indexed_options, name="indexed_font")
+                ),
+                Button(f'{Tx("Create")} DOCX'),
+                action="/docx_create",
+                method="post"),
+                 cls="container")
+            )
 
-@rt("/pdf", methods=["get", "post"])
-def pdf_write(filename:str=None,
-              page_break_level:int=None,
-              contents_pages:bool=False,
-              footnotes:str=None,
-              indexed_xref:str=None):
+@rt("/docx_create")
+def post(page_break_level:int=None,
+         footnotes_location:str=None,
+         reference_font:str=None,
+         indexed_font:str=None):
     settings = read_settings()
-    pdf_settings = settings.setdefault("write", {}).setdefault("pdf", {})
-    if filename is None:
-        filename = pdf_settings.get("filename", "book.pdf")
-        page_break_level = pdf_settings.get("page_break_level", 1)
-        page_break_options = []
-        for value in range(0, 7):
-            if value == page_break_level:
-                page_break_options.append(Option(str(value), selected=True))
-            else:
-                page_break_options.append(Option(str(value)))
-        contents_pages = pdf_settings.get("contents_pages", True)
+    docx_settings = settings.setdefault("create", {}).setdefault("docx", {})
+    docx_settings["page_break_level"] = page_break_level
+    docx_settings["footnotes_location"] = footnotes_location
+    docx_settings["reference_font"] = reference_font
+    docx_settings["indexed_font"] = indexed_font
+    write_settings(settings)
+    filepath = os.path.join(HOMEPATH, settings["book"]["title"] + ".docx")
+    creator = docx_creator.Creator(get_book(), get_references(), settings)
+    creator.create(filepath)
+    return (Title(f'{Tx("Created")} DOCX'),
+            Header(nav(label=f'{Tx("Created")} DOCX'), cls="container"),
+            Main(P(f'{Tx("File path")}: {filepath}'),
+                 P(f'{Tx("Page break level")}: {page_break_level}'),
+                 P(f'{Tx("Footnotes location")}: {Tx(footnotes_location.capitalize())}'),
+                 P(f'{Tx("Reference font")}: {Tx(reference_font.capitalize())}'),
+                 P(f'{Tx("Indexed font")}: {Tx(indexed_font.capitalize())}'),
+                 cls="container")
+            )
 
-        footnotes = pdf_settings.get("footnotes", constants.FOOTNOTES_EACH_TEXT)
-        footnotes_options = []
-        for value in constants.FOOTNOTES_DISPLAY:
-            if value == footnotes:
-                footnotes_options.append(Option(Tx(value.capitalize()), value=value, selected=True))
-            else:
-                footnotes_options.append(Option(Tx(value.capitalize()), value=value))
+@rt("/pdf")
+def get():
+    settings = read_settings()
+    pdf_settings = settings.setdefault("create", {}).setdefault("pdf", {})
+    page_break_level = pdf_settings.get("page_break_level", 1)
+    page_break_options = []
+    for value in range(0, 7):
+        if value == page_break_level:
+            page_break_options.append(Option(str(value), selected=True))
+        else:
+            page_break_options.append(Option(str(value)))
+    contents_pages = pdf_settings.get("contents_pages", True)
 
-        indexed_xref = pdf_settings.get("indexed_xref", constants.PDF_PAGE_NUMBER)
-        indexed_options = []
-        for value in constants.PDF_INDEXED_XREF_DISPLAY:
-            if value == indexed_xref:
-                indexed_options.append(Option(Tx(value.capitalize()), value=value, selected=True))
-            else:
-                indexed_options.append(Option(Tx(value.capitalize()), value=value))
+    footnotes_location = pdf_settings.get("footnotes_location", constants.FOOTNOTES_EACH_TEXT)
+    footnotes_options = []
+    for value in constants.FOOTNOTES_LOCATIONS:
+        if value == footnotes_location:
+            footnotes_options.append(Option(Tx(value.capitalize()), value=value, selected=True))
+        else:
+            footnotes_options.append(Option(Tx(value.capitalize()), value=value))
 
-        return (Title(f'{Tx("Write")} PDF'),
-                Header(nav(label=f'{Tx("Write")} PDF'), cls="container"),
-                Main(Form(
-                    Fieldset(
-                        Legend(Tx("File name")),
-                        Input(type="text", name="filename", value=filename),
-                    ),
-                    Fieldset(
-                        Legend(Tx("Page break level")),
-                        Select(*page_break_options, name="page_break_level"),
-                    ),
-                    Fieldset(
-                        Legend(Tx("Contents pages")),
-                        Label(
-                            Input(type="checkbox",
-                                  name="contents_pages",
-                                  role="switch",
-                                  checked=bool(contents_pages)),
-                            Tx("Display")
-                        )
-                    ),
-                    Fieldset(
-                        Legend(Tx("Footnotes")),
-                        Select(*footnotes_options, name="footnotes")
-                    ),
-                    Fieldset(
-                        Legend(Tx("Display of indexed term reference")),
-                        Select(*indexed_options, name="indexed_xref")
-                    ),
-                    Button(f'{Tx("Create")} PDF'),
-                    action="/pdf",
-                    method="post"),
-                     cls="container")
-                )
-    else:
-        pdf_settings["filename"] = filename
-        pdf_settings["page_break_level"] = page_break_level
-        pdf_settings["footnotes"] = footnotes
-        pdf_settings["indexed_xref"] = indexed_xref
-        write_settings(settings)
-        writer = pdf_writer.Writer(get_book(), get_references(), settings)
-        writer.write(os.path.join(ABSDIRPATH, filename))
-        return (Title(f'{Tx("Written")} PDF'),
-                Header(nav(label=f'{Tx("Written")} PDF'), cls="container"),
-                Main(P(f'{Tx("File name")}: {filename}'),
-                     P(f'{Tx("Page break level")}: {page_break_level}'),
-                     P(f'{Tx("Contents pages")}: {Tx(str(contents_pages))}'),
-                     P(f'{Tx("Footnotes")}: {Tx(footnotes.capitalize())}'),
-                     P(f'{Tx("Indexed reference display")}: {Tx(indexed_xref.capitalize())}'),
-                     cls="container")
-                )
+    indexed_xref = pdf_settings.get("indexed_xref", constants.PDF_PAGE_NUMBER)
+    indexed_options = []
+    for value in constants.PDF_INDEXED_XREF_DISPLAY:
+        if value == indexed_xref:
+            indexed_options.append(Option(Tx(value.capitalize()), value=value, selected=True))
+        else:
+            indexed_options.append(Option(Tx(value.capitalize()), value=value))
 
+    return (Title(f'{Tx("Create")} PDF'),
+            Header(nav(label=f'{Tx("Create")} PDF'), cls="container"),
+            Main(Form(
+                Fieldset(
+                    Legend(Tx("Page break level")),
+                    Select(*page_break_options, name="page_break_level"),
+                ),
+                Fieldset(
+                    Legend(Tx("Contents pages")),
+                    Label(
+                        Input(type="checkbox",
+                              name="contents_pages",
+                              role="switch",
+                              checked=bool(contents_pages)),
+                        Tx("Display")
+                    )
+                ),
+                Fieldset(
+                    Legend(Tx("Footnotes location")),
+                    Select(*footnotes_options, name="footnotes_location")
+                ),
+                Fieldset(
+                    Legend(Tx("Display of indexed term reference")),
+                    Select(*indexed_options, name="indexed_xref")
+                ),
+                Button(f'{Tx("Create")} PDF'),
+                action="/pdf_create",
+                method="post"),
+                 cls="container")
+            )
 
-if __name__ == "__main__":
-    serve()
+@rt("/pdf_create")
+def post(page_break_level:int=None,
+         contents_pages:bool=False,
+         footnotes_location:str=None,
+         indexed_xref:str=None):
+    settings = read_settings()
+    pdf_settings = settings.setdefault("create", {}).setdefault("pdf", {})
+    pdf_settings["page_break_level"] = page_break_level
+    pdf_settings["footnotes_location"] = footnotes_location
+    pdf_settings["indexed_xref"] = indexed_xref
+    write_settings(settings)
+    filepath = os.path.join(HOMEPATH, settings["book"]["title"] + ".PDF")
+    creator = pdf_creator.Creator(get_book(), get_references(), settings)
+    creator.create(filepath)
+    return (Title(f'{Tx("Created")} PDF'),
+            Header(nav(label=f'{Tx("Created")} PDF'), cls="container"),
+            Main(P(f'{Tx("File path")}: {filepath}'),
+                 P(f'{Tx("Page break level")}: {page_break_level}'),
+                 P(f'{Tx("Contents pages")}: {Tx(str(contents_pages))}'),
+                 P(f'{Tx("Footnotes location")}: {Tx(footnotes_location.capitalize())}'),
+                 P(f'{Tx("Indexed reference display")}: {Tx(indexed_xref.capitalize())}'),
+                 cls="container")
+            )
+
+serve()

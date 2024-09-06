@@ -1,4 +1,4 @@
-"Write DOCX file."
+"Create DOCX file."
 
 from icecream import ic
 
@@ -15,17 +15,20 @@ import utils
 Tx = utils.Tx
 
 
-class Writer:
-    "DOCX writer."
+class Creator:
+    "DOCX creator."
 
     def __init__(self, book, references, settings):
         self.book = book
         self.references = references
-        self.settings = settings
-        # XXX set default settings for docx, if not defined
+        self.authors = settings["book"]["authors"]
+        self.page_break_level = settings["create"]["docx"]["page_break_level"]
+        self.footnotes_location = settings["create"]["docx"]["footnotes_location"]
+        self.indexed_font = settings["create"]["docx"].get("indexed_font")
+        self.reference_font = settings["create"]["docx"].get("reference_font")
 
-    def write(self, filepath):
-        "Write the DOCS file."
+    def create(self, filepath):
+        "Create the DOCX file."
         # Key: fullname; value: dict(label, ast_children)
         self.footnotes = {}
         # Reference ids
@@ -105,7 +108,7 @@ class Writer:
             paragraph.add_run(self.book.subtitle)
 
         paragraph.paragraph_format.space_after = docx.shared.Pt(40)
-        for author in self.settings["book"]["authors"]:
+        for author in self.authors:
             paragraph = self.document.add_paragraph(style="Heading 2")
             paragraph.add_run(author)
 
@@ -142,7 +145,7 @@ class Writer:
         run._r.append(fldChar2)
 
     def write_section(self, section, level):
-        if level <= self.settings["write"]["docx"]["page_break_level"]:
+        if level <= self.page_break_level:
             self.document.add_page_break()
         self.write_heading(section.heading, level)
         for item in section.items:
@@ -152,7 +155,7 @@ class Writer:
                 self.write_text(item, level=level + 1)
 
     def write_text(self, text, level):
-        if level <= self.settings["write"]["docx"]["page_break_level"]:
+        if level <= self.page_break_level:
             self.document.add_page_break()
         self.write_heading(text.heading, level)
         self.list_stack = []
@@ -176,7 +179,7 @@ class Writer:
 
     def write_footnotes_text(self, text):
         "Footnotes at end of the text."
-        if self.settings["write"]["docx"]["footnotes"] != constants.FOOTNOTES_EACH_TEXT:
+        if self.footnotes_location != constants.FOOTNOTES_EACH_TEXT:
             return
         try:
             footnotes = self.footnotes[text.fullname]
@@ -195,7 +198,7 @@ class Writer:
 
     def write_footnotes_chapter(self, item):
         "Footnote definitions at the end of a chapter."
-        if self.settings["write"]["docx"]["footnotes"] != constants.FOOTNOTES_EACH_CHAPTER:
+        if self.footnotes_location != constants.FOOTNOTES_EACH_CHAPTER:
             return
         try:
             footnotes = self.footnotes[item.chapter.fullname]
@@ -213,7 +216,7 @@ class Writer:
 
     def write_footnotes_book(self):
         "Footnote definitions as a separate section at the end of the book."
-        if self.settings["write"]["docx"]["footnotes"] != constants.FOOTNOTES_END_OF_BOOK:
+        if self.footnotes_location != constants.FOOTNOTES_END_OF_BOOK:
             return
         self.document.add_page_break()
         self.write_heading(Tx("Footnotes"), 1)
@@ -497,23 +500,22 @@ class Writer:
             )
         )
         run = self.paragraph.add_run(ast["term"])
-        font = self.settings["write"]["docx"].get("indexed_font")
-        if font == constants.ITALIC:
+        if self.indexed_font == constants.ITALIC:
             run.italic = True
-        elif font == constants.BOLD:
+        elif self.indexed_font == constants.BOLD:
             run.bold = True
-        elif font == constants.UNDERLINE:
+        elif self.indexed_font == constants.UNDERLINE:
             run.underline = True
 
     def render_footnote_ref(self, ast):
         # The label is used only for lookup; number is used for output.
         label = ast["label"]
-        if self.settings["write"]["docx"]["footnotes"] == constants.FOOTNOTES_EACH_TEXT:
+        if self.footnotes_location == constants.FOOTNOTES_EACH_TEXT:
             entries = self.footnotes.setdefault(self.current_text.fullname, {})
             number = len(entries) + 1
             key = label
-        elif self.settings["write"]["docx"]["footnotes"] in (constants.FOOTNOTES_EACH_CHAPTER,
-                                            constants.FOOTNOTES_END_OF_BOOK):
+        elif self.footnotes_location in (constants.FOOTNOTES_EACH_CHAPTER,
+                                         constants.FOOTNOTES_END_OF_BOOK):
             fullname = self.current_text.chapter.fullname
             entries = self.footnotes.setdefault(fullname, {})
             number = len(entries) + 1
@@ -525,11 +527,11 @@ class Writer:
 
     def render_footnote_def(self, ast):
         label = ast["label"]
-        if self.settings["write"]["docx"]["footnotes"] == constants.FOOTNOTES_EACH_TEXT:
+        if self.footnotes_location == constants.FOOTNOTES_EACH_TEXT:
             fullname = self.current_text.fullname
             key = label
-        elif self.settings["write"]["docx"]["footnotes"] in (constants.FOOTNOTES_EACH_CHAPTER,
-                                            constants.FOOTNOTES_END_OF_BOOK):
+        elif self.footnotes_location in (constants.FOOTNOTES_EACH_CHAPTER,
+                                         constants.FOOTNOTES_END_OF_BOOK):
             fullname = self.current_text.chapter.fullname
             key = f"{fullname}-{label}"
         self.footnotes[fullname][key]["ast_children"] = ast["children"]
@@ -537,12 +539,11 @@ class Writer:
     def render_reference(self, ast):
         self.referenced.add(ast["reference"])
         run = self.paragraph.add_run(ast["reference"])
-        font = self.settings["write"]["docx"].get("reference_font")
-        if font == constants.ITALIC:
+        if self.reference_font == constants.ITALIC:
             run.italic = True
-        elif font == constants.BOLD:
+        elif self.reference_font == constants.BOLD:
             run.bold = True
-        elif font == constants.UNDERLINE:
+        elif self.reference_font == constants.UNDERLINE:
             run.underline = True
 
 # From https://github.com/python-openxml/python-docx/issues/74#issuecomment-261169410

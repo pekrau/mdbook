@@ -87,7 +87,7 @@ class Book:
     @property
     def status(self):
         "Return the lowest status for the sub-items."
-        status = constants.STARTED
+        status = constants.FINAL
         for item in self.items:
             status = min(status, item.status)
         return status
@@ -567,7 +567,7 @@ class Section(Item):
     @property
     def status(self):
         "Return the lowest status for the sub-items."
-        status = constants.STARTED
+        status = constants.FINAL
         for item in self.items:
             status = min(status, item.status)
         return status

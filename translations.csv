@@ -37,8 +37,9 @@ actions,åtgärder
 settings,inställningar
 create,skapa
 created,skapad
-file name,filnamn
+file path,filnamn
 footnotes,fotnoter
+footnotes location,placering av fotnoter
 page break level,nivå för radbrytning
 after each text,efter varje text
 after each chapter,efter varje kapitel
@@ -55,8 +56,9 @@ contents pages,innehållsförteckning
 display,visa
 true,sant
 false,falskt
-indexed reference display,visning av referens för indexerad term
+display of indexed term reference,visning av referens för indexerad term
 page number,sidnummer
 text full name,textens hela namn
 text heading,textens titel
 none,ingen
+Add BibTex,Lägg till BibTex

@@ -1,4 +1,4 @@
-"Write PDF file."
+"Create PDF file."
 
 from icecream import ic
 
@@ -15,25 +15,29 @@ import constants
 Tx = utils.Tx
 
 
-class Writer:
-    "PDF writer."
+class Creator:
+    "PDF creator."
 
     def __init__(self, book, references, settings):
         self.book = book
         self.references = references
-        self.settings = settings
-        # XXX set default settings for pdf, if not defined
+        self.authors = settings["book"]["authors"]
+        self.contents_pages = settings["create"]["pdf"]["contents_pages"]
+        self.page_break_level = settings["create"]["pdf"]["page_break_level"]
+        self.contents_level = settings["create"]["pdf"]["contents_level"]
+        self.footnotes_location = settings["create"]["pdf"]["footnotes_location"]
+        self.indexed_xref = settings["create"]["pdf"]["indexed_xref"]
 
-    def write(self, filepath):
-        "Write the PDF file."
-        if self.settings["write"]["pdf"]["contents_pages"]:
+    def create(self, filepath):
+        "Create the PDF file."
+        if self.contents_pages:
             for contents_pages in range(1, 20):
-                self.write_attempt(contents_pages, filepath)
+                self.create_attempt(contents_pages, filepath)
                 return
         # If 20 isn't enough, give up and skip the contents page.
-        self.write_attempt(0, filepath)
+        self.create_attempt(0, filepath)
 
-    def write_attempt(self, contents_pages, filepath):
+    def create_attempt(self, contents_pages, filepath):
         "Attempt at writing PDF given the number of content pages to use."
         self.list_stack = []
         # Key: fullname; value: dict(label, number, ast_children)
@@ -49,7 +53,7 @@ class Writer:
         if self.book.language:
             self.pdf.set_lang(self.book.language)
         if self.book.authors:
-            self.pdf.set_author(", ".join(self.settings["book"]["authors"]))
+            self.pdf.set_author(", ".join(self.authors))
         self.pdf.set_creator(f"mdbook {constants.__version__}")
         self.pdf.set_creation_date(datetime.datetime.now())
 
@@ -172,12 +176,12 @@ class Writer:
         self.state.reset()
 
     def write_section(self, section, level):
-        if level <= self.settings["write"]["pdf"]["page_break_level"]:
+        if level <= self.page_break_level:
             if self.skip_first_add_page:
                 self.skip_first_add_page = False
             else:
                 self.pdf.add_page()
-        if level <= self.settings["write"]["pdf"]["contents_level"]:
+        if level <= self.contents_level:
             self.pdf.start_section(section.heading, level=level - 1)
         self.write_heading(section.heading, level)
         for item in section.items:
@@ -187,12 +191,12 @@ class Writer:
                 self.write_text(item, level=level + 1)
 
     def write_text(self, text, level):
-        if level <= self.settings["write"]["pdf"]["page_break_level"]:
+        if level <= self.page_break_level:
             if self.skip_first_add_page:
                 self.skip_first_add_page = False
             else:
                 self.pdf.add_page()
-        if level <= self.settings["write"]["pdf"]["contents_level"]:
+        if level <= self.contents_level:
             self.pdf.start_section(text.heading, level=level - 1)
         if text.get("display_heading", True):
             self.write_heading(text.heading, level)
@@ -209,7 +213,7 @@ class Writer:
 
     def write_footnotes_text(self, text):
         "Footnote definitions at the end of each text."
-        if self.settings["write"]["pdf"]["footnotes"] != constants.FOOTNOTES_EACH_TEXT:
+        if self.footnotes_location != constants.FOOTNOTES_EACH_TEXT:
             return
         try:
             footnotes = self.footnotes[text.fullname]
@@ -228,7 +232,7 @@ class Writer:
 
     def write_footnotes_chapter(self, item):
         "Footnote definitions at the end of a chapter."
-        if self.settings["write"]["pdf"]["footnotes"] != constants.FOOTNOTES_EACH_CHAPTER:
+        if self.footnotes_location != constants.FOOTNOTES_EACH_CHAPTER:
             return
         try:
             footnotes = self.footnotes[item.chapter.fullname]
@@ -247,7 +251,7 @@ class Writer:
 
     def write_footnotes_book(self):
         "Footnote definitions as a separate section at the end of the book."
-        if self.settings["write"]["pdf"]["footnotes"] != constants.FOOTNOTES_END_OF_BOOK:
+        if self.footnotes_location != constants.FOOTNOTES_END_OF_BOOK:
             return
         self.pdf.add_page()
         self.pdf.start_section(Tx("Footnotes"), level=0)
@@ -388,12 +392,11 @@ class Writer:
         self.pdf.add_page()
         self.pdf.start_section(Tx("Index"), level=0)
         self.write_heading(Tx("Index"), 1)
-        indexed_xref = self.settings["write"]["pdf"]["indexed_xref"]
-        if indexed_xref == constants.PDF_PAGE_NUMBER:
+        if self.indexed_xref == constants.PDF_PAGE_NUMBER:
             key = "page"
-        elif indexed_xref == constants.PDF_TEXT_FULLNAME:
+        elif self.indexed_xref == constants.PDF_TEXT_FULLNAME:
             key = "fullname"
-        elif indexed_xref == constants.PDF_TEXT_HEADING:
+        elif self.indexed_xref == constants.PDF_TEXT_HEADING:
             key = "heading"
         else:
             return
@@ -587,11 +590,11 @@ class Writer:
     def render_footnote_ref(self, ast):
         # The label is used only for lookup; number is used for output.
         label = ast["label"]
-        if self.settings["write"]["pdf"]["footnotes"] == constants.FOOTNOTES_EACH_TEXT:
+        if self.footnotes_location == constants.FOOTNOTES_EACH_TEXT:
             entries = self.footnotes.setdefault(self.current_text.fullname, {})
             number = len(entries) + 1
             key = label
-        elif self.settings["write"]["pdf"]["footnotes"] in (constants.FOOTNOTES_EACH_CHAPTER, constants.FOOTNOTES_END_OF_BOOK):
+        elif self.footnotes_location in (constants.FOOTNOTES_EACH_CHAPTER, constants.FOOTNOTES_END_OF_BOOK):
             fullname = self.current_text.chapter.fullname
             entries = self.footnotes.setdefault(fullname, {})
             number = len(entries) + 1
@@ -603,10 +606,10 @@ class Writer:
 
     def render_footnote_def(self, ast):
         label = ast["label"]
-        if self.settings["write"]["pdf"]["footnotes"] == constants.FOOTNOTES_EACH_TEXT:
+        if self.footnotes_location == constants.FOOTNOTES_EACH_TEXT:
             fullname = self.current_text.fullname
             key = label
-        elif self.settings["write"]["pdf"]["footnotes"] in (constants.FOOTNOTES_EACH_CHAPTER, constants.FOOTNOTES_END_OF_BOOK):
+        elif self.footnotes_location in (constants.FOOTNOTES_EACH_CHAPTER, constants.FOOTNOTES_END_OF_BOOK):
             fullname = self.current_text.chapter.fullname
             key = f"{fullname}-{label}"
         self.footnotes[fullname][key]["ast_children"] = ast["children"]
