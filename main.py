@@ -1,6 +1,10 @@
-"View of Markdown book contents."
+"Web view and edit of Markdown book contents."
 
+from icecream import ic
+
+import copy
 import os.path
+import sys
 
 from fasthtml.common import *
 import bibtexparser
@@ -15,10 +19,16 @@ from book import Book
 
 Tx = utils.Tx
 
-HOMEPATH = os.getcwd()
-SETTINGSPATH = os.path.join(HOMEPATH, constants.SETTINGS_FILENAME)
+if len(sys.argv) == 2:
+    BOOK_DIRPATH = sys.argv[1]
+    if not os.path.isabs(BOOK_DIRPATH):
+        BOOK_DIRPATH = os.path.join(constants.TEXTS_DIRPATH, BOOK_DIRPATH)
+else:
+    BOOK_DIRPATH = os.getcwd()
 
-app, rt = fast_app(live=True)
+# 'static_path' does not seem to do its job?
+app, rt = fast_app(live=True, static_path=constants.SOURCE_DIRPATH)
+
 
 def get_book(reload=False):
     "Get the book contents, cached."
@@ -31,21 +41,8 @@ def get_book(reload=False):
     try:
         return _book
     except NameError:
-        _book = Book(HOMEPATH)
-        _book.apply_settings(read_settings())
+        _book = Book(BOOK_DIRPATH)
         return _book
-
-def read_settings():
-    try:
-        with open(SETTINGSPATH) as infile:
-            return yaml.safe_load(infile)
-    except FileNotFoundError:
-        return None
-
-def write_settings(settings):
-    settings["book"] = get_book().get_settings()
-    with open(SETTINGSPATH, "wb") as outfile:
-        outfile.write(yaml.dump(settings, encoding="utf-8", allow_unicode=True))
 
 def get_references(reload=False):
     "Get the references book, cached."
@@ -95,6 +92,7 @@ def get():
     return (Title("mdbook"),
             Header(nav(actions=[A(f'{Tx("Create")} DOCX', href="/docx"),
                                 A(f'{Tx("Create")} PDF', href="/pdf"),
+                                A(f'{Tx("Create")} {Tx("archive")}', href="/archive"),
                                 ]),
                    cls="container"),
             Main(toc(book.items), cls="container")
@@ -124,19 +122,18 @@ def toc(items):
     return Ol(*parts)
 
 @rt("/text/{path:path}", methods=["get", "post"])
-def view_text(path:str, content:str=None, status:str=None, title:str=None):
+def view_text(path:str, content:str=None, status:str=None):
     "View the text, or edit and save."
     text = get_book()[path]
     text.read()
     if content is not None:
         text.write(content=content)
-        text.read()
     if status is not None:
         text.status = status
         text.write()
+    text.read()
     return (Title(text.title),
-            Header(nav(text, actions=[A(Tx("Edit"), href=f"/edit/{path}"),
-                                      A(Tx("Settings"), href=f"/settings/{path}")]),
+            Header(nav(text, actions=[A(Tx("Edit"), href=f"/edit/{path}")]),
                    cls="container"),
             Main(NotStr(text.html), cls="container")
             )
@@ -147,18 +144,29 @@ def get(path:str):
     text = get_book()[path]
     assert text.is_text
     text.read()
+    status_options = []
+    for status in constants.STATUSES:
+        if text.status == status:
+            status_options.append(Option(Tx(str(status)), selected=True, value=repr(status)))
+        else:
+            status_options.append(Option(Tx(str(status)), value=repr(status)))
     return (Title("mdbook"),
             Header(nav(label=f'{Tx("Edit")} {text.fullname}'), cls="container"),
-            Main(Form(Textarea(NotStr(text.content), name="content", rows="36"),
-                      Button("Save"),
-                      action=f"/text/{path}",
-                      method="post"),
+            Main(Form(
+                Textarea(NotStr(text.content), name="content", rows="30"),
+                Fieldset(
+                    Legend(Tx("Status"),
+                           Select(*status_options, name="status", required=True))
+                ),
+                Button("Save"),
+                action=f"/text/{path}",
+                method="post"),
                  cls="container"),
             )
 
-@rt("/section/{path:path}", methods=["get", "post"])
-def view_section(path:str,title:str=None):
-    "View the section, or edit and save."
+@rt("/section/{path:path}")
+def get(path:str):
+    "View the section."
     section = get_book()[path]
     assert section.is_section
     return (Title(section.title),
@@ -166,41 +174,25 @@ def view_section(path:str,title:str=None):
             Main(toc(section.items), cls="container")
             )
 
-@rt("/settings/{path:path}")
-def get(path:str):
-    text = get_book()[path]
-    text.read()
-    labels = []
-    for status in constants.STATUSES:
-        if status == text.status:
-            labels.append(Label(Input(type="radio", name="status", value=str(status), checked=True),
-                                Span(Tx(str(status)), style=f"color: {status.color};")))
-        else:
-            labels.append(Label(Input(type="radio", name="status", value=str(status)),
-                                Span(Tx(str(status)), style=f"color: {status.color};")))
-    return (Title("mdbook"),
-            Header(nav(label=f'{Tx("Settings")} {text.fullname}'), cls="container"),
-            Main(Form(Fieldset(Legend("Status"), *labels),
-                      Button("Save"),
-                      action=f"/text/{path}",
-                      method="post"),
-                 cls="container"),
-            )
-
 @rt("/title")
 def get():
     "Title page."
-    segments = [H1(get_book().title)]
-    if get_book().subtitle:
-        segments.append(H2(get_book().subtitle))
-    for author in get_book().authors:
+    book = get_book()
+    segments = [H1(book.title)]
+    if book.subtitle:
+        segments.append(H2(book.subtitle))
+    for author in book.authors:
         segments.append(H3(author))
-    segments.append(Table(
-        Tr(Td(Tx("Words")), Td(utils.thousands(get_book().n_words))),
-        Tr(Td(Tx("Characters")), Td(utils.thousands(len(get_book()))))
-    ))
+    segments.append(P(f'{utils.thousands(book.n_words)} {Tx("words")},'
+                      f' {utils.thousands(len(book))} {Tx("characters")}.'))
+    segments.append(NotStr(book.index.html))
     return (Title(Tx("Title")),
-            Header(nav(label=Tx("Title")), cls="container"),
+            Header(nav(label=Tx("Title"),
+                       actions=[A(f'{Tx("Create")} DOCX', href="/docx"),
+                                A(f'{Tx("Create")} PDF', href="/pdf"),
+                                A(f'{Tx("Create")} {Tx("archive")}', href="/archive"),
+                                ]),
+                   cls="container"),
             Main(*segments, cls="container")
             )
 
@@ -426,7 +418,7 @@ def bibtex(data:str=None):
                     method="post"),
                      cls="container")
                 )
-9780393427967
+
 @rt("/index")
 def get():
     "Page listing the indexed terms."
@@ -446,8 +438,7 @@ def get():
 @rt("/docx")
 def get():
     "Get the parameters for outputting DOCX file."
-    settings = read_settings()
-    docx_settings = settings.setdefault("create", {}).setdefault("docx", {})
+    docx_settings = get_book().frontmatter.setdefault("docx", {})
     page_break_level = docx_settings.get("page_break_level", 1)
     page_break_options = []
     for value in range(0, 7):
@@ -510,15 +501,17 @@ def post(page_break_level:int=None,
          footnotes_location:str=None,
          reference_font:str=None,
          indexed_font:str=None):
-    settings = read_settings()
-    docx_settings = settings.setdefault("create", {}).setdefault("docx", {})
+    book = get_book()
+    original = copy.deepcopy(book.frontmatter)
+    docx_settings = book.frontmatter.setdefault("docx", {})
     docx_settings["page_break_level"] = page_break_level
     docx_settings["footnotes_location"] = footnotes_location
     docx_settings["reference_font"] = reference_font
     docx_settings["indexed_font"] = indexed_font
-    write_settings(settings)
-    filepath = os.path.join(HOMEPATH, settings["book"]["title"] + ".docx")
-    creator = docx_creator.Creator(get_book(), get_references(), settings)
+    if book.frontmatter != original:
+        book.index.write()
+    filepath = os.path.join(BOOK_DIRPATH, book.title + ".docx")
+    creator = docx_creator.Creator(book, get_references())
     creator.create(filepath)
     return (Title(f'{Tx("Created")} DOCX'),
             Header(nav(label=f'{Tx("Created")} DOCX'), cls="container"),
@@ -532,8 +525,7 @@ def post(page_break_level:int=None,
 
 @rt("/pdf")
 def get():
-    settings = read_settings()
-    pdf_settings = settings.setdefault("create", {}).setdefault("pdf", {})
+    pdf_settings = get_book().frontmatter.setdefault("pdf", {})
     page_break_level = pdf_settings.get("page_break_level", 1)
     page_break_options = []
     for value in range(0, 7):
@@ -595,14 +587,16 @@ def post(page_break_level:int=None,
          contents_pages:bool=False,
          footnotes_location:str=None,
          indexed_xref:str=None):
-    settings = read_settings()
-    pdf_settings = settings.setdefault("create", {}).setdefault("pdf", {})
+    book = get_book()
+    original = copy.deepcopy(book.frontmatter)
+    pdf_settings = book.frontmatter.setdefault("pdf", {})
     pdf_settings["page_break_level"] = page_break_level
     pdf_settings["footnotes_location"] = footnotes_location
     pdf_settings["indexed_xref"] = indexed_xref
-    write_settings(settings)
-    filepath = os.path.join(HOMEPATH, settings["book"]["title"] + ".PDF")
-    creator = pdf_creator.Creator(get_book(), get_references(), settings)
+    if book.frontmatter != original:
+        book.index.write()
+    filepath = os.path.join(BOOK_DIRPATH, book.title + ".pdf")
+    creator = pdf_creator.Creator(book, get_references())
     creator.create(filepath)
     return (Title(f'{Tx("Created")} PDF'),
             Header(nav(label=f'{Tx("Created")} PDF'), cls="container"),
@@ -613,5 +607,17 @@ def post(page_break_level:int=None,
                  P(f'{Tx("Indexed reference display")}: {Tx(indexed_xref.capitalize())}'),
                  cls="container")
             )
+
+@rt("/archive")
+def get():
+    "Create an archive file of the book."
+    filepath, number = get_book().archive()
+    return (Title(f'{Tx("Created")} {Tx("archive")}'),
+            Header(nav(label=f'{Tx("Created")} {Tx("archive")}'), cls="container"),
+            Main(P(f'{Tx("File path")}: {filepath}'),
+                 P(f'{Tx("Number of files")}: {number}'),
+                 cls="container")
+            )
+
 
 serve()

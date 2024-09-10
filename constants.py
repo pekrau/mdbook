@@ -3,7 +3,7 @@
 import functools
 import os.path
 
-VERSION = (0, 9, 0)
+VERSION = (1, 0, 0)
 __version__ = ".".join([str(n) for n in VERSION])
 
 
@@ -11,10 +11,11 @@ DEFAULT_LANGUAGES = ("sv-SE", "en-GB", "en-US")
 
 MARKDOWN_EXT = ".md"
 SETTINGS_FILENAME = "settings.yaml"
-REFERENCES_DIRPATH = "/home/pekrau/Dropbox/texter/references"
-ARCHIVE_DIRPATH = "/home/pekrau/Dropbox/texter/archive"
-
-TRANSLATIONS_FILEPATH = os.path.join(os.path.split(__file__)[0], "translations.csv")
+TEXTS_DIRPATH = "/home/pekrau/Dropbox/texter"
+REFERENCES_DIRPATH = os.path.join(TEXTS_DIRPATH, "references")
+ARCHIVE_DIRPATH = os.path.join(TEXTS_DIRPATH, "archive")
+SOURCE_DIRPATH = os.path.dirname(__file__)
+TRANSLATIONS_FILEPATH = os.path.join(SOURCE_DIRPATH, "translations.csv")
 
 DATETIME_ISO_FORMAT = "%Y-%m-%d %H:%M:%S"
 MONTHS = {

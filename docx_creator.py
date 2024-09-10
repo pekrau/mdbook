@@ -18,14 +18,18 @@ Tx = utils.Tx
 class Creator:
     "DOCX creator."
 
-    def __init__(self, book, references, settings):
+    def __init__(self, book, references):
         self.book = book
         self.references = references
-        self.authors = settings["book"]["authors"]
-        self.page_break_level = settings["create"]["docx"]["page_break_level"]
-        self.footnotes_location = settings["create"]["docx"]["footnotes_location"]
-        self.indexed_font = settings["create"]["docx"].get("indexed_font")
-        self.reference_font = settings["create"]["docx"].get("reference_font")
+        self.title = book.title
+        self.subtitle = book.subtitle
+        self.authors = book.authors
+        self.language = book.language
+        settings = book.frontmatter["docx"]
+        self.page_break_level = settings["page_break_level"]
+        self.footnotes_location = settings["footnotes_location"]
+        self.indexed_font = settings.get("indexed_font")
+        self.reference_font = settings.get("reference_font")
 
     def create(self, filepath):
         "Create the DOCX file."
@@ -41,11 +45,11 @@ class Creator:
 
         # Set the default document-wide language.
         # From https://stackoverflow.com/questions/36967416/how-can-i-set-the-language-in-text-with-python-docx
-        if self.book.language:
+        if self.language:
             styles_element = self.document.styles.element
             rpr_default = styles_element.xpath("./w:docDefaults/w:rPrDefault/w:rPr")[0]
             lang_default = rpr_default.xpath("w:lang")[0]
-            lang_default.set(docx.oxml.shared.qn("w:val"), self.book.language)
+            lang_default.set(docx.oxml.shared.qn("w:val"), self.language)
 
         # Set to A4 page size.
         section = self.document.sections[0]
@@ -75,16 +79,17 @@ class Creator:
         style.font.name = constants.QUOTE_FONT
 
         # Set Dublin core metadata.
-        if self.book.language:
-            self.document.core_properties.language = self.book.language
+        if self.language:
+            self.document.core_properties.language = self.language
             self.document.core_properties.modified = datetime.datetime.now()
         # XXX authors
+
+        self.current_text = None
+        self.footnote_paragraph = None
 
         self.write_title_page()
         self.write_toc()
         self.write_page_number()
-        self.current_text = None
-        self.footnote_paragraph = None
         for item in self.book.items:
             if item.is_section:
                 self.write_section(item, level=1)
@@ -99,21 +104,27 @@ class Creator:
 
     def write_title_page(self):
         paragraph = self.document.add_paragraph(style="Title")
-        run = paragraph.add_run(self.book.title)
+        run = paragraph.add_run(self.title)
         run.font.size = docx.shared.Pt(28)
         run.font.bold = True
 
-        if self.book.subtitle:
+        if self.subtitle:
             paragraph = self.document.add_paragraph(style="Heading 1")
-            paragraph.add_run(self.book.subtitle)
+            paragraph.paragraph_format.space_after = docx.shared.Pt(20)
+            paragraph.add_run(self.subtitle)
 
-        paragraph.paragraph_format.space_after = docx.shared.Pt(40)
+        paragraph = self.document.add_paragraph(style="Heading 2")
+        paragraph.paragraph_format.space_after = docx.shared.Pt(10)
         for author in self.authors:
-            paragraph = self.document.add_paragraph(style="Heading 2")
             paragraph.add_run(author)
+            if author != self.authors[-1]:
+                paragraph.add_run(", ")
+
+        self.current_text = self.book.index
+        self.render(self.book.index.ast, initialize=True)
 
         paragraph = self.document.add_paragraph()
-        paragraph.paragraph_format.space_before = docx.shared.Pt(100)
+        paragraph.paragraph_format.space_before = docx.shared.Pt(50)
 
         status = str(
             min([t.status for t in self.book.all_texts] + [max(constants.STATUSES)])
@@ -158,15 +169,12 @@ class Creator:
         if level <= self.page_break_level:
             self.document.add_page_break()
         self.write_heading(text.heading, level)
-        self.list_stack = []
-        self.style_stack = ["Normal"]
-        self.bold = False
-        self.italic = False
-        self.subscript = False
-        self.superscript = False
         self.current_text = text
-        self.render(text.ast)
+        self.render(text.ast, initialize=True)
         self.write_footnotes_text(text)
+
+    def write_text_initialize(self):
+        pass
 
     def write_heading(self, heading, level):
         level = min(level, constants.MAX_H_LEVEL)
@@ -344,7 +352,14 @@ class Creator:
                 if entry is not entries[-1]:
                     paragraph.add_run(", ")
 
-    def render(self, ast):
+    def render(self, ast, initialize=False):
+        if initialize:
+            self.list_stack = []
+            self.style_stack = ["Normal"]
+            self.bold = False
+            self.italic = False
+            self.subscript = False
+            self.superscript = False
         try:
             method = getattr(self, f"render_{ast['element']}")
         except AttributeError:

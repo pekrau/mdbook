@@ -18,15 +18,19 @@ Tx = utils.Tx
 class Creator:
     "PDF creator."
 
-    def __init__(self, book, references, settings):
+    def __init__(self, book, references):
         self.book = book
         self.references = references
-        self.authors = settings["book"]["authors"]
-        self.contents_pages = settings["create"]["pdf"]["contents_pages"]
-        self.page_break_level = settings["create"]["pdf"]["page_break_level"]
-        self.contents_level = settings["create"]["pdf"]["contents_level"]
-        self.footnotes_location = settings["create"]["pdf"]["footnotes_location"]
-        self.indexed_xref = settings["create"]["pdf"]["indexed_xref"]
+        self.title = book.title
+        self.subtitle = book.subtitle
+        self.authors = book.authors
+        self.language = book.language
+        settings = book.frontmatter["pdf"]
+        self.contents_pages = settings["contents_pages"]
+        self.page_break_level = settings["page_break_level"]
+        self.contents_level = settings["contents_level"]
+        self.footnotes_location = settings["footnotes_location"]
+        self.indexed_xref = settings["indexed_xref"]
 
     def create(self, filepath):
         "Create the PDF file."
@@ -49,10 +53,10 @@ class Creator:
         self.indexed_count = 0
 
         self.pdf = fpdf.FPDF(format="a4", unit="pt")
-        self.pdf.set_title(self.book.title)
-        if self.book.language:
-            self.pdf.set_lang(self.book.language)
-        if self.book.authors:
+        self.pdf.set_title(self.title)
+        if self.language:
+            self.pdf.set_lang(self.language)
+        if self.authors:
             self.pdf.set_author(", ".join(self.authors))
         self.pdf.set_creator(f"mdbook {constants.__version__}")
         self.pdf.set_creation_date(datetime.datetime.now())
@@ -130,24 +134,29 @@ class Creator:
         self.pdf.add_page()
         self.state.set(style="B", font_size=constants.FONT_TITLE_SIZE)
         self.state.ln()
-        self.state.write(self.book.title)
+        self.state.write(self.title)
         self.state.ln()
         self.state.reset()
 
-        if self.book.subtitle:
+        if self.subtitle:
             self.state.set(font_size=constants.FONT_LARGE_SIZE + 10)
-            self.state.write(self.book.subtitle)
+            self.state.write(self.subtitle)
             self.state.ln()
             self.state.reset()
 
         self.state.set(font_size=constants.FONT_LARGE_SIZE + 5)
-        self.state.ln()
-        for author in self.book.authors:
+        self.state.ln(0.5)
+        for author in self.authors:
             self.state.write(author)
-            self.state.ln()
+            if author != self.authors[-1]:
+                self.state.write(", ")
         self.state.reset()
+        self.state.ln(2)
 
-        self.state.ln(3)
+        self.current_text = self.book.index
+        self.render(self.book.index.ast)
+
+        self.state.ln(2)
         status = str(
             min([t.status for t in self.book.all_texts] + [max(constants.STATUSES)])
         )
@@ -156,7 +165,6 @@ class Creator:
 
         now = datetime.datetime.now().strftime(constants.DATETIME_ISO_FORMAT)
         self.state.write(f'{Tx("Created")}: {now}')
-        self.state.ln(2)
 
     def write_toc(self, pdf, outline):
         h1 = constants.H_LOOKUP[1]

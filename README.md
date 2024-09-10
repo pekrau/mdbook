@@ -6,9 +6,9 @@ Web display of a book written in Markdown.
 - Indexing of terms.
 - Reference handling.
 - Footnotes.
-- Write contents to DOCX and PDF files.
+- Write contents to DOCX or PDF file.
 
-Written in Python using
+Written in Python using:
 
 - [FastHTML](https://docs.fastht.ml/)
 - [pico CSS](https://picocss.com/)

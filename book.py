@@ -2,10 +2,10 @@
 
 from icecream import ic
 
+import copy
 import datetime
 import os
 import re
-import shutil
 import tarfile
 import time
 from urllib.parse import quote as urlquote
@@ -23,10 +23,6 @@ class Book:
 
     def __init__(self, absdirpath):
         self.absdirpath = absdirpath
-        self.title = os.path.basename(absdirpath)
-        self.subtitle = None
-        self.authors = []
-        self.language = None
         self.read()
 
     def __str__(self):
@@ -37,10 +33,82 @@ class Book:
 
     def __len__(self):
         "Number of characters in Markdown content in all texts."
-        return sum([len(i) for i in self.all_texts])
+        return sum([len(i) for i in self.all_texts]) + len(self.index)
 
     def __getitem__(self, fullname):
         return self.lookup[fullname]
+
+    def read(self):
+        "Read all items from files. Set up references and indexed lookups."
+        try:
+            self.index = Text(self, self, "index.md")
+        except OSError:
+            with open(os.path.join(self.absdirpath, "index.md"), "w") as outfile:
+                outfile.write("")
+            self.index = Text(self, self, "index.md")
+        self.frontmatter = self.index.frontmatter
+
+        self.items = []
+        self.lookup = {}
+
+        # Section and Text instances for directories and files that actually exist.
+        for itemname in sorted(os.listdir(self.absdirpath)):
+            # Skip emacs temporary edit file.
+            if itemname.startswith(".#"):
+                continue
+            # Do not include 'index.md' file; handled separately.
+            if itemname == "index.md":
+                continue
+
+            itempath = os.path.join(self.absdirpath, itemname)
+            if os.path.isdir(itempath):
+                self.items.append(Section(self, self, itemname))
+            elif itemname.endswith(constants.MARKDOWN_EXT):
+                self.items.append(Text(self, self, itemname))
+            else:
+                pass
+
+        for item in self.all_items:
+            self.lookup[item.fullname] = item
+
+        self.references = {}
+        for item in self.all_texts:
+            self.find_references(item, item.ast)
+
+        self.indexed = {}
+        for item in self.all_texts:
+            self.find_indexed(item, item.ast)
+
+        # Re-order items according to the 'index.md' file; save if any change.
+        original = copy.deepcopy(self.frontmatter)
+        self.set_items_order(self, self.frontmatter.get("items", []))
+        self.frontmatter["items"] = self.get_items_order(self)
+        if self.frontmatter != original:
+            self.index.write()
+
+    def set_items_order(self, container, items_order):
+        original = dict([i.title, i] for i in container.items)
+        container.items = []
+        for ordered in items_order:
+            try:
+                item = original.pop(ordered["title"])
+            except KeyError:
+                pass
+            else:
+                container.items.append(item)
+                if isinstance(item, Section):
+                    self.set_items_order(item, ordered.get("items", []))
+        # Append items not referenced in the frontmatter 'items'.
+        container.items.extend(original.values())
+
+    def get_items_order(self, container):
+        result = []
+        for item in container.items:
+            if isinstance(item, Section):
+                result.append(dict(items=self.get_items_order(item), title=item.title))
+            else:
+                result.append(dict(title=item.title))
+        return result
 
     @property
     def abspath(self):
@@ -82,7 +150,7 @@ class Book:
     @property
     def n_words(self):
         "Approximate number of words in the book."
-        return sum([i.n_words for i in self.all_texts])
+        return sum([i.n_words for i in self.all_texts]) + self.index.n_words
 
     @property
     def status(self):
@@ -96,35 +164,45 @@ class Book:
     def is_text(self):
         return False
 
-    def read(self):
-        "Read all items from files. Set up references and indexed lookups."
-        self.items = []
+    @property
+    def title(self):
+        return self.frontmatter.get("title") or os.path.basename(self.absdirpath)
 
-        # Section and Text instances for directories and files that actually exist.
-        for itemname in sorted(os.listdir(self.absdirpath)):
-            # Skip emacs temporary edit file.
-            if itemname.startswith(".#"):
-                continue
+    @title.setter
+    def title(self, title):
+        self.frontmatter["title"] = title
 
-            itempath = os.path.join(self.absdirpath, itemname)
-            if os.path.isdir(itempath):
-                self.items.append(Section(self, self, itemname))
-            elif itemname.endswith(constants.MARKDOWN_EXT):
-                self.items.append(Text(self, self, itemname))
-            else:
-                pass
+    @property
+    def subtitle(self):
+        return self.frontmatter.get("subtitle")
 
-        self.lookup = {}
-        for item in self.all_items:
-            self.lookup[item.fullname] = item
+    @subtitle.setter
+    def subtitle(self, subtitle):
+        self.frontmatter["subtitle"] = subtitle
 
-        self.references = {}
-        for item in self.all_texts:
-            self.find_references(item, item.ast)
+    @property
+    def authors(self):
+        return self.frontmatter.get("authors") or []
 
-        self.indexed = {}
-        for item in self.all_texts:
-            self.find_indexed(item, item.ast)
+    @authors.setter
+    def authors(self, authors):
+        self.frontmatter["authors"] = authors
+
+    @property
+    def language(self):
+        return self.frontmatter.get("language")
+
+    @language.setter
+    def language(self, language):
+        self.frontmatter["language"] = language
+
+    @property
+    def docx(self):
+        return self.frontmatter.get("docx") or {}
+
+    @property
+    def pdf(self):
+        return self.frontmatter.get("pdf") or {}
 
     def find_references(self, item, ast):
         try:
@@ -149,108 +227,22 @@ class Book:
     def get(self, fullname, default=None):
         return self.lookup.get(fullname, default)
 
-    def get_settings(self):
-        "Create the book entry for the settings file."
-        return dict(title=self.title,
-                    subtitle=self.subtitle,
-                    authors=self.authors,
-                    language=self.language,
-                    items=[i.get_settings() for i in self.items])
-
-    def apply_settings(self, settings):
-        "Apply general settings; change the order of the items."
-        self.title = settings["book"].get("title")
-        self.subtitle = settings["book"].get("subtitle")
-        self.authors = settings["book"].get("authors") or []
-        self.language = settings["book"].get("language")
-        original = dict([(i.title, i) for i in self.items])
-        # Re-order items according to settings file.
-        self.items = []
-        for ordered in settings["book"].get("items", []):
-            try:
-                item = original.pop(ordered["title"])
-            except KeyError:
-                pass
-            else:
-                self.items.append(item)
-                item.apply_settings(ordered)
-        # Append items not referenced in the settings file.
-        self.items.extend(original.values())
-
-    def create_text(self, title, anchor=None):
-        """Create a new empty text inside the anchor if it is a section,
-        or after anchor if it is a text.
-        Raise ValueError if there is a problem.
-        """
-        check_invalid_characters(title)
-        if anchor is None:
-            section = self
-        elif anchor.is_text:
-            section = anchor.parent
-        else:
-            section = anchor
-        dirpath = os.path.join(section.abspath, title)
-        filepath = dirpath + constants.MARKDOWN_EXT
-        if os.path.exists(dirpath) or os.path.exists(filepath):
-            raise ValueError(f"The title is already in use within '{section.fullname}'.")
-        with open(filepath, "w") as outfile:
-            pass
-        new = Text(self, section, title)
-        if anchor is None:
-            section.items.append(new)
-        elif anchor.is_text:
-            section.items.insert(anchor.index + 1, new)
-        else:
-            section.items.append(new)
-        self.lookup[new.fullname] = new
-        return new
-
-    def create_section(self, anchor, title):
-        """Create a new empty section inside the anchor if it is a section,
-        or after anchor if it is a text.
-        Raise ValueError if there is a problem.
-        """
-        check_invalid_characters(title)
-        if anchor.is_text:
-            section = anchor.parent
-        else:
-            section = anchor
-        dirpath = os.path.join(section.abspath, title)
-        filepath = dirpath + constants.MARKDOWN_EXT
-        if os.path.exists(dirpath) or os.path.exists(filepath):
-            raise ValueError(f"The title is already in use within '{section.fullname}'.")
-        os.mkdir(dirpath)
-        new = Section(self, section, title)
-        if anchor.is_text:
-            section.items.insert(anchor.index + 1, new)
-        else:
-            section.items.append(new)
-        self.lookup[new.fullname] = new
-        return new
-
-    def archive(self, books=None):
+    def archive(self):
         """Write all files for texts to a gzipped tar file.
-        Optionally include items from other books, using the name of each
-        book as prefix; effectively a subdirectory.
         Return the archive filepath and the number of items written.
         Raise an OSError if any error.
         """
         filename = (
             time.strftime(constants.DATETIME_ISO_FORMAT, time.localtime()) + ".tgz"
         )
-        archivefilepath = os.path.join(
-            self.absdirpath, constants.ARCHIVE_DIRNAME, filename
-        )
+        archivedirpath = os.path.join(constants.ARCHIVE_DIRPATH, os.path.basename(self.absdirpath))
+        if not os.path.exists(archivedirpath):
+            os.mkdir(archivedirpath)
+        archivefilepath = os.path.join(archivedirpath, filename)
         with tarfile.open(archivefilepath, "x:gz") as archivefile:
-            # By looping over top-level items, the special directories are avoided.
+            archivefile.add(self.index.abspath, arcname="index.md")
             for item in self.items:
                 archivefile.add(item.abspath, arcname=item.filename(), recursive=True)
-
-            if books:
-                if not isinstance(books, list):
-                    books = [books]
-                for book in books:
-                    archivefile.add(book.abspath, arcname=book.title, recursive=True)
         with tarfile.open(archivefilepath) as archivefile:
             result = len(archivefile.getnames())
         return archivefilepath, result
@@ -289,6 +281,10 @@ class Item:
 
     def __repr__(self):
         return f"{self.__class__.__name__}('{self.fullname}')"
+
+    def read(self):
+        "To be implemented by inheriting classes."
+        raise NotImplementedError
 
     @property
     def fullname(self):
@@ -408,18 +404,6 @@ class Item:
             unit = "secs"
         return f"{value:.0f} {unit}"
 
-    def read(self):
-        "To be implemented by inheriting classes."
-        raise NotImplementedError
-
-    def get_settings(self):
-        "To be implemented by inheriting classes."
-        raise NotImplementedError
-
-    def apply_settings(self, settings):
-        "To be implemented by inheriting classes."
-        raise NotImplementedError
-
     def retitle(self, newtitle):
         """Retitle the item.
         Raise ValueError if any problem.
@@ -442,88 +426,6 @@ class Item:
         for item in items:
             self.book.lookup[item.fullname] = item
 
-    def move_up(self):
-        """Move this item one step towards the beginning of its list of sibling items.
-        Raise ValueError if no movement was possible; already at the start of the list.
-        """
-        pos = self.parent.items.index(self)
-        if pos == 0:
-            raise ValueError("Item already at the start of the list.")
-        self.parent.items.insert(pos - 1, self.parent.items.pop(pos))
-
-    def move_down(self):
-        """Move this item one step down towards the end of its list of sibling items.
-        Raise ValueError if no movement was possible; already at the end of the list.
-        """
-        pos = self.parent.items.index(self)
-        if pos == len(self.parent.items) - 1:
-            raise ValueError("Item already at the end of the list.")
-        self.parent.items.insert(pos + 1, self.parent.items.pop(pos))
-
-    def move_to_parent(self):
-        """Move this item one level up to the parent.
-        It is placed after the old parent.
-        Raise ValueError if any problem.
-        """
-        if self.parent == self.book:
-            raise ValueError("Item is already at the top level.")
-        newabspath = os.path.join(self.parent.parent.abspath, self.filename())
-        if os.path.exists(newabspath):
-            raise ValueError("Item cannot be moved up due to title collision.")
-        oldabspath = self.abspath
-        items = [self] + self.all_items
-        for item in items:
-            self.book.lookup.pop(item.fullname)
-        before = self.parent.next
-        self.parent.items.remove(self)
-        if before:
-            self.parent.parent.items.insert(before.index, self)
-        else:
-            self.parent.parent.items.append(self)
-        self.parent = self.parent.parent
-        os.rename(oldabspath, self.abspath)
-        for item in items:
-            self.book.lookup[item.fullname] = item
-
-    def move_to_section(self, section):
-        """Move this item one level down to the given section.
-        It is placed last among the items of the section.
-        Raise ValueError if any problem.
-        """
-        if not isinstance(section, Section):
-            raise ValueError("Cannot move down into a non-section.")
-        if section in self.all_items:
-            raise ValueError("Cannot move down into a subsection of this section.")
-        newabspath = os.path.join(section.abspath, self.filename())
-        if os.path.exists(newabspath):
-            raise ValueError("Item cannot be moved down due to title collision.")
-        items = [self] + self.all_items
-        for item in items:
-            self.book.lookup.pop(item.fullname)
-        oldabspath = self.abspath
-        self.parent.items.remove(self)
-        section.items.append(self)
-        self.parent = section
-        os.rename(oldabspath, self.abspath)
-        for item in items:
-            self.book.lookup[item.fullname] = item
-
-    def copy(self, newtitle):
-        "Common code for section and text copy operations."
-        if newtitle == self.title:
-            raise ValueError("Cannot copy to the same title.")
-        if not newtitle:
-            raise ValueError("Empty string given for title.")
-        check_invalid_characters(newtitle)
-        newabspath = os.path.join(self.parent.abspath, self.filename(newtitle))
-        if os.path.exists(newabspath):
-            raise ValueError("The title is already in use.")
-        return newabspath
-
-    def delete(self):
-        "To be implemented by inheriting classes."
-        raise NotImplementedError
-
     def check_integrity(self):
         assert isinstance(self.book, Book), self
         assert self in self.parent.items, self
@@ -541,6 +443,16 @@ class Section(Item):
     def __len__(self):
         "Number of characters in Markdown content in all texts in the sections."
         return sum([len(i) for i in self.all_texts])
+
+    def read(self):
+        for itemtitle in sorted(os.listdir(self.abspath)):
+            itempath = os.path.join(self.abspath, itemtitle)
+            if os.path.isdir(itempath):
+                self.items.append(Section(self.book, self, itemtitle))
+            elif itemtitle.endswith(constants.MARKDOWN_EXT):
+                self.items.append(Text(self.book, self, itemtitle))
+            else:
+                pass
 
     @property
     def all_items(self):
@@ -578,55 +490,6 @@ class Section(Item):
         else:
             return self.title
 
-    def read(self):
-        for itemtitle in sorted(os.listdir(self.abspath)):
-            itempath = os.path.join(self.abspath, itemtitle)
-            if os.path.isdir(itempath):
-                self.items.append(Section(self.book, self, itemtitle))
-            elif itemtitle.endswith(constants.MARKDOWN_EXT):
-                self.items.append(Text(self.book, self, itemtitle))
-            else:
-                pass
-
-    def get_settings(self):
-        "Create the entry for this section for the settings file."
-        return dict(
-            title=self.title,
-            items=[i.get_settings() for i in self.items],
-        )
-
-    def apply_settings(self, settings):
-        original = dict([(i.title, i) for i in self.items])
-        self.items = []
-        for ordered in settings["items"]:
-            try:
-                item = original.pop(ordered["title"])
-            except KeyError:
-                pass
-            else:
-                self.items.append(item)
-                item.apply_settings(ordered)
-        self.items.extend(original.values())
-
-    def copy(self, newtitle):
-        newabspath = super().copy(newtitle)
-        shutil.copytree(self.abspath, newabspath)
-        new = Section(self.book, self.parent, newtitle)
-        self.parent.items.append(new)
-        self.book.lookup[new.fullname] = new
-        for item in new.all_items:
-            self.book.lookup[item.fullname] = item
-        return new
-
-    def delete(self):
-        shutil.rmtree(self.abspath)
-        for item in self.all_items:
-            self.book.lookup.pop(item.fullname)
-        self.book.lookup.pop(self.fullname)
-        self.parent.items.remove(self)
-        self.book = None
-        self.parent = None
-
     def check_integrity(self):
         super().check_integrity()
         assert os.path.isdir(self.abspath), self
@@ -647,11 +510,49 @@ class Text(Item):
     def __getitem__(self, key):
         return self.frontmatter[key]
 
-    def __setitem__(self, key, value):
-        self.frontmatter[key] = value
+    def get(self, key, default=None):
+        try:
+            return self[key]
+        except KeyError:
+            return default
 
-    def __contains__(self, key):
-        return key in self.frontmatter
+    def read(self):
+        "Read the frontmatter (if any) and content from the Markdown file."
+        with open(self.abspath) as infile:
+            self.content = infile.read()
+        m = FRONTMATTER.match(self.content)
+        if m:
+            self.frontmatter = yaml.safe_load(m.group(1))
+            self.content = self.content[m.start(2) :]
+        else:
+            self.frontmatter = {}
+        self.html = markdown.convert_to_html(self.content)
+        self.ast = markdown.convert_to_ast(self.content)
+
+    def write(self, content=None):
+        """Write the text, with current frontmatter and the given Markdown content.
+        If no Markdown content is provided, then use the current.
+        Do some cleanup:
+        - Strip each line from the right.
+        - Do not write out multiple empty lines after another.
+        """
+        with open(self.abspath, "w") as outfile:
+            if self.frontmatter:
+                outfile.write("---\n")
+                outfile.write(yaml.dump(self.frontmatter, allow_unicode=True))
+                outfile.write("---\n")
+            if content is None:
+                outfile.write(self.content or "")
+            else:
+                prev_empty = False
+                for line in content.split("\n"):
+                    line = line.rstrip()
+                    empty = not bool(line)
+                    if empty and prev_empty:
+                        continue
+                    prev_empty = empty
+                    outfile.write(line)
+                    outfile.write("\n")
 
     @property
     def all_items(self):
@@ -667,19 +568,12 @@ class Text(Item):
     def n_words(self):
         return len(self.content.split())
 
-    def get(self, key, default=None):
-        try:
-            return self[key]
-        except KeyError:
-            return default
+    @property
+    def status(self):
+        return constants.Status.lookup(self.frontmatter.get("status"))
 
-    def pop(self, key, default=None):
-        return self.frontmatter.pop(key, default)
-
-    def get_status(self):
-        return constants.Status.lookup(self.get("status"))
-
-    def set_status(self, status):
+    @status.setter
+    def status(self, status):
         if type(status) == str:
             status = constants.Status.lookup(status)
             if status is None:
@@ -688,72 +582,11 @@ class Text(Item):
             raise ValueError("Invalid status instance.")
         self.frontmatter["status"] = repr(status)
 
-    status = property(get_status, set_status)
-
     def filename(self, newtitle=None):
         if newtitle:
             return newtitle + constants.MARKDOWN_EXT
         else:
             return self.title + constants.MARKDOWN_EXT
-
-    def read(self):
-        with open(self.abspath) as infile:
-            self.content = infile.read()
-        match = FRONTMATTER.match(self.content)
-        if match:
-            self.frontmatter = yaml.safe_load(match.group(1))
-            self.content = self.content[match.start(2) :]
-        else:
-            self.frontmatter = {}
-        self.html = markdown.convert_to_html(self.content)
-        self.ast = markdown.convert_to_ast(self.content)
-
-    def get_settings(self):
-        "Create the entry for this text for the settings file."
-        return dict(title=self.title, status=repr(self.status))
-
-    def apply_settings(self, settings):
-        pass
-
-    def copy(self, newtitle):
-        newabspath = super().copy(newtitle)
-        shutil.copy2(self.abspath, newabspath)
-        new = Text(self.book, self.parent, newtitle + constants.MARKDOWN_EXT)
-        self.parent.items.append(new)
-        self.book.lookup[new.fullname] = new
-        return new
-
-    def delete(self):
-        os.remove(self.abspath)
-        self.book.lookup.pop(self.fullname)
-        self.parent.items.remove(self)
-        self.book = None
-        self.parent = None
-
-    def write(self, content=None):
-        """Write the text, with current frontmatter and the given Markdown content.
-        If no Markdown content is provided, then use the current.
-        Do some cleanup:
-        - Strip each line from the right.
-        - Do not write out multiple empty lines after another.
-        """
-        with open(self.abspath, "w") as outfile:
-            if self.frontmatter:
-                outfile.write("---\n")
-                outfile.write(yaml.dump(self.frontmatter))
-                outfile.write("---\n")
-            if content is None:
-                outfile.write(self.content or "")
-            else:
-                prev_empty = False
-                for line in content.split("\n"):
-                    line = line.rstrip()
-                    empty = not bool(line)
-                    if empty and prev_empty:
-                        continue
-                    prev_empty = empty
-                    outfile.write(line)
-                    outfile.write("\n")
 
     def check_integrity(self):
         super().check_integrity()
@@ -772,37 +605,11 @@ def check_invalid_characters(title):
             raise ValueError(f"The title may not contain the character '{invalid}'.")
 
 
-def test(keep=False):
-    import tempfile
-
-    content = "# Very basic Markdown.\n\n**Bold**.\n"
-    dirpath = tempfile.mkdtemp()
-    ic(dirpath)
-    for filename in ["text1.md", "text2.md", "text3.md"]:
-        with open(os.path.join(dirpath, filename), "w") as outfile:
-            outfile.write(content)
-    subdirpath = os.path.join(dirpath, "section1")
-    os.mkdir(subdirpath)
-    for filename in ["text1.md", "text2.md", "text3.md"]:
-        with open(os.path.join(subdirpath, filename), "w") as outfile:
-            outfile.write(content)
-
-    book = Book(dirpath)
-    book.check_integrity()
-    section = book["section1"]
-    section.copy("section2")
-    book.check_integrity()
-    section.retitle("subsection")
-    book.check_integrity()
-    section.move_to_section(book["section2"])
-    book.check_integrity()
-    book["section2"].delete()
-    book.check_integrity()
-    if not keep:
-        shutil.rmtree(dirpath)
-
-
 if __name__ == "__main__":
-    book = Book("/home/pekrau/Dropbox/texter/lejonen")
+    book = Book("/home/pekrau/Dropbox/texter/test")
+    # book = Book("/home/pekrau/Dropbox/texter/lejonen")
     ic(book)
-    ic(book.all_items)
+    ic(book.all_texts)
+    # book.index.write()
+    # book.archive()
+    
