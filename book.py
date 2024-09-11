@@ -46,6 +46,8 @@ class Book:
             with open(os.path.join(self.absdirpath, "index.md"), "w") as outfile:
                 outfile.write("")
             self.index = Text(self, self, "index.md")
+            self.index.status = constants.STARTED
+            self.index.write()
         self.frontmatter = self.index.frontmatter
 
         self.items = []
@@ -155,7 +157,7 @@ class Book:
     @property
     def status(self):
         "Return the lowest status for the sub-items."
-        status = constants.FINAL
+        status = self.index.status
         for item in self.items:
             status = min(status, item.status)
         return status
