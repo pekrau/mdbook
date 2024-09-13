@@ -470,6 +470,12 @@ class Creator:
     def render_emdash(self, ast):
         self.paragraph.add_run(constants.EM_DASH)
 
+    def render_line_break(self, ast):
+        if ast.get("soft"):
+            self.paragraph.add_run(" ")
+        else:
+            self.paragraph.add_run("\n")
+
     def render_thematic_break(self, ast):
         paragraph = self.document.add_paragraph(constants.EM_DASH * 20)
         paragraph.alignment = docx.enum.text.WD_ALIGN_PARAGRAPH.CENTER

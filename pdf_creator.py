@@ -27,8 +27,8 @@ class Creator:
         self.language = book.language
         settings = book.frontmatter["pdf"]
         self.contents_pages = settings["contents_pages"]
-        self.page_break_level = settings["page_break_level"]
         self.contents_level = settings["contents_level"]
+        self.page_break_level = settings["page_break_level"]
         self.footnotes_location = settings["footnotes_location"]
         self.indexed_xref = settings["indexed_xref"]
 
@@ -520,6 +520,12 @@ class Creator:
 
     def render_emdash(self, ast):
         self.state.write(constants.EM_DASH)
+
+    def render_line_break(self, ast):
+        if ast.get("soft"):
+            self.state.write(" ")
+        else:
+            self.state.ln()
 
     def render_thematic_break(self, ast):
         self.pdf.set_line_width(2)

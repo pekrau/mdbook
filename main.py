@@ -535,6 +535,13 @@ def get():
         else:
             page_break_options.append(Option(str(value)))
     contents_pages = pdf_settings.get("contents_pages", True)
+    contents_level = pdf_settings.get("contents_level", 1)
+    contents_level_options = []
+    for value in range(0, 7):
+        if value == contents_level:
+            contents_level_options.append(Option(str(value), selected=True))
+        else:
+            contents_level_options.append(Option(str(value)))
 
     footnotes_location = pdf_settings.get("footnotes_location", constants.FOOTNOTES_EACH_TEXT)
     footnotes_options = []
@@ -570,6 +577,10 @@ def get():
                     )
                 ),
                 Fieldset(
+                    Legend(Tx("Contents level")),
+                    Select(*contents_level_options, name="contents_level"),
+                ),
+                Fieldset(
                     Legend(Tx("Footnotes location")),
                     Select(*footnotes_options, name="footnotes_location")
                 ),
@@ -586,12 +597,15 @@ def get():
 @rt("/pdf_create")
 def post(page_break_level:int=None,
          contents_pages:bool=False,
+         contents_level:int=None,
          footnotes_location:str=None,
          indexed_xref:str=None):
     book = get_book()
     original = copy.deepcopy(book.frontmatter)
     pdf_settings = book.frontmatter.setdefault("pdf", {})
     pdf_settings["page_break_level"] = page_break_level
+    pdf_settings["contents_pages"] = contents_pages
+    pdf_settings["contents_level"] = contents_level
     pdf_settings["footnotes_location"] = footnotes_location
     pdf_settings["indexed_xref"] = indexed_xref
     if book.frontmatter != original:

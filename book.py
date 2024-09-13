@@ -532,6 +532,7 @@ class Text(Item):
             self.frontmatter = {}
         self.html = markdown.convert_to_html(self.content)
         self.ast = markdown.convert_to_ast(self.content)
+        ic(self.ast)
 
     def write(self, content=None):
         """Write the text, with current frontmatter and the given Markdown content.
