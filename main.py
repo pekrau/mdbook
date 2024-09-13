@@ -178,6 +178,7 @@ def get(path:str):
 def get():
     "Title page."
     book = get_book()
+    book.index.read()
     segments = [H1(book.title)]
     if book.subtitle:
         segments.append(H2(book.subtitle))

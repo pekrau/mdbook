@@ -66,7 +66,9 @@ class Book:
             if os.path.isdir(itempath):
                 self.items.append(Section(self, self, itemname))
             elif itemname.endswith(constants.MARKDOWN_EXT):
-                self.items.append(Text(self, self, itemname))
+                item = Text(self, self, itemname)
+                if not item.get("exclude"):
+                    self.items.append(item)
             else:
                 pass
 
