@@ -26,6 +26,7 @@ class Creator:
         self.authors = book.authors
         self.language = book.language
         settings = book.frontmatter["docx"]
+        self.title_page_metadata = settings["title_page_metadata"]
         self.page_break_level = settings["page_break_level"]
         self.footnotes_location = settings["footnotes_location"]
         self.indexed_font = settings.get("indexed_font")
@@ -123,16 +124,15 @@ class Creator:
         self.current_text = self.book.index
         self.render(self.book.index.ast, initialize=True)
 
-        paragraph = self.document.add_paragraph()
-        paragraph.paragraph_format.space_before = docx.shared.Pt(50)
-
-        status = str(
-            min([t.status for t in self.book.all_texts] + [max(constants.STATUSES)])
-        )
-        paragraph.add_run(f"{Tx('Status')}: {Tx(status)}")
-
-        now = datetime.datetime.now().strftime(constants.DATETIME_ISO_FORMAT)
-        self.document.add_paragraph(f"{Tx('Created')}: {now}")
+        if self.title_page_metadata:
+            paragraph = self.document.add_paragraph()
+            paragraph.paragraph_format.space_before = docx.shared.Pt(50)
+            status = str(
+                min([t.status for t in self.book.all_texts] + [max(constants.STATUSES)])
+            )
+            paragraph.add_run(f"{Tx('Status')}: {Tx(status)}")
+            now = datetime.datetime.now().strftime(constants.DATETIME_ISO_FORMAT)
+            self.document.add_paragraph(f"{Tx('Created')}: {now}")
 
     def write_toc(self):
         # XXX
@@ -242,6 +242,8 @@ class Creator:
                 self.footnote_paragraph = None
 
     def write_references(self):
+        if not self.referenced:
+            return
         self.document.add_page_break()
         self.write_heading(Tx("References"), 1)
         for refid in sorted(self.referenced):
@@ -338,6 +340,8 @@ class Creator:
                 pass
 
     def write_indexed(self):
+        if not self.indexed:
+            return
         self.document.add_page_break()
         self.write_heading(Tx("Index"), 1)
         items = sorted(self.indexed.items(), key=lambda i: i[0].lower())

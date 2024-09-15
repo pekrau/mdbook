@@ -439,15 +439,16 @@ def get():
 @rt("/docx")
 def get():
     "Get the parameters for outputting DOCX file."
-    docx_settings = get_book().frontmatter.setdefault("docx", {})
-    page_break_level = docx_settings.get("page_break_level", 1)
+    settings = get_book().frontmatter.setdefault("docx", {})
+    title_page_metadata = settings.get("title_page_metadata", True)
+    page_break_level = settings.get("page_break_level", 1)
     page_break_options = []
     for value in range(0, 7):
         if value == page_break_level:
             page_break_options.append(Option(str(value), selected=True))
         else:
             page_break_options.append(Option(str(value)))
-    footnotes_location = docx_settings.get("footnotes_location", constants.FOOTNOTES_EACH_TEXT)
+    footnotes_location = settings.get("footnotes_location", constants.FOOTNOTES_EACH_TEXT)
     footnotes_options = []
     for value in constants.FOOTNOTES_LOCATIONS:
         if value == footnotes_location:
@@ -455,7 +456,7 @@ def get():
                                             value=value, selected=True))
         else:
             footnotes_options.append(Option(Tx(value.capitalize()), value=value))
-    reference_font = docx_settings.get("reference_font", constants.NORMAL)
+    reference_font = settings.get("reference_font", constants.NORMAL)
     reference_options = []
     for value in constants.FONT_STYLES:
         if value == reference_font:
@@ -463,7 +464,7 @@ def get():
                                             value=value, selected=True))
         else:
             reference_options.append(Option(Tx(value.capitalize())))
-    indexed_font = docx_settings.get("indexed_font", constants.NORMAL)
+    indexed_font = settings.get("indexed_font", constants.NORMAL)
     indexed_options = []
     for value in constants.FONT_STYLES:
         if value == indexed_font:
@@ -475,7 +476,17 @@ def get():
     return (Title(f'{Tx("Create")} DOCX'),
             Header(nav(label=f'{Tx("Create")} DOCX'), cls="container"),
             Main(Form(
-                    Fieldset(
+                Fieldset(
+                    Legend(Tx("Metadata on title page")),
+                    Label(
+                        Input(type="checkbox",
+                              name="title_page_metadata",
+                              role="switch",
+                              checked=bool(title_page_metadata)),
+                        Tx("Display")
+                    )
+                ),
+                Fieldset(
                     Legend(Tx("Page break level")),
                     Select(*page_break_options, name="page_break_level")
                 ),
@@ -498,17 +509,19 @@ def get():
             )
 
 @rt("/docx_create")
-def post(page_break_level:int=None,
+def post(title_page_metadata:bool=False,
+         page_break_level:int=None,
          footnotes_location:str=None,
          reference_font:str=None,
          indexed_font:str=None):
     book = get_book()
     original = copy.deepcopy(book.frontmatter)
-    docx_settings = book.frontmatter.setdefault("docx", {})
-    docx_settings["page_break_level"] = page_break_level
-    docx_settings["footnotes_location"] = footnotes_location
-    docx_settings["reference_font"] = reference_font
-    docx_settings["indexed_font"] = indexed_font
+    settings = book.frontmatter.setdefault("docx", {})
+    settings["title_page_metadata"] = title_page_metadata
+    settings["page_break_level"] = page_break_level
+    settings["footnotes_location"] = footnotes_location
+    settings["reference_font"] = reference_font
+    settings["indexed_font"] = indexed_font
     if book.frontmatter != original:
         book.index.write()
     filepath = os.path.join(BOOK_DIRPATH, book.title + ".docx")
@@ -517,6 +530,7 @@ def post(page_break_level:int=None,
     return (Title(f'{Tx("Created")} DOCX'),
             Header(nav(label=f'{Tx("Created")} DOCX'), cls="container"),
             Main(P(f'{Tx("File path")}: {filepath}'),
+                 P(f'{Tx("Title page metadata")}: {title_page_metadata}'),
                  P(f'{Tx("Page break level")}: {page_break_level}'),
                  P(f'{Tx("Footnotes location")}: {Tx(footnotes_location.capitalize())}'),
                  P(f'{Tx("Reference font")}: {Tx(reference_font.capitalize())}'),
@@ -526,16 +540,17 @@ def post(page_break_level:int=None,
 
 @rt("/pdf")
 def get():
-    pdf_settings = get_book().frontmatter.setdefault("pdf", {})
-    page_break_level = pdf_settings.get("page_break_level", 1)
+    settings = get_book().frontmatter.setdefault("pdf", {})
+    title_page_metadata = settings.get("title_page_metadata", True)
+    page_break_level = settings.get("page_break_level", 1)
     page_break_options = []
     for value in range(0, 7):
         if value == page_break_level:
             page_break_options.append(Option(str(value), selected=True))
         else:
             page_break_options.append(Option(str(value)))
-    contents_pages = pdf_settings.get("contents_pages", True)
-    contents_level = pdf_settings.get("contents_level", 1)
+    contents_pages = settings.get("contents_pages", True)
+    contents_level = settings.get("contents_level", 1)
     contents_level_options = []
     for value in range(0, 7):
         if value == contents_level:
@@ -543,7 +558,7 @@ def get():
         else:
             contents_level_options.append(Option(str(value)))
 
-    footnotes_location = pdf_settings.get("footnotes_location", constants.FOOTNOTES_EACH_TEXT)
+    footnotes_location = settings.get("footnotes_location", constants.FOOTNOTES_EACH_TEXT)
     footnotes_options = []
     for value in constants.FOOTNOTES_LOCATIONS:
         if value == footnotes_location:
@@ -551,7 +566,7 @@ def get():
         else:
             footnotes_options.append(Option(Tx(value.capitalize()), value=value))
 
-    indexed_xref = pdf_settings.get("indexed_xref", constants.PDF_PAGE_NUMBER)
+    indexed_xref = settings.get("indexed_xref", constants.PDF_PAGE_NUMBER)
     indexed_options = []
     for value in constants.PDF_INDEXED_XREF_DISPLAY:
         if value == indexed_xref:
@@ -562,6 +577,16 @@ def get():
     return (Title(f'{Tx("Create")} PDF'),
             Header(nav(label=f'{Tx("Create")} PDF'), cls="container"),
             Main(Form(
+                Fieldset(
+                    Legend(Tx("Metadata on title page")),
+                    Label(
+                        Input(type="checkbox",
+                              name="title_page_metadata",
+                              role="switch",
+                              checked=bool(title_page_metadata)),
+                        Tx("Display")
+                    )
+                ),
                 Fieldset(
                     Legend(Tx("Page break level")),
                     Select(*page_break_options, name="page_break_level"),
@@ -595,19 +620,21 @@ def get():
             )
 
 @rt("/pdf_create")
-def post(page_break_level:int=None,
+def post(title_page_metadata:bool=False,
+         page_break_level:int=None,
          contents_pages:bool=False,
          contents_level:int=None,
          footnotes_location:str=None,
          indexed_xref:str=None):
     book = get_book()
     original = copy.deepcopy(book.frontmatter)
-    pdf_settings = book.frontmatter.setdefault("pdf", {})
-    pdf_settings["page_break_level"] = page_break_level
-    pdf_settings["contents_pages"] = contents_pages
-    pdf_settings["contents_level"] = contents_level
-    pdf_settings["footnotes_location"] = footnotes_location
-    pdf_settings["indexed_xref"] = indexed_xref
+    settings = book.frontmatter.setdefault("pdf", {})
+    settings["title_page_metadata"] = title_page_metadata
+    settings["page_break_level"] = page_break_level
+    settings["contents_pages"] = contents_pages
+    settings["contents_level"] = contents_level
+    settings["footnotes_location"] = footnotes_location
+    settings["indexed_xref"] = indexed_xref
     if book.frontmatter != original:
         book.index.write()
     filepath = os.path.join(BOOK_DIRPATH, book.title + ".pdf")
@@ -616,6 +643,7 @@ def post(page_break_level:int=None,
     return (Title(f'{Tx("Created")} PDF'),
             Header(nav(label=f'{Tx("Created")} PDF'), cls="container"),
             Main(P(f'{Tx("File path")}: {filepath}'),
+                 P(f'{Tx("Title page metadata")}: {title_page_metadata}'),
                  P(f'{Tx("Page break level")}: {page_break_level}'),
                  P(f'{Tx("Contents pages")}: {Tx(str(contents_pages))}'),
                  P(f'{Tx("Footnotes location")}: {Tx(footnotes_location.capitalize())}'),

@@ -421,7 +421,6 @@ class Item:
         if os.path.exists(newabspath):
             raise ValueError("The title is already in use.")
         items = [self] + self.all_items
-        ic(items)
         for item in items:
             self.book.lookup.pop(item.fullname)
         oldabspath = self.abspath
@@ -532,7 +531,6 @@ class Text(Item):
             self.frontmatter = {}
         self.html = markdown.convert_to_html(self.content)
         self.ast = markdown.convert_to_ast(self.content)
-        ic(self.ast)
 
     def write(self, content=None):
         """Write the text, with current frontmatter and the given Markdown content.

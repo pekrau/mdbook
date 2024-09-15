@@ -26,6 +26,7 @@ class Creator:
         self.authors = book.authors
         self.language = book.language
         settings = book.frontmatter["pdf"]
+        self.title_page_metadata = settings["title_page_metadata"]
         self.contents_pages = settings["contents_pages"]
         self.contents_level = settings["contents_level"]
         self.page_break_level = settings["page_break_level"]
@@ -156,15 +157,15 @@ class Creator:
         self.current_text = self.book.index
         self.render(self.book.index.ast)
 
-        self.state.ln(2)
-        status = str(
-            min([t.status for t in self.book.all_texts] + [max(constants.STATUSES)])
-        )
-        self.state.write(f'{Tx("Status")}: {Tx(status)}')
-        self.state.ln()
-
-        now = datetime.datetime.now().strftime(constants.DATETIME_ISO_FORMAT)
-        self.state.write(f'{Tx("Created")}: {now}')
+        if self.title_page_metadata:
+            self.state.ln(2)
+            status = str(
+                min([t.status for t in self.book.all_texts] + [max(constants.STATUSES)])
+            )
+            self.state.write(f'{Tx("Status")}: {Tx(status)}')
+            self.state.ln()
+            now = datetime.datetime.now().strftime(constants.DATETIME_ISO_FORMAT)
+            self.state.write(f'{Tx("Created")}: {now}')
 
     def write_toc(self, pdf, outline):
         h1 = constants.H_LOOKUP[1]
@@ -279,6 +280,8 @@ class Creator:
             self.state.reset()
 
     def write_references(self):
+        if not self.referenced:
+            return
         self.pdf.add_page()
         self.pdf.start_section(Tx("References"), level=0)
         self.write_heading(Tx("References"), 1)
@@ -397,6 +400,8 @@ class Creator:
         self.state.reset()
 
     def write_indexed(self):
+        if not self.indexed:
+            return
         self.pdf.add_page()
         self.pdf.start_section(Tx("Index"), level=0)
         self.write_heading(Tx("Index"), 1)
