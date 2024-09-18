@@ -35,6 +35,10 @@ class Book:
         "Number of characters in Markdown content in all texts."
         return sum([len(i) for i in self.all_texts]) + len(self.index)
 
+    def __bool__(self):
+        "Always True; not dependent on len."
+        return True
+
     def __getitem__(self, fullname):
         return self.lookup[fullname]
 
@@ -285,6 +289,10 @@ class Item:
 
     def __repr__(self):
         return f"{self.__class__.__name__}('{self.fullname}')"
+
+    def __bool__(self):
+        "Always True; not dependent on len."
+        return True
 
     def read(self):
         "To be implemented by inheriting classes."

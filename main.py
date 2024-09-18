@@ -17,6 +17,8 @@ import utils
 
 from book import Book
 
+NAV_STYLE_TEMPLATE = "outline-color: {color}; outline-width:8px; outline-style:solid; padding:0px 10px; border-radius:5px;"
+
 Tx = utils.Tx
 
 if len(sys.argv) == 2:
@@ -61,20 +63,58 @@ def get_references(reload=False):
 
 def nav(item=None, label=None, actions=None):
     "The standard navigation bar."
-    NAV_STYLE = "outline-color: {color}; outline-width:8px; outline-style:solid; padding:0px 10px; border-radius:5px;"
-    entries = [Ul(Li(Img(src="/favicon.ico")),
+    entries = [Ul(Li(Img(src="/book.svg")),
                   Li(A(get_book().title, href="/")))]
     if item:
-        entries.append(Ul(Li(item.fullname,
+        arrows = []
+        if item.prev:
+            if item.prev.is_section:
+                url = f"/section/{item.prev.urlpath}"
+            else:
+                url = f"/text/{item.prev.urlpath}"
+            arrows.append(A(Img(src="/arrow-left-square.svg",
+                                style="cursor: pointer;"),
+                            item.prev.title,
+                            cls="secondary",
+                            href=url))
+        if item.parent:
+            if arrows:
+                arrows.append(NotStr("&nbsp;"))
+            if item.parent.level == 0: # Book.
+                url = "/"
+            elif item.parent.is_section:
+                url = f"/section/{item.parent.urlpath}"
+            else:
+                url = f"/text/{item.parent.urlpath}"
+            arrows.append(A(Img(src="/arrow-up-square.svg",
+                                style="cursor: pointer;"),
+                            item.parent.title,
+                            cls="secondary",
+                            href=url))
+        if item.next:
+            if arrows:
+                arrows.append(NotStr("&nbsp;"))
+            if item.next.is_section:
+                url = f"/section/{item.next.urlpath}"
+            else:
+                url = f"/text/{item.next.urlpath}"
+            arrows.append(A(Img(src="/arrow-right-square.svg",
+                                style="cursor: pointer;"),
+                            item.next.title,
+                            cls="secondary",
+                            href=url))
+        entries.append(Ul(Li(Strong(item.fullname),
                              Br(),
-                             Small(f'{Tx("Status")}: {Tx(item.status)}'))))
-        nav_style = NAV_STYLE.format(color=item.status.color)
+                             Small(f'{Tx("Status")}: {Tx(item.status)}'),
+                             Br(),
+                             *arrows)))
+        nav_style = NAV_STYLE_TEMPLATE.format(color=item.status.color)
     elif label:
         entries.append(Ul(Li(label)))
-        nav_style = NAV_STYLE.format(color=get_book().status.color)
+        nav_style = NAV_STYLE_TEMPLATE.format(color=get_book().status.color)
     else:
         entries.append(Ul(Li(f"Status: {Tx(get_book().status)}")))
-        nav_style = NAV_STYLE.format(color=get_book().status.color)
+        nav_style = NAV_STYLE_TEMPLATE.format(color=get_book().status.color)
     items = [Li(A(Tx("Title"), href="/title")),
              Li(A(Tx("References"), href="/references")),
              Li(A(Tx("Index"), href="/index"))]
@@ -133,7 +173,7 @@ def view_text(path:str, content:str=None, status:str=None):
         text.write()
     text.read()
     return (Title(text.title),
-            Header(nav(text, actions=[A(Tx("Edit"), href=f"/edit/{path}")]),
+            Header(nav(item=text, actions=[A(Tx("Edit"), href=f"/edit/{path}")]),
                    cls="container"),
             Main(NotStr(text.html), cls="container")
             )
@@ -170,7 +210,7 @@ def get(path:str):
     section = get_book()[path]
     assert section.is_section
     return (Title(section.title),
-            Header(nav(section), cls="container"),
+            Header(nav(item=section), cls="container"),
             Main(toc(section.items), cls="container")
             )
 
