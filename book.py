@@ -235,6 +235,57 @@ class Book:
     def get(self, fullname, default=None):
         return self.lookup.get(fullname, default)
 
+    def create_text(self, title, anchor=None):
+        """Create a new empty text inside the anchor if it is a section,
+        or after anchor if it is a text.
+        Raise ValueError if there is a problem.
+        """
+        check_invalid_characters(title)
+        if anchor is None:
+            section = self
+        elif anchor.is_text:
+            section = anchor.parent
+        else:
+            section = anchor
+        dirpath = os.path.join(section.abspath, title)
+        filepath = dirpath + constants.MARKDOWN_EXT
+        if os.path.exists(dirpath) or os.path.exists(filepath):
+            raise ValueError(f"The title is already in use within '{section.fullname}'.")
+        with open(filepath, "w") as outfile:
+            pass
+        new = Text(self, section, title)
+        if anchor is None:
+            section.items.append(new)
+        elif anchor.is_text:
+            section.items.insert(anchor.index + 1, new)
+        else:
+            section.items.append(new)
+        self.lookup[new.fullname] = new
+        return new
+
+    def create_section(self, anchor, title):
+        """Create a new empty section inside the anchor if it is a section,
+        or after anchor if it is a text.
+        Raise ValueError if there is a problem.
+        """
+        check_invalid_characters(title)
+        if anchor.is_text:
+            section = anchor.parent
+        else:
+            section = anchor
+        dirpath = os.path.join(section.abspath, title)
+        filepath = dirpath + constants.MARKDOWN_EXT
+        if os.path.exists(dirpath) or os.path.exists(filepath):
+            raise ValueError(f"The title is already in use within '{section.fullname}'.")
+        os.mkdir(dirpath)
+        new = Section(self, section, title)
+        if anchor.is_text:
+            section.items.insert(anchor.index + 1, new)
+        else:
+            section.items.append(new)
+        self.lookup[new.fullname] = new
+        return new
+
     def archive(self):
         """Write all files for texts to a gzipped tar file.
         Return the archive filepath and the number of items written.
@@ -520,6 +571,9 @@ class Text(Item):
 
     def __getitem__(self, key):
         return self.frontmatter[key]
+
+    def __setitem__(self, key, value):
+        self.frontmatter[key] = value
 
     def get(self, key, default=None):
         try:
