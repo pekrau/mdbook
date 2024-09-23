@@ -18,9 +18,10 @@ Tx = utils.Tx
 class Creator:
     "DOCX creator."
 
-    def __init__(self, book, references):
+    def __init__(self, book, references, item=None):
         self.book = book
         self.references = references
+        self.item = item
         self.title = book.title
         self.subtitle = book.subtitle
         self.authors = book.authors
@@ -88,14 +89,28 @@ class Creator:
         self.current_text = None
         self.footnote_paragraph = None
 
-        self.write_title_page()
-        self.write_toc()
+        if self.item is None:
+            self.write_title_page()
+            self.write_toc()
+            items = list(self.book.items)
+        elif self.item.is_section:
+            paragraph = self.document.add_paragraph(style="Title")
+            run = paragraph.add_run(self.item.title)
+            run.font.size = docx.shared.Pt(24)
+            run.font.bold = True
+            items = list(self.item.all_items)
+        else:
+            paragraph = self.document.add_paragraph(style="Title")
+            run = paragraph.add_run(self.item.title)
+            run.font.size = docx.shared.Pt(20)
+            run.font.bold = True
+            items = [self.item]
         self.write_page_number()
-        for item in self.book.items:
+        for item in items:
             if item.is_section:
-                self.write_section(item, level=1)
+                self.write_section(item, level=item.level)
             else:
-                self.write_text(item, level=1)
+                self.write_text(item, level=item.level)
             self.write_footnotes_chapter(item)
         self.write_footnotes_book()
         self.write_references()
@@ -172,9 +187,6 @@ class Creator:
         self.current_text = text
         self.render(text.ast, initialize=True)
         self.write_footnotes_text(text)
-
-    def write_text_initialize(self):
-        pass
 
     def write_heading(self, heading, level):
         level = min(level, constants.MAX_H_LEVEL)

@@ -48,10 +48,7 @@ class Book:
             self.index = Text(self, self, "index.md")
         except OSError:
             with open(os.path.join(self.absdirpath, "index.md"), "w") as outfile:
-                outfile.write("")
-            self.index = Text(self, self, "index.md")
-            self.index.status = constants.STARTED
-            self.index.write()
+                pass
         self.frontmatter = self.index.frontmatter
 
         self.items = []
@@ -163,7 +160,7 @@ class Book:
     @property
     def status(self):
         "Return the lowest status for the sub-items."
-        status = self.index.status
+        status = constants.FINAL
         for item in self.items:
             status = min(status, item.status)
         return status
@@ -508,6 +505,9 @@ class Section(Item):
 
     def read(self):
         for itemtitle in sorted(os.listdir(self.abspath)):
+            # Skip unsaved emacs files.
+            if itemtitle.startswith(".#"):
+                continue
             itempath = os.path.join(self.abspath, itemtitle)
             if os.path.isdir(itempath):
                 self.items.append(Section(self.book, self, itemtitle))

@@ -6,6 +6,7 @@ import copy
 import os.path
 import string
 import sys
+import urllib
 
 from fasthtml.common import *
 import bibtexparser
@@ -174,7 +175,9 @@ def view_text(path:str, content:str=None, status:str=None):
         text.write()
     text.read()
     return (Title(text.title),
-            Header(nav(item=text, actions=[A(Tx("Edit"), href=f"/edit/{path}")]),
+            Header(nav(item=text,
+                       actions=[A(Tx("Edit"), href=f"/edit/{path}"),
+                                A(f'{Tx("Create")} DOCX', href=f"/docx/{path}")]),
                    cls="container"),
             Main(NotStr(text.html), cls="container")
             )
@@ -211,7 +214,9 @@ def get(path:str):
     section = get_book()[path]
     assert section.is_section
     return (Title(section.title),
-            Header(nav(item=section), cls="container"),
+            Header(nav(item=section,
+                       actions=[A(f'{Tx("Create")} DOCX', href=f"/docx/{path}")]),
+                   cls="container"),
             Main(toc(section.items), cls="container")
             )
 
@@ -479,8 +484,22 @@ def get():
 
 @rt("/docx")
 def get():
+    "DOCX for the whole book."
+    return get_docx()
+
+@rt("/docx/{path:path}")
+def get(path:str):
+    "DOCX for a section or text in the book."
+    return get_docx(path)
+
+def get_docx(path=None):
     "Get the parameters for outputting DOCX file."
-    settings = get_book().frontmatter.setdefault("docx", {})
+    book = get_book()
+    if path:
+        item = book[path]
+    else:
+        item = None
+    settings = book.frontmatter.setdefault("docx", {})
     title_page_metadata = settings.get("title_page_metadata", True)
     page_break_level = settings.get("page_break_level", 1)
     page_break_options = []
@@ -514,69 +533,104 @@ def get():
         else:
             indexed_options.append(Option(Tx(value.capitalize()),
                                           value=value))
-    return (Title(f'{Tx("Create")} DOCX'),
-            Header(nav(label=f'{Tx("Create")} DOCX'), cls="container"),
-            Main(Form(
-                Fieldset(
-                    Legend(Tx("Metadata on title page")),
-                    Label(
-                        Input(type="checkbox",
-                              name="title_page_metadata",
-                              role="switch",
-                              checked=bool(title_page_metadata)),
-                        Tx("Display")
-                    )
-                ),
-                Fieldset(
-                    Legend(Tx("Page break level")),
-                    Select(*page_break_options, name="page_break_level")
-                ),
-                Fieldset(
-                    Legend(Tx("Footnotes location")),
-                    Select(*footnotes_options, name="footnotes_location")
-                ),
-                Fieldset(
-                    Legend(Tx("Reference font")),
-                    Select(*reference_options, name="reference_font")
-                ),
-                Fieldset(
-                    Legend(Tx("Indexed font")),
-                    Select(*indexed_options, name="indexed_font")
-                ),
-                Button(f'{Tx("Create")} DOCX'),
-                action="/docx_create",
-                method="post"),
-                 cls="container")
+    fields = []
+    if item is None:
+        fields.append(
+            Fieldset(
+                Legend(Tx("Metadata on title page")),
+                Label(
+                    Input(type="checkbox",
+                          name="title_page_metadata",
+                          role="switch",
+                          checked=bool(title_page_metadata)),
+                    Tx("Display")
+                )
+            )
+        )
+    else:
+        fields.append(Hidden(name="path", value=item.urlpath))
+    fields.append(
+        Fieldset(
+            Legend(Tx("Page break level")),
+            Select(*page_break_options, name="page_break_level")
+        )
+    )
+    if item is None:
+        fields.append(
+            Fieldset(
+                Legend(Tx("Footnotes location")),
+                Select(*footnotes_options, name="footnotes_location")
+            )
+        )
+    else:
+        fields.append(Hidden(name="footnotes_location", value="after each text"))
+    fields.append(
+        Fieldset(
+            Legend(Tx("Reference font")),
+            Select(*reference_options, name="reference_font")
+        )
+    )
+    fields.append(
+        Fieldset(
+            Legend(Tx("Indexed font")),
+            Select(*indexed_options, name="indexed_font")
+        )
+    )
+    fields.append(
+        Button(f'{Tx("Create")} DOCX')
+    )
+    
+    if path is None:
+        title = book.title
+    else:
+        title = path
+    return (Title(f'{Tx("Create")} DOCX:  {title}'),
+            Header(nav(label=f'{Tx("Create")} DOCX: {title}'), cls="container"),
+            Main(Form(*fields, action="/docx_create", method="post"), cls="container")
             )
 
 @rt("/docx_create")
-def post(title_page_metadata:bool=False,
+def post(path:str=None,
+         title_page_metadata:bool=False,
          page_break_level:int=None,
          footnotes_location:str=None,
          reference_font:str=None,
          indexed_font:str=None):
     book = get_book()
+    if path:
+        path = urllib.parse.unquote(path)
+        item = book[path]
+    else:
+        item = None
     original = copy.deepcopy(book.frontmatter)
     settings = book.frontmatter.setdefault("docx", {})
-    settings["title_page_metadata"] = title_page_metadata
+    if item:
+        settings["title_page_metadata"] = title_page_metadata
     settings["page_break_level"] = page_break_level
     settings["footnotes_location"] = footnotes_location
     settings["reference_font"] = reference_font
     settings["indexed_font"] = indexed_font
-    if book.frontmatter != original:
-        book.index.write()
-    filepath = os.path.join(BOOK_DIRPATH, book.title + ".docx")
-    creator = docx_creator.Creator(book, get_references())
+    if item is None:
+        if book.frontmatter != original:
+            book.index.write()
+        filepath = os.path.join(BOOK_DIRPATH, book.title + ".docx")
+        paras = []
+    else:
+        filepath = os.path.join(BOOK_DIRPATH, item.title + ".docx")
+        paras = [P(f'{Tx("Text")}: {path}')]
+    creator = docx_creator.Creator(book, get_references(), item=item)
     creator.create(filepath)
+    paras.extend([
+        P(f'{Tx("File path")}: {filepath}'),
+        P(f'{Tx("Title page metadata")}: {title_page_metadata}'),
+        P(f'{Tx("Page break level")}: {page_break_level}'),
+        P(f'{Tx("Footnotes location")}: {Tx(footnotes_location.capitalize())}'),
+        P(f'{Tx("Reference font")}: {Tx(reference_font.capitalize())}'),
+        P(f'{Tx("Indexed font")}: {Tx(indexed_font.capitalize())}')]
+    )
     return (Title(f'{Tx("Created")} DOCX'),
             Header(nav(label=f'{Tx("Created")} DOCX'), cls="container"),
-            Main(P(f'{Tx("File path")}: {filepath}'),
-                 P(f'{Tx("Title page metadata")}: {title_page_metadata}'),
-                 P(f'{Tx("Page break level")}: {page_break_level}'),
-                 P(f'{Tx("Footnotes location")}: {Tx(footnotes_location.capitalize())}'),
-                 P(f'{Tx("Reference font")}: {Tx(reference_font.capitalize())}'),
-                 P(f'{Tx("Indexed font")}: {Tx(indexed_font.capitalize())}'),
-                 cls="container")
+            Main(*paras, cls="container")
             )
 
 @rt("/pdf")
