@@ -3,7 +3,7 @@
 from icecream import ic
 
 import copy
-import os.path
+import os
 import string
 import sys
 import urllib
@@ -65,51 +65,12 @@ def get_references(reload=False):
 
 def nav(item=None, label=None, actions=None):
     "The standard navigation bar."
-    entries = [Ul(Li(Img(src="/book.svg")),
+    entries = [Ul(Li(Img(src="/mdbook.svg")),
                   Li(A(get_book().title, href="/")))]
     if item:
-        arrows = []
-        if item.prev:
-            if item.prev.is_section:
-                url = f"/section/{item.prev.urlpath}"
-            else:
-                url = f"/text/{item.prev.urlpath}"
-            arrows.append(A(Img(src="/arrow-left-square.svg",
-                                style="cursor: pointer;"),
-                            item.prev.title,
-                            cls="secondary",
-                            href=url))
-        if item.parent:
-            if arrows:
-                arrows.append(NotStr("&nbsp;"))
-            if item.parent.level == 0: # Book.
-                url = "/"
-            elif item.parent.is_section:
-                url = f"/section/{item.parent.urlpath}"
-            else:
-                url = f"/text/{item.parent.urlpath}"
-            arrows.append(A(Img(src="/arrow-up-square.svg",
-                                style="cursor: pointer;"),
-                            item.parent.title,
-                            cls="secondary",
-                            href=url))
-        if item.next:
-            if arrows:
-                arrows.append(NotStr("&nbsp;"))
-            if item.next.is_section:
-                url = f"/section/{item.next.urlpath}"
-            else:
-                url = f"/text/{item.next.urlpath}"
-            arrows.append(A(Img(src="/arrow-right-square.svg",
-                                style="cursor: pointer;"),
-                            item.next.title,
-                            cls="secondary",
-                            href=url))
         entries.append(Ul(Li(Strong(item.fullname),
                              Br(),
-                             Small(f'{Tx("Status")}: {Tx(item.status)}'),
-                             Br(),
-                             *arrows)))
+                             Small(f'{Tx("Status")}: {Tx(item.status)}'))))
         nav_style = NAV_STYLE_TEMPLATE.format(color=item.status.color)
     elif label:
         entries.append(Ul(Li(label)))
@@ -117,12 +78,38 @@ def nav(item=None, label=None, actions=None):
     else:
         entries.append(Ul(Li(f"Status: {Tx(get_book().status)}")))
         nav_style = NAV_STYLE_TEMPLATE.format(color=get_book().status.color)
-    items = [Li(A(Tx("Title"), href="/title")),
-             Li(A(Tx("References"), href="/references")),
-             Li(A(Tx("Index"), href="/index"))]
+    pages = []
+    if item:
+        if item.prev:
+            if item.prev.is_section:
+                url = f"/section/{item.prev.urlpath}"
+            else:
+                url = f"/text/{item.prev.urlpath}"
+            pages.append(A(NotStr(f"&ShortLeftArrow; {item.prev.title}"), href=url))
+        if item.parent:
+            if item.parent.level == 0: # Book.
+                url = "/"
+            elif item.parent.is_section:
+                url = f"/section/{item.parent.urlpath}"
+            else:
+                url = f"/text/{item.parent.urlpath}"
+            pages.append(A(NotStr(f"&ShortUpArrow; {item.parent.title}"), href=url))
+        if item.next:
+            if item.next.is_section:
+                url = f"/section/{item.next.urlpath}"
+            else:
+                url = f"/text/{item.next.urlpath}"
+            pages.append(A(NotStr(f"&ShortRightArrow; {item.next.title}"), href=url))
+    pages.extend([A(Tx("Title"), href="/title"),
+                  A(Tx("References"), href="/references"),
+                  A(Tx("Index"), href="/index"),
+                  A(Tx("Statuses"), href="/statuses")])
+    items = [Li(Details(Summary(Tx("Pages")),
+                                Ul(*[Li(p) for p in pages]),
+                                cls="dropdown"))]
     if actions:
         items.append(Li(Details(Summary(Tx("Actions")),
-                                Ul(*[Li(c) for c in actions], dir="rtl"),
+                                Ul(*[Li(c) for c in actions]),
                                 cls="dropdown")))
     entries.append(Ul(*items))
     return Nav(*entries, style=nav_style)
@@ -132,7 +119,8 @@ def get():
     "Home page; list of sections and texts."
     book = get_book(reload=True)
     return (Title("mdbook"),
-            Header(nav(actions=[A(f'{Tx("Create")} DOCX', href="/docx"),
+            Header(nav(actions=[A(f'{Tx("Statuses")}', href="/statuses"),
+                                A(f'{Tx("Create")} DOCX', href="/docx"),
                                 A(f'{Tx("Create")} PDF', href="/pdf"),
                                 A(f'{Tx("Create")} {Tx("archive")}', href="/archive"),
                                 ]),
@@ -177,6 +165,8 @@ def view_text(path:str, content:str=None, status:str=None):
     return (Title(text.title),
             Header(nav(item=text,
                        actions=[A(Tx("Edit"), href=f"/edit/{path}"),
+                                A(Tx("Convert to section"), 
+                                  href=f"/convert_to_section/{path}"),
                                 A(f'{Tx("Create")} DOCX', href=f"/docx/{path}")]),
                    cls="container"),
             Main(NotStr(text.html), cls="container")
@@ -194,7 +184,7 @@ def get(path:str):
             status_options.append(Option(Tx(str(status)), selected=True, value=repr(status)))
         else:
             status_options.append(Option(Tx(str(status)), value=repr(status)))
-    return (Title("mdbook"),
+    return (Title(f'{Tx("Edit")} {text.fullname}'),
             Header(nav(label=f'{Tx("Edit")} {text.fullname}'), cls="container"),
             Main(Form(
                 Textarea(NotStr(text.content), name="content", rows="30"),
@@ -219,6 +209,47 @@ def get(path:str):
                    cls="container"),
             Main(toc(section.items), cls="container")
             )
+
+@rt("/convert_to_section/{path:path}")
+def get(path:str):
+    "Get the text title for converting a text into a section."
+    text  = get_book()[path]
+    assert text.is_text
+    return (Title(Tx("Convert to section")),
+            Header(nav(label=Tx("Convert to section")), cls="container"),
+            Main(P(Tx("Text"), ": ", text.fullname),
+                 Form(
+                     Fieldset(
+                         Legend(Tx("New text title"),
+                                Input(type="text", name="title"))
+                     ),
+                     Button("Convert"),
+                     action=f"/convert_to_section/{path}",
+                     method="post"),
+                 cls="container"),
+            )
+
+@rt("/convert_to_section/{path:path}")
+def post(path:str, title:str):
+    "Actually convert the text into a section."
+    text  = get_book()[path]
+    assert text.is_text
+    sectiondirpath = os.path.join(BOOK_DIRPATH, text.fullname)
+    ic(sectiondirpath)
+    os.mkdir(sectiondirpath)
+    os.rename(sectiondirpath + constants.MARKDOWN_EXT,
+              os.path.join(sectiondirpath, title + constants.MARKDOWN_EXT))
+    section = get_book(reload=True)[path]
+    text = section.all_texts[0]
+    return (Title(Tx("Converted to section")),
+            Header(nav(label=Tx("Converted to section")), cls="container"),
+            Main(P(Tx("Section"), ": ", A(section.fullname,
+                                          href=f"/section/{section.urlpath}")),
+                 P(Tx("Text"), ": ", A(text.fullname,
+                                       href=f"/text/{text.urlpath}")),
+                 cls="container"),
+            )
+
 
 @rt("/title")
 def get():
@@ -245,7 +276,7 @@ def get():
 
 @rt("/references")
 def get():
-    "List of references."
+    "Page for list of references."
     references = get_references(reload=True)
     items = []
     for ref in references.items:
@@ -339,7 +370,7 @@ def get():
 
 @rt("/reference/{refid:str}")
 def get(refid:str, reload:str=None):
-    "Reference details."
+    "Page for details of a reference."
     ref = get_references(reload)[refid.replace("_", " ")]
     rows = [Tr(Td(Tx("Identifier")),
                Td(Img(src="/clipboard.svg",
@@ -387,7 +418,7 @@ def get(refid:str, reload:str=None):
 
 @rt("/bibtex", methods=["get", "post"])
 def bibtex(data:str=None):
-    "Add reference using BibTex data."
+    "Page for adding a reference using BibTex data."
     result = []
     if data:
         for entry in bibtexparser.parse_string(data).entries:
@@ -480,6 +511,26 @@ def get():
     return (Title(Tx("Index")),
             Header(nav(label=Tx("Index")), cls="container"),
             Main(Ul(*items), cls="container")
+            )
+
+@rt("/statuses")
+def get():
+    "Page listing the statuses and texts in them."
+    book = get_book()
+    rows = [Tr(Th(Tx("Status"), Th(Tx("Texts"))))]
+    for status in constants.STATUSES:
+        texts = []
+        for t in book.all_texts:
+            if t.status == status:
+                if texts:
+                    texts.append(Br())
+                texts.append(A(f"{'.'.join([str(o+1) for o in t.ordinal])}. {t.title}",
+                               href=f"/text/{t.urlpath}"))
+        rows.append(Tr(Td(Tx(str(status)), valign="top"),
+                       Td(*texts)))
+    return (Title(Tx("Statuses")),
+            Header(nav(label=Tx("Statuses")), cls="container"),
+            Main(Table(*rows), cls="container")
             )
 
 @rt("/docx")
@@ -596,6 +647,7 @@ def post(path:str=None,
          footnotes_location:str=None,
          reference_font:str=None,
          indexed_font:str=None):
+    "Actually create the DOCX file."
     book = get_book()
     if path:
         path = urllib.parse.unquote(path)
@@ -635,6 +687,7 @@ def post(path:str=None,
 
 @rt("/pdf")
 def get():
+    "Get the parameters for outputting PDF file of the whole book."
     settings = get_book().frontmatter.setdefault("pdf", {})
     title_page_metadata = settings.get("title_page_metadata", True)
     page_break_level = settings.get("page_break_level", 1)
@@ -721,6 +774,7 @@ def post(title_page_metadata:bool=False,
          contents_level:int=None,
          footnotes_location:str=None,
          indexed_xref:str=None):
+    "Actually create the PDF file."
     book = get_book()
     original = copy.deepcopy(book.frontmatter)
     settings = book.frontmatter.setdefault("pdf", {})
@@ -748,7 +802,7 @@ def post(title_page_metadata:bool=False,
 
 @rt("/archive")
 def get():
-    "Create an archive file of the book."
+    "Create an archive file of the book and put into the archive directory."
     filepath, number = get_book().archive()
     return (Title(f'{Tx("Created")} {Tx("archive")}'),
             Header(nav(label=f'{Tx("Created")} {Tx("archive")}'), cls="container"),
