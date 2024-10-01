@@ -11,6 +11,7 @@ proofs,korrektur
 final,slutgiltig
 title,titel
 subtitle,undertitel
+new title,ny titel
 index,index
 details,detaljer
 references,referenser
@@ -51,7 +52,6 @@ italic,kursiv
 bold,fetstil
 underline,understruken
 write,skriv
-written,skrivit
 contents pages,innehållsförteckning
 display,visa
 true,sant
@@ -68,4 +68,6 @@ metadata on title page,metadata på titelsidan
 statuses,statuslista
 section,sektion
 texts,texter
-convert to section,omforma till sektion
+make section,skapa sektion
+make,skapa
+save,spara

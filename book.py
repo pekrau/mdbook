@@ -17,6 +17,13 @@ import markdown
 
 FRONTMATTER = re.compile(r"^---([\n\r].*?[\n\r])---[\n\r](.*)$", re.DOTALL)
 
+def write_frontmatter(outfile, frontmatter):
+    if not frontmatter:
+        return
+    outfile.write("---\n")
+    outfile.write(yaml.dump(frontmatter, allow_unicode=True))
+    outfile.write("---\n")
+
 
 class Book:
     "Root container for Markdown book texts in files and directories."
@@ -249,7 +256,7 @@ class Book:
         if os.path.exists(dirpath) or os.path.exists(filepath):
             raise ValueError(f"The title is already in use within '{section.fullname}'.")
         with open(filepath, "w") as outfile:
-            pass
+            write_frontmatter(outfile, {"status": repr(constants.STATUSES[0])})
         new = Text(self, section, title)
         if anchor is None:
             section.items.append(new)
@@ -282,6 +289,11 @@ class Book:
             section.items.append(new)
         self.lookup[new.fullname] = new
         return new
+
+    def write_index(self):
+        "Write the updated 'index.md' file."
+        self.frontmatter["items"] = self.get_items_order(self)
+        self.index.write()
 
     def archive(self):
         """Write all files for texts to a gzipped tar file.
@@ -371,11 +383,11 @@ class Item:
 
     @property
     def is_text(self):
-        return isinstance(self, Text)
+        return False
 
     @property
     def is_section(self):
-        return isinstance(self, Section)
+        return False
 
     @property
     def index(self):
@@ -464,26 +476,43 @@ class Item:
             unit = "secs"
         return f"{value:.0f} {unit}"
 
-    def retitle(self, newtitle):
-        """Retitle the item.
+    def new_title(self, new):
+        """New title the item.
         Raise ValueError if any problem.
         """
-        if newtitle == self.title:
+        if new == self.title:
             return
-        if not newtitle:
+        if not new:
             raise ValueError("Empty string given for title.")
-        check_invalid_characters(newtitle)
-        newabspath = os.path.join(self.parent.abspath, self.filename(newtitle))
+        check_invalid_characters(new)
+        newabspath = os.path.join(self.parent.abspath, self.filename(new))
         if os.path.exists(newabspath):
             raise ValueError("The title is already in use.")
         items = [self] + self.all_items
         for item in items:
             self.book.lookup.pop(item.fullname)
         oldabspath = self.abspath
-        self.title = newtitle
+        self.title = new
         os.rename(oldabspath, self.abspath)
         for item in items:
             self.book.lookup[item.fullname] = item
+        self.book.write_index()
+
+    def up(self):
+        "Move this item up in its list of siblings."
+        index = self.index
+        if index == 0:
+            self.parent.items.append(self.parent.items.pop(index))
+        else:
+            self.parent.items.insert(index - 1, self.parent.items.pop(index))
+
+    def down(self):
+        "Move this item down in its list of siblings."
+        index = self.index
+        if index == len(self.parent.items) - 1:
+            self.parent.items.insert(0, self.parent.items.pop(index))
+        else:
+            self.parent.items.insert(index+1, self.parent.items.pop(index))
 
     def check_integrity(self):
         assert isinstance(self.book, Book), self
@@ -493,7 +522,7 @@ class Item:
 
 
 class Section(Item):
-    "Directory."
+    "Directory containing other directories and Markdown text files"
 
     def __init__(self, book, parent, title):
         self.items = []
@@ -502,6 +531,10 @@ class Section(Item):
     def __len__(self):
         "Number of characters in Markdown content in all texts in the sections."
         return sum([len(i) for i in self.all_texts])
+
+    @property
+    def is_section(self):
+        return True
 
     def read(self):
         for itemtitle in sorted(os.listdir(self.abspath)):
@@ -546,9 +579,9 @@ class Section(Item):
             status = min(status, item.status)
         return status
 
-    def filename(self, newtitle=None):
-        if newtitle:
-            return newtitle
+    def filename(self, new=None):
+        if new:
+            return new
         else:
             return self.title
 
@@ -574,6 +607,10 @@ class Text(Item):
 
     def __setitem__(self, key, value):
         self.frontmatter[key] = value
+
+    @property
+    def is_text(self):
+        return True
 
     def get(self, key, default=None):
         try:
@@ -602,13 +639,9 @@ class Text(Item):
         - Do not write out multiple empty lines after another.
         """
         with open(self.abspath, "w") as outfile:
-            if self.frontmatter:
-                outfile.write("---\n")
-                outfile.write(yaml.dump(self.frontmatter, allow_unicode=True))
-                outfile.write("---\n")
-            if content is None:
-                outfile.write(self.content or "")
-            else:
+            write_frontmatter(outfile, self.frontmatter)
+            if content is not None:
+                lines = []
                 prev_empty = False
                 for line in content.split("\n"):
                     line = line.rstrip()
@@ -616,8 +649,10 @@ class Text(Item):
                     if empty and prev_empty:
                         continue
                     prev_empty = empty
-                    outfile.write(line)
-                    outfile.write("\n")
+                    lines.append(line)
+                    lines.append("\n")
+                self.content = "".join(lines)
+            outfile.write(self.content)
 
     @property
     def all_items(self):
@@ -647,11 +682,29 @@ class Text(Item):
             raise ValueError("Invalid status instance.")
         self.frontmatter["status"] = repr(status)
 
-    def filename(self, newtitle=None):
-        if newtitle:
-            return newtitle + constants.MARKDOWN_EXT
+    def filename(self, new=None):
+        if new:
+            return new + constants.MARKDOWN_EXT
         else:
             return self.title + constants.MARKDOWN_EXT
+
+    def make_section(self):
+        """Make a section with the title of this text and
+        move this text into the section.
+        """
+        oldtextpath = self.abspath
+        sectionpath = os.path.splitext(oldtextpath)[0]
+        os.mkdir(sectionpath)
+        os.rename(oldtextpath, os.path.join(sectionpath, self.filename()))
+        section = Section(self.book, self.parent, self.title)
+        section.items[0] = self
+        self.parent.items[self.index] = section
+        self.book.lookup[section.fullname] = section
+        self.parent = section
+        self.book.lookup[self.fullname] = self
+        self.book.frontmatter["items"] = self.book.get_items_order(self.book)
+        self.book.index.write()
+        return section
 
     def check_integrity(self):
         super().check_integrity()

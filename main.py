@@ -34,33 +34,27 @@ else:
 app, rt = fast_app(live=True, static_path=constants.SOURCE_DIRPATH)
 
 
-def get_book(reload=False):
+def get_book(reread=False):
     "Get the book contents, cached."
     global _book
-    if reload:
-        try:
-            del _book
-        except NameError:
-            pass
     try:
-        return _book
+        book = _book
+        if reread:
+            book.read()
     except NameError:
         _book = Book(BOOK_DIRPATH)
-        return _book
+    return _book
 
-def get_references(reload=False):
+def get_references(reread=False):
     "Get the references book, cached."
     global _references
-    if reload:
-        try:
-            del _references
-        except NameError:
-            pass
     try:
-        return _references
+        references = _references
+        if reread:
+            references.read()
     except NameError:
         _references = Book(constants.REFERENCES_DIRPATH)
-        return _references
+    return _references
 
 
 def nav(item=None, label=None, actions=None):
@@ -80,12 +74,6 @@ def nav(item=None, label=None, actions=None):
         nav_style = NAV_STYLE_TEMPLATE.format(color=get_book().status.color)
     pages = []
     if item:
-        if item.prev:
-            if item.prev.is_section:
-                url = f"/section/{item.prev.urlpath}"
-            else:
-                url = f"/text/{item.prev.urlpath}"
-            pages.append(A(NotStr(f"&ShortLeftArrow; {item.prev.title}"), href=url))
         if item.parent:
             if item.parent.level == 0: # Book.
                 url = "/"
@@ -94,6 +82,12 @@ def nav(item=None, label=None, actions=None):
             else:
                 url = f"/text/{item.parent.urlpath}"
             pages.append(A(NotStr(f"&ShortUpArrow; {item.parent.title}"), href=url))
+        if item.prev:
+            if item.prev.is_section:
+                url = f"/section/{item.prev.urlpath}"
+            else:
+                url = f"/text/{item.prev.urlpath}"
+            pages.append(A(NotStr(f"&ShortLeftArrow; {item.prev.title}"), href=url))
         if item.next:
             if item.next.is_section:
                 url = f"/section/{item.next.urlpath}"
@@ -116,8 +110,8 @@ def nav(item=None, label=None, actions=None):
 
 @rt("/")
 def get():
-    "Home page; list of sections and texts."
-    book = get_book(reload=True)
+    "Book home page; list of sections and texts."
+    book = get_book(reread=True)
     return (Title("mdbook"),
             Header(nav(actions=[A(f'{Tx("Statuses")}', href="/statuses"),
                                 A(f'{Tx("Create")} DOCX', href="/docx"),
@@ -125,48 +119,68 @@ def get():
                                 A(f'{Tx("Create")} {Tx("archive")}', href="/archive"),
                                 ]),
                    cls="container"),
-            Main(toc(book.items), cls="container")
+            Main(toc(book.items, show_arrows=True), cls="container")
             )
 
-def toc(items):
+def toc(items, show_arrows=False):
     "Recursive lists of sections and texts."
     parts = []
     for item in items:
         n_words = f"{utils.thousands(item.n_words)}"
         n_characters = f"{utils.thousands(len(item))}"
-        length = f'{n_words} {Tx("words")}; {n_characters} {Tx("characters")}'
+        data = f'{Tx(item.status)}; {n_words} {Tx("words")}; {n_characters} {Tx("characters")}'
+        if show_arrows:
+            arrows = [NotStr("&nbsp;"),
+                      A(NotStr("&ShortUpArrow;"), href=f"/up/{item.urlpath}"),
+                      NotStr("&nbsp;"),
+                      A(NotStr("&ShortDownArrow;"), href=f"/down/{item.urlpath}")]
+        else:
+            arrows = []
         if item.is_section:
             parts.append(Li(A(str(item),
                               style=f"color: {item.status.color};",
                               href=f"/section/{item.urlpath}"),
                             NotStr("&nbsp;&nbsp;&nbsp;"),
-                            Small(length, style="color: silver;"),
+                            Small(data, style="color: silver;"),
+                            *arrows,
                             style=f"color: {item.status.color};",))
-            parts.append(toc(item.items))
+            parts.append(toc(item.items, show_arrows=show_arrows))
         else:
             parts.append(Li(A(str(item),
                               style=f"color: {item.status.color};",
                               href=f"/text/{item.urlpath}"),
                             NotStr("&nbsp;&nbsp;&nbsp;"),
-                            Small(length, style="color: silver;")))
+                            Small(data, style="color: silver;"),
+                            *arrows))
     return Ol(*parts)
 
-@rt("/text/{path:path}", methods=["get", "post"])
-def view_text(path:str, content:str=None, status:str=None):
-    "View the text, or edit and save."
+@rt("/up/{path:path}")
+def get(path:str):
+    "Move item up in its sibling list."
+    book = get_book()
+    book[path].up()
+    book.write_index()
+    return Redirect("/")
+
+@rt("/down/{path:path}")
+def get(path:str):
+    "Move item down in its sibling list."
+    book = get_book()
+    book[path].down()
+    book.write_index()
+    return Redirect("/")
+
+@rt("/text/{path:path}")
+def get(path:str):
+    "View the text, or edit title, content or status and save."
     text = get_book()[path]
-    text.read()
-    if content is not None:
-        text.write(content=content)
-    if status is not None:
-        text.status = status
-        text.write()
+    assert text.is_text
     text.read()
     return (Title(text.title),
             Header(nav(item=text,
                        actions=[A(Tx("Edit"), href=f"/edit/{path}"),
-                                A(Tx("Convert to section"), 
-                                  href=f"/convert_to_section/{path}"),
+                                A(Tx("Make section"), 
+                                  href=f"/make_section/{path}"),
                                 A(f'{Tx("Create")} DOCX', href=f"/docx/{path}")]),
                    cls="container"),
             Main(NotStr(text.html), cls="container")
@@ -174,29 +188,47 @@ def view_text(path:str, content:str=None, status:str=None):
 
 @rt("/edit/{path:path}")
 def get(path:str):
-    "Edit the text."
-    text = get_book()[path]
-    assert text.is_text
-    text.read()
-    status_options = []
-    for status in constants.STATUSES:
-        if text.status == status:
-            status_options.append(Option(Tx(str(status)), selected=True, value=repr(status)))
-        else:
-            status_options.append(Option(Tx(str(status)), value=repr(status)))
-    return (Title(f'{Tx("Edit")} {text.fullname}'),
-            Header(nav(label=f'{Tx("Edit")} {text.fullname}'), cls="container"),
-            Main(Form(
-                Textarea(NotStr(text.content), name="content", rows="30"),
-                Fieldset(
-                    Legend(Tx("Status"),
-                           Select(*status_options, name="status", required=True))
-                ),
-                Button("Save"),
-                action=f"/text/{path}",
-                method="post"),
+    "Edit the item (section or text)."
+    item = get_book()[path]
+    fields = [
+        Fieldset(
+            Label(Tx("New title")),
+                  Input(name="title", value=item.title, required=True))
+    ]
+    if item.is_text:
+        item.read()
+        status_options = []
+        for status in constants.STATUSES:
+            if item.status == status:
+                status_options.append(Option(Tx(str(status)),
+                                             selected=True, 
+                                             value=repr(status)))
+            else:
+                status_options.append(Option(Tx(str(status)), value=repr(status)))
+        fields.append(
+            Fieldset(Label(Tx("Status"),
+                           Select(*status_options, name="status", required=True)))
+        )
+        fields.append(Textarea(NotStr(item.content), name="content", rows="30"))
+    fields.append(Button("Save"))
+    return (Title(f'{Tx("Edit")} {item.fullname}'),
+            Header(nav(label=f'{Tx("Edit")} {item.fullname}'), cls="container"),
+            Main(Form(*fields, action=f"/change/{path}", method="post"),
                  cls="container"),
             )
+
+@rt("/change/{path:path}")
+def post(path:str, title:str, content:str=None, status:str=None):
+    "Change the title of the section, or content and status of the text and save."
+    item = get_book()[path]
+    item.new_title(title)
+    if item.is_text:
+        if status is not None:
+            item.status = status
+        item.write(content=content)
+        return Redirect(f"/text/{item.urlpath}")
+    else:
+        return Redirect(f"/section/{item.urlpath}")
 
 @rt("/section/{path:path}")
 def get(path:str):
@@ -205,51 +237,38 @@ def get(path:str):
     assert section.is_section
     return (Title(section.title),
             Header(nav(item=section,
-                       actions=[A(f'{Tx("Create")} DOCX', href=f"/docx/{path}")]),
+                       actions=[A(Tx("Edit"), href=f"/edit/{path}"),
+                                A(f'{Tx("Create")} DOCX', href=f"/docx/{path}")]),
                    cls="container"),
             Main(toc(section.items), cls="container")
             )
 
-@rt("/convert_to_section/{path:path}")
+@rt("/make_section/{path:path}")
 def get(path:str):
-    "Get the text title for converting a text into a section."
+    "Make a new section and text with a new title out of this text."
     text  = get_book()[path]
     assert text.is_text
-    return (Title(Tx("Convert to section")),
-            Header(nav(label=Tx("Convert to section")), cls="container"),
+    return (Title(Tx("Make section")),
+            Header(nav(label=Tx("Make section")), cls="container"),
             Main(P(Tx("Text"), ": ", text.fullname),
-                 Form(
-                     Fieldset(
-                         Legend(Tx("New text title"),
-                                Input(type="text", name="title"))
-                     ),
-                     Button("Convert"),
-                     action=f"/convert_to_section/{path}",
-                     method="post"),
+                 Form(Button(Tx("Make")),
+                      action=f"/make_section/{path}",
+                      method="post"),
                  cls="container"),
             )
 
-@rt("/convert_to_section/{path:path}")
-def post(path:str, title:str):
-    "Actually convert the text into a section."
+@rt("/make_section/{path:path}")
+def post(path:str):
+    "Convert the text into a new section."
     text  = get_book()[path]
     assert text.is_text
-    sectiondirpath = os.path.join(BOOK_DIRPATH, text.fullname)
-    ic(sectiondirpath)
-    os.mkdir(sectiondirpath)
-    os.rename(sectiondirpath + constants.MARKDOWN_EXT,
-              os.path.join(sectiondirpath, title + constants.MARKDOWN_EXT))
-    section = get_book(reload=True)[path]
-    text = section.all_texts[0]
-    return (Title(Tx("Converted to section")),
-            Header(nav(label=Tx("Converted to section")), cls="container"),
-            Main(P(Tx("Section"), ": ", A(section.fullname,
-                                          href=f"/section/{section.urlpath}")),
-                 P(Tx("Text"), ": ", A(text.fullname,
-                                       href=f"/text/{text.urlpath}")),
-                 cls="container"),
-            )
+    section = text.make_section()
+    assert section.is_section
+    return Redirect(f"/section/{section.urlpath}")
 
+@rt("/create_text/{path:path}")
+def get(path:str):
+    "Create a new text in the section."
 
 @rt("/title")
 def get():
@@ -277,7 +296,7 @@ def get():
 @rt("/references")
 def get():
     "Page for list of references."
-    references = get_references(reload=True)
+    references = get_references(reread=True)
     items = []
     for ref in references.items:
         parts = [Img(src="/clipboard.svg",
@@ -369,9 +388,9 @@ def get():
             )
 
 @rt("/reference/{refid:str}")
-def get(refid:str, reload:str=None):
+def get(refid:str):
     "Page for details of a reference."
-    ref = get_references(reload)[refid.replace("_", " ")]
+    ref = get_references()[refid.replace("_", " ")]
     rows = [Tr(Td(Tx("Identifier")),
                Td(Img(src="/clipboard.svg",
                      title="Refid to clipboard",
@@ -408,8 +427,6 @@ def get(refid:str, reload:str=None):
                                   href="#",
                                   cls="to_clipboard", 
                                   data_clipboard_text=f'[@{ref["id"]}]'),
-                                A(Tx("Reload"), 
-                                  href=f"/reference/{refid}?reload=yes"),
                                 ]),
                    cls="container"),
             Main(Table(*rows),
@@ -475,7 +492,7 @@ def bibtex(data:str=None):
                 reference.write("**Abstract**\n\n" + abstract)
             else:
                 reference.write()
-            get_references(reload=True)
+            get_references(reread=True)
             result.append(reference)
         return (Title("Added reference(s)"),
                 Header(nav(label="Added reference(s)"), cls="container"),
