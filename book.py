@@ -17,6 +17,14 @@ import markdown
 
 FRONTMATTER = re.compile(r"^---([\n\r].*?[\n\r])---[\n\r](.*)$", re.DOTALL)
 
+def read_frontmatter(content):
+    "Return the frontmatter as dictionary and the remaining content."
+    match = FRONTMATTER.match(content)
+    if match:
+        return yaml.safe_load(match.group(1)), content[match.start(2) :]
+    else:
+        return {}, content
+
 def write_frontmatter(outfile, frontmatter):
     if not frontmatter:
         return
@@ -55,7 +63,7 @@ class Book:
             self.index = Text(self, self, "index.md")
         except OSError:
             with open(os.path.join(self.absdirpath, "index.md"), "w") as outfile:
-                pass
+                write_frontmatter(outfile, {})
         self.frontmatter = self.index.frontmatter
 
         self.items = []
@@ -73,6 +81,7 @@ class Book:
             itempath = os.path.join(self.absdirpath, itemname)
             if os.path.isdir(itempath):
                 self.items.append(Section(self, self, itemname))
+
             elif itemname.endswith(constants.MARKDOWN_EXT):
                 item = Text(self, self, itemname)
                 if not item.get("exclude"):
@@ -177,6 +186,10 @@ class Book:
         return False
 
     @property
+    def id(self):
+        return os.path.basename(self.absdirpath)
+
+    @property
     def title(self):
         return self.frontmatter.get("title") or os.path.basename(self.absdirpath)
 
@@ -258,22 +271,22 @@ class Book:
         with open(filepath, "w") as outfile:
             write_frontmatter(outfile, {"status": repr(constants.STATUSES[0])})
         new = Text(self, section, title)
-        if anchor is None:
-            section.items.append(new)
-        elif anchor.is_text:
+        if anchor is not None and anchor.is_text:
             section.items.insert(anchor.index + 1, new)
         else:
             section.items.append(new)
         self.lookup[new.fullname] = new
         return new
 
-    def create_section(self, anchor, title):
+    def create_section(self, title, anchor=None):
         """Create a new empty section inside the anchor if it is a section,
         or after anchor if it is a text.
         Raise ValueError if there is a problem.
         """
         check_invalid_characters(title)
-        if anchor.is_text:
+        if anchor is None:
+            section = self
+        elif anchor.is_text:
             section = anchor.parent
         else:
             section = anchor
@@ -283,7 +296,7 @@ class Book:
             raise ValueError(f"The title is already in use within '{section.fullname}'.")
         os.mkdir(dirpath)
         new = Section(self, section, title)
-        if anchor.is_text:
+        if anchor is not None and anchor.is_text:
             section.items.insert(anchor.index + 1, new)
         else:
             section.items.append(new)
@@ -621,13 +634,8 @@ class Text(Item):
     def read(self):
         "Read the frontmatter (if any) and content from the Markdown file."
         with open(self.abspath) as infile:
-            self.content = infile.read()
-        m = FRONTMATTER.match(self.content)
-        if m:
-            self.frontmatter = yaml.safe_load(m.group(1))
-            self.content = self.content[m.start(2) :]
-        else:
-            self.frontmatter = {}
+            content = infile.read()
+        self.frontmatter, self.content = read_frontmatter(content)
         self.html = markdown.convert_to_html(self.content)
         self.ast = markdown.convert_to_ast(self.content)
 
@@ -688,10 +696,8 @@ class Text(Item):
         else:
             return self.title + constants.MARKDOWN_EXT
 
-    def make_section(self):
-        """Make a section with the title of this text and
-        move this text into the section.
-        """
+    def to_section(self):
+        "Convert to section with the title of this text and move this text into it."
         oldtextpath = self.abspath
         sectionpath = os.path.splitext(oldtextpath)[0]
         os.mkdir(sectionpath)

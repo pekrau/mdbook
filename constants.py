@@ -3,17 +3,15 @@
 import functools
 import os.path
 
-VERSION = (1, 6, 0)
+VERSION = (2, 0, 0)
 __version__ = ".".join([str(n) for n in VERSION])
 
 
 DEFAULT_LANGUAGES = ("sv-SE", "en-GB", "en-US")
 
 MARKDOWN_EXT = ".md"
-SETTINGS_FILENAME = "settings.yaml"
-TEXTS_DIRPATH = "/home/pekrau/Dropbox/texter"
-REFERENCES_DIRPATH = os.path.join(TEXTS_DIRPATH, "references")
-ARCHIVE_DIRPATH = os.path.join(TEXTS_DIRPATH, "archive")
+REFERENCES_DIR = "references"
+ARCHIVE_DIR = "archive"
 SOURCE_DIRPATH = os.path.dirname(__file__)
 TRANSLATIONS_FILEPATH = os.path.join(SOURCE_DIRPATH, "translations.csv")
 

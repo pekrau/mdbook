@@ -67,7 +67,9 @@ number of files,antal filer
 metadata on title page,metadata på titelsidan
 statuses,statuslista
 section,sektion
+text,text
 texts,texter
-make section,skapa sektion
+convert to section,omforma till sektion
 make,skapa
 save,spara
+source,källa
