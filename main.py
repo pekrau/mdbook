@@ -111,7 +111,7 @@ def nav(book=None, item=None, title=None, actions=None):
     items = []
     if len(pages) == 1:
         if title != Tx("References"):
-            items.append(Ul(Li(pages[0])))
+            items.append(Ul(Li(pages[0], NotStr("&nbsp;"))))
     else:
         items.append(Li(Details(Summary(Tx("Pages")),
                                 Ul(*[Li(p) for p in pages]),
@@ -125,7 +125,7 @@ def nav(book=None, item=None, title=None, actions=None):
     return Nav(*entries, style=nav_style)
 
 @rt("/")
-def get():
+def home():
     "Home page; list of books."
     books = []
     for bid in os.listdir(MDBOOKS):
@@ -157,7 +157,7 @@ def get():
             )
 
 @rt("/references")
-def get():
+def references():
     "Page for list of references."
     references = get_references()
     references.read()
@@ -396,7 +396,7 @@ def get(bid:str):
                                 A(f'{Tx("Create")} {Tx("section")}',
                                   href=f"/{bid}/create_section"),
                                 A(f'{Tx("Create")} {Tx("text")}',
-                                  href="f/{bid}/create_text"),
+                                  href=f"/{bid}/create_text"),
                                 A(f'{Tx("Create")} DOCX', href=f"/{bid}/docx"),
                                 A(f'{Tx("Create")} PDF', href=f"/{bid}/pdf"),
                                 A(f'{Tx("Create")} {Tx("archive")}', 
@@ -619,7 +619,8 @@ def get(bid:str):
                       f' {utils.thousands(len(book))} {Tx("characters")}.'))
     segments.append(NotStr(book.index.html))
     return (Title(Tx("Title")),
-            Header(nav(title=Tx("Title"),
+            Header(nav(book=book,
+                       title=Tx("Title"),
                        actions=[A(f'{Tx("Create")} DOCX', href="/{bid}/docx"),
                                 A(f'{Tx("Create")} PDF', href="/{bid}/pdf"),
                                 A(f'{Tx("Create")} {Tx("archive")}', href="/archive"),
@@ -642,7 +643,7 @@ def get(bid:str):
                            href=f"/{bid}/text/{text.fullname}"))
         items.append(Li(key, Br(), Small(*links)))
     return (Title(Tx("Index")),
-            Header(nav(title=Tx("Index")), cls="container"),
+            Header(nav(book=book, title=Tx("Index")), cls="container"),
             Main(Ul(*items), cls="container")
             )
 
@@ -662,7 +663,7 @@ def get(bid:str):
         rows.append(Tr(Td(Tx(str(status)), valign="top"),
                        Td(*texts)))
     return (Title(Tx("Statuses")),
-            Header(nav(title=Tx("Statuses")), cls="container"),
+            Header(nav(book=book, title=Tx("Statuses")), cls="container"),
             Main(Table(*rows), cls="container")
             )
 
