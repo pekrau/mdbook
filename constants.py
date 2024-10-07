@@ -3,7 +3,7 @@
 import functools
 import os.path
 
-VERSION = (2, 0, 1)
+VERSION = (2, 1, 0)
 __version__ = ".".join([str(n) for n in VERSION])
 
 
@@ -11,8 +11,8 @@ DEFAULT_LANGUAGES = ("sv-SE", "en-GB", "en-US")
 
 MARKDOWN_EXT = ".md"
 REFERENCES_DIR = "references"
-ARCHIVE_DIR = "archive"
 SOURCE_DIRPATH = os.path.dirname(__file__)
+FONT_DIRPATH = os.path.join(SOURCE_DIRPATH, "freefont")
 TRANSLATIONS_FILEPATH = os.path.join(SOURCE_DIRPATH, "translations.csv")
 
 DATETIME_ISO_FORMAT = "%Y-%m-%d %H:%M:%S"
@@ -169,9 +169,12 @@ REFERENCE_LINKS = dict(
     isbn=("ISBN", "https://isbnsearch.org/isbn/{value}"),
 )
 
-FONTDIR = "/usr/share/fonts/truetype/freefont"
+DOCX_MIMETYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+PDF_MIMETYPE = "application/pdf"
+GZIP_MIMETYPE = "application/gzip"
 
 PDF_HREF_COLOR = (20, 20, 255)
+PDF_LIST_INDENT = 30
 PDF_THEMATIC_BREAK_INDENT = 100
 
 PDF_PAGE_NUMBER = "page number"

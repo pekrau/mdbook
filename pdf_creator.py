@@ -33,16 +33,18 @@ class Creator:
         self.footnotes_location = settings["footnotes_location"]
         self.indexed_xref = settings["indexed_xref"]
 
-    def create(self, filepath):
-        "Create the PDF file."
+    def create(self):
+        "Create the PDF document; return a BytesIO instance containing it."
         if self.contents_pages:
             for contents_pages in range(1, 20):
-                self.create_attempt(contents_pages, filepath)
-                return
+                try:
+                    return self.create_attempt(contents_pages)
+                except fpdf.errors.FPDFException:
+                    pass
         # If 20 isn't enough, give up and skip the contents page.
-        self.create_attempt(0, filepath)
+        return self.create_attempt(0)
 
-    def create_attempt(self, contents_pages, filepath):
+    def create_attempt(self, contents_pages):
         "Attempt at writing PDF given the number of content pages to use."
         self.list_stack = []
         # Key: fullname; value: dict(label, number, ast_children)
@@ -63,46 +65,46 @@ class Creator:
         self.pdf.set_creation_date(datetime.datetime.now())
 
         self.pdf.add_font(
-            "FreeSans", style="", fname=os.path.join(constants.FONTDIR, "FreeSans.ttf")
+            "FreeSans", style="", fname=os.path.join(constants.FONT_DIRPATH, "FreeSans.ttf")
         )
         self.pdf.add_font(
-            "FreeSans", style="B", fname=os.path.join(constants.FONTDIR, "FreeSansBold.ttf")
+            "FreeSans", style="B", fname=os.path.join(constants.FONT_DIRPATH, "FreeSansBold.ttf")
         )
         self.pdf.add_font(
-            "FreeSans", style="I", fname=os.path.join(constants.FONTDIR, "FreeSansOblique.ttf")
+            "FreeSans", style="I", fname=os.path.join(constants.FONT_DIRPATH, "FreeSansOblique.ttf")
         )
         self.pdf.add_font(
             "FreeSans",
             style="BI",
-            fname=os.path.join(constants.FONTDIR, "FreeSansBoldOblique.ttf"),
+            fname=os.path.join(constants.FONT_DIRPATH, "FreeSansBoldOblique.ttf"),
         )
         self.pdf.add_font(
-            "FreeSerif", style="", fname=os.path.join(constants.FONTDIR, "FreeSerif.ttf")
+            "FreeSerif", style="", fname=os.path.join(constants.FONT_DIRPATH, "FreeSerif.ttf")
         )
         self.pdf.add_font(
-            "FreeSerif", style="B", fname=os.path.join(constants.FONTDIR, "FreeSerifBold.ttf")
+            "FreeSerif", style="B", fname=os.path.join(constants.FONT_DIRPATH, "FreeSerifBold.ttf")
         )
         self.pdf.add_font(
-            "FreeSerif", style="I", fname=os.path.join(constants.FONTDIR, "FreeSerifItalic.ttf")
+            "FreeSerif", style="I", fname=os.path.join(constants.FONT_DIRPATH, "FreeSerifItalic.ttf")
         )
         self.pdf.add_font(
             "FreeSerif",
             style="BI",
-            fname=os.path.join(constants.FONTDIR, "FreeSerifBoldItalic.ttf"),
+            fname=os.path.join(constants.FONT_DIRPATH, "FreeSerifBoldItalic.ttf"),
         )
         self.pdf.add_font(
-            "FreeMono", style="", fname=os.path.join(constants.FONTDIR, "FreeMono.ttf")
+            "FreeMono", style="", fname=os.path.join(constants.FONT_DIRPATH, "FreeMono.ttf")
         )
         self.pdf.add_font(
-            "FreeMono", style="B", fname=os.path.join(constants.FONTDIR, "FreeMonoBold.ttf")
+            "FreeMono", style="B", fname=os.path.join(constants.FONT_DIRPATH, "FreeMonoBold.ttf")
         )
         self.pdf.add_font(
-            "FreeMono", style="I", fname=os.path.join(constants.FONTDIR, "FreeMonoOblique.ttf")
+            "FreeMono", style="I", fname=os.path.join(constants.FONT_DIRPATH, "FreeMonoOblique.ttf")
         )
         self.pdf.add_font(
             "FreeMono",
             style="BI",
-            fname=os.path.join(constants.FONTDIR, "FreeMonoBoldOblique.ttf"),
+            fname=os.path.join(constants.FONT_DIRPATH, "FreeMonoBoldOblique.ttf"),
         )
 
         self.state = State(self.pdf)
@@ -129,7 +131,9 @@ class Creator:
         self.write_indexed()
 
         # This may fail if the number of content pages is wrong.
-        self.pdf.output(filepath)
+        output = io.BytesIO()
+        self.pdf.output(output)
+        return output
 
     def write_title_page(self):
         self.pdf.add_page()
@@ -443,6 +447,11 @@ class Creator:
         for child in ast["children"]:
             self.render(child)
 
+    def render_heading(self, ast):
+        # XXX Limited implementation; just handles one child of raw text.
+        text = ast["children"][0]["children"]
+        self.write_heading(text, ast["level"])
+
     def render_paragraph(self, ast):
         for child in ast["children"]:
             self.render(child)
@@ -586,7 +595,7 @@ class Creator:
         else:
             self.state.write("- ")
         self.state.reset()
-        self.state.set(left_indent=data["depth"] * constants.LIST_INDENT)
+        self.state.set(left_indent=data["depth"] * constants.PDF_LIST_INDENT)
         for child in ast["children"]:
             self.render(child)
         self.state.reset()

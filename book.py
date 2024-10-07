@@ -4,6 +4,7 @@ from icecream import ic
 
 import copy
 import datetime
+import io
 import os
 import re
 import tarfile
@@ -310,23 +311,15 @@ class Book:
 
     def archive(self):
         """Write all files for texts to a gzipped tar file.
-        Return the archive filepath and the number of items written.
+        Return the BytesIO instance containing the file.
         Raise an OSError if any error.
         """
-        filename = (
-            time.strftime(constants.DATETIME_ISO_FORMAT, time.localtime()) + ".tgz"
-        )
-        archivedirpath = os.path.join(constants.ARCHIVE_DIRPATH, os.path.basename(self.absdirpath))
-        if not os.path.exists(archivedirpath):
-            os.mkdir(archivedirpath)
-        archivefilepath = os.path.join(archivedirpath, filename)
-        with tarfile.open(archivefilepath, "x:gz") as archivefile:
+        output = io.BytesIO()
+        with tarfile.open(fileobj=output, mode="w:gz") as archivefile:
             archivefile.add(self.index.abspath, arcname="index.md")
             for item in self.items:
                 archivefile.add(item.abspath, arcname=item.filename(), recursive=True)
-        with tarfile.open(archivefilepath) as archivefile:
-            result = len(archivefile.getnames())
-        return archivefilepath, result
+        return output
 
     def check_integrity(self):
         assert os.path.exists(self.abspath), (self, self.abspath)

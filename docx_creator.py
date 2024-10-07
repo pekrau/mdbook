@@ -4,6 +4,7 @@ from icecream import ic
 
 import copy
 import datetime
+import io
 import os
 
 import docx
@@ -33,8 +34,8 @@ class Creator:
         self.indexed_font = settings.get("indexed_font")
         self.reference_font = settings.get("reference_font")
 
-    def create(self, filepath):
-        "Create the DOCX file."
+    def create(self):
+        "Create the DOCX document; return a BytesIO instance containing it."
         # Key: fullname; value: dict(label, ast_children)
         self.footnotes = {}
         # Reference ids
@@ -116,7 +117,9 @@ class Creator:
         self.write_references()
         self.write_indexed()
 
-        self.document.save(filepath)
+        output = io.BytesIO()
+        self.document.save(output)
+        return output
 
     def write_title_page(self):
         paragraph = self.document.add_paragraph(style="Title")
@@ -387,6 +390,11 @@ class Creator:
         self.prev_blank_line = False
         for child in ast["children"]:
             self.render(child)
+
+    def render_heading(self, ast):
+        # XXX Limited implementation; just handles one child of raw text.
+        text = ast["children"][0]["children"]
+        self.write_heading(text, ast["level"])
 
     def render_paragraph(self, ast):
         if self.footnote_paragraph:
