@@ -8,7 +8,6 @@ import os
 import string
 import sys
 import tarfile
-import time
 import urllib
 
 from fasthtml.common import *
@@ -26,6 +25,8 @@ NAV_STYLE_TEMPLATE = "outline-color: {color}; outline-width:8px; outline-style:s
 
 Tx = utils.Tx
 
+app, rt = fast_app(live=True, static_path="static")
+
 try:
     MDBOOKS = os.environ["MDBOOKS"]
 except KeyError:
@@ -33,10 +34,6 @@ except KeyError:
         MDBOOKS = sys.argv[1]
     else:
         MDBOOKS = os.getcwd()
-
-# XXX 'static_path' does not seem to do its job?
-app, rt = fast_app(live=True, static_path=constants.SOURCE_DIRPATH)
-
 
 # Key: bid; value: Book instance.
 books = {}
@@ -59,13 +56,6 @@ def get_references():
         _references = Book(os.path.join(MDBOOKS, constants.REFERENCES_DIR))
         return _references
 
-
-def timestr(filepath=None):
-    if filepath:
-        result = time.localtime(os.path.getmtime(filepath))
-    else:
-        result = time.localtime()
-    return time.strftime(constants.DATETIME_ISO_FORMAT, result)
 
 def nav(book=None, item=None, title=None, actions=None):
     "The standard navigation bar."
@@ -181,7 +171,7 @@ def home():
                           "title": frontmatter.get("title", bid),
                           "dirpath": dirpath,
                           "authors": frontmatter.get("authors", []),
-                          "modified": timestr(filepath)})
+                          "modified": utils.timestr(filepath)})
         except OSError:
             pass
     books.sort(key=lambda b: b["modified"], reverse=True)
@@ -203,7 +193,7 @@ def tgz():
     with tarfile.open(fileobj=output, mode="w:gz") as archivefile:
         for name in os.listdir(MDBOOKS):
             archivefile.add(os.path.join(MDBOOKS, name), arcname=name, recursive=True)
-    filename = f"mdbooks {timestr()}.tgz"
+    filename = f"mdbooks {utils.timestr()}.tgz"
     return Response(status_code=200,
                     content=output.getvalue(),
                     media_type=constants.GZIP_MIMETYPE,
@@ -952,7 +942,7 @@ def post(bid:str,
 def tgz(bid:str):
     "Create a gzipped tar file of the book and return."
     book = get_book(bid)
-    filename = f"{book.title} {timestr()}.tgz"
+    filename = f"{book.title} {utils.timestr()}.tgz"
     output = book.archive()
     return Response(status_code=200,
                     content=output.getvalue(),
