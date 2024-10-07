@@ -3,9 +3,11 @@
 from icecream import ic
 
 import copy
+import io
 import os
 import string
 import sys
+import tarfile
 import time
 import urllib
 
@@ -57,6 +59,13 @@ def get_references():
         _references = Book(os.path.join(MDBOOKS, constants.REFERENCES_DIR))
         return _references
 
+
+def timestr(filepath=None):
+    if filepath:
+        result = time.localtime(os.path.getmtime(filepath))
+    else:
+        result = time.localtime()
+    return time.strftime(constants.DATETIME_ISO_FORMAT, result)
 
 def nav(book=None, item=None, title=None, actions=None):
     "The standard navigation bar."
@@ -172,8 +181,7 @@ def home():
                           "title": frontmatter.get("title", bid),
                           "dirpath": dirpath,
                           "authors": frontmatter.get("authors", []),
-                          "modified": time.strftime(constants.DATETIME_ISO_FORMAT,
-                                                    time.localtime(os.path.getmtime(filepath)))})
+                          "modified": timestr(filepath)})
         except OSError:
             pass
     books.sort(key=lambda b: b["modified"], reverse=True)
@@ -182,9 +190,25 @@ def home():
         rows.append(Tr(Td(A(book["title"], href=f'/{book["bid"]}')),
                        Td(book["modified"])))
     return (Title("mdbooks"),
-            Header(nav(title="mdbooks"), cls="container"),
+            Header(nav(title="mdbooks",
+                       actions=[A(f'{Tx("Create")} TGZ', href="/tgz")]),
+                   cls="container"),
             Main(Table(*rows), cls="container")
             )
+
+@rt("/tgz")
+def tgz():
+    "Create a gzipped tar file of all books and return."
+    output = io.BytesIO()
+    with tarfile.open(fileobj=output, mode="w:gz") as archivefile:
+        for name in os.listdir(MDBOOKS):
+            archivefile.add(os.path.join(MDBOOKS, name), arcname=name, recursive=True)
+    filename = f"mdbooks {timestr()}.tgz"
+    return Response(status_code=200,
+                    content=output.getvalue(),
+                    media_type=constants.GZIP_MIMETYPE,
+                    headers={"Content-Disposition": 
+                             f'attachment; filename="{filename}"'})
 
 @rt("/references")
 def references():
@@ -926,15 +950,15 @@ def post(bid:str,
 
 @rt("/{bid}/tgz")
 def tgz(bid:str):
-    "Create an archive file of the book and return."
+    "Create a gzipped tar file of the book and return."
     book = get_book(bid)
-    timestr = time.strftime(constants.DATETIME_ISO_FORMAT, time.localtime())
-    filename = f"{book.title} {timestr}.tgz"
+    filename = f"{book.title} {timestr()}.tgz"
     output = book.archive()
     return Response(status_code=200,
                     content=output.getvalue(),
                     media_type=constants.GZIP_MIMETYPE,
-                    headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+                    headers={"Content-Disposition": 
+                             f'attachment; filename="{filename}"'})
 
 
 serve()

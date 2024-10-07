@@ -310,9 +310,8 @@ class Book:
         self.index.write()
 
     def archive(self):
-        """Write all files for texts to a gzipped tar file.
+        """Write all files for this book to a gzipped tar file.
         Return the BytesIO instance containing the file.
-        Raise an OSError if any error.
         """
         output = io.BytesIO()
         with tarfile.open(fileobj=output, mode="w:gz") as archivefile:
