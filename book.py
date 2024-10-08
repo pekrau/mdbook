@@ -18,6 +18,7 @@ import markdown
 
 FRONTMATTER = re.compile(r"^---([\n\r].*?[\n\r])---[\n\r](.*)$", re.DOTALL)
 
+
 def read_frontmatter(content):
     "Return the frontmatter as dictionary and the remaining content."
     match = FRONTMATTER.match(content)
@@ -25,6 +26,7 @@ def read_frontmatter(content):
         return yaml.safe_load(match.group(1)), content[match.start(2) :]
     else:
         return {}, content
+
 
 def write_frontmatter(outfile, frontmatter):
     if not frontmatter:
@@ -64,7 +66,7 @@ class Book:
             self.index = Text(self, self, "index.md")
         except OSError:
             with open(os.path.join(self.absdirpath, "index.md"), "w") as outfile:
-                write_frontmatter(outfile, {})
+                pass
         self.frontmatter = self.index.frontmatter
 
         self.items = []
@@ -233,7 +235,8 @@ class Book:
     def find_references(self, item, ast):
         try:
             for child in ast["children"]:
-                if isinstance(child, str): continue
+                if isinstance(child, str):
+                    continue
                 if child["element"] == "reference":
                     self.references.setdefault(child["reference"], set()).add(item)
                 self.find_references(item, child)
@@ -243,7 +246,8 @@ class Book:
     def find_indexed(self, item, ast):
         try:
             for child in ast["children"]:
-                if isinstance(child, str): continue
+                if isinstance(child, str):
+                    continue
                 if child["element"] == "indexed":
                     self.indexed.setdefault(child["canonical"], set()).add(item)
                 self.find_indexed(item, child)
@@ -253,56 +257,53 @@ class Book:
     def get(self, fullname, default=None):
         return self.lookup.get(fullname, default)
 
-    def create_text(self, title, anchor=None):
-        """Create a new empty text inside the anchor if it is a section,
-        or after anchor if it is a text.
+    def create_text(self, title, parent=None):
+        """Create a new empty text inside the parent section or book.
         Raise ValueError if there is a problem.
         """
-        check_invalid_characters(title)
-        if anchor is None:
-            section = self
-        elif anchor.is_text:
-            section = anchor.parent
-        else:
-            section = anchor
-        dirpath = os.path.join(section.abspath, title)
+        assert parent is None or isinstance(parent, Section)
+        check_disallowed_characters(title)
+        if parent is None:
+            parent = self
+        dirpath = os.path.join(parent.abspath, title)
         filepath = dirpath + constants.MARKDOWN_EXT
         if os.path.exists(dirpath) or os.path.exists(filepath):
-            raise ValueError(f"The title is already in use within '{section.fullname}'.")
+            raise ValueError(f"The title is already in use within '{parent}'.")
         with open(filepath, "w") as outfile:
             write_frontmatter(outfile, {"status": repr(constants.STATUSES[0])})
-        new = Text(self, section, title)
-        if anchor is not None and anchor.is_text:
-            section.items.insert(anchor.index + 1, new)
-        else:
-            section.items.append(new)
+        new = Text(self, parent, title)
+        parent.items.append(new)
         self.lookup[new.fullname] = new
         return new
 
-    def create_section(self, title, anchor=None):
-        """Create a new empty section inside the anchor if it is a section,
-        or after anchor if it is a text.
+    def create_section(self, title, parent=None):
+        """Create a new empty section inside the parent section or book.
         Raise ValueError if there is a problem.
         """
-        check_invalid_characters(title)
-        if anchor is None:
-            section = self
-        elif anchor.is_text:
-            section = anchor.parent
-        else:
-            section = anchor
-        dirpath = os.path.join(section.abspath, title)
+        check_disallowed_characters(title)
+        if parent is None:
+            parent = self
+        dirpath = os.path.join(parent.abspath, title)
         filepath = dirpath + constants.MARKDOWN_EXT
         if os.path.exists(dirpath) or os.path.exists(filepath):
-            raise ValueError(f"The title is already in use within '{section.fullname}'.")
+            raise ValueError(f"The title is already in use within '{parent}'.")
         os.mkdir(dirpath)
-        new = Section(self, section, title)
-        if anchor is not None and anchor.is_text:
-            section.items.insert(anchor.index + 1, new)
-        else:
-            section.items.append(new)
+        new = Section(self, parent, title)
+        parent.items.append(new)
         self.lookup[new.fullname] = new
         return new
+
+    def delete(self, item):
+        "Delete the given item."
+        if item.is_section:
+            if len(item.items) != 0:
+                raise ValueError("Cannot delete non-empty section.")
+            os.rmdir(item.abspath)
+        else:
+            os.remove(item.abspath)
+        self.lookup.pop(item.fullname)
+        item.parent.items.remove(item)
+        self.write_index()
 
     def write_index(self):
         "Write the updated 'index.md' file."
@@ -489,7 +490,7 @@ class Item:
             return
         if not new:
             raise ValueError("Empty string given for title.")
-        check_invalid_characters(new)
+        check_disallowed_characters(new)
         newabspath = os.path.join(self.parent.abspath, self.filename(new))
         if os.path.exists(newabspath):
             raise ValueError("The title is already in use.")
@@ -517,7 +518,7 @@ class Item:
         if index == len(self.parent.items) - 1:
             self.parent.items.insert(0, self.parent.items.pop(index))
         else:
-            self.parent.items.insert(index+1, self.parent.items.pop(index))
+            self.parent.items.insert(index + 1, self.parent.items.pop(index))
 
     def check_integrity(self):
         assert isinstance(self.book, Book), self
@@ -709,16 +710,16 @@ class Text(Item):
         assert os.path.isfile(self.abspath)
 
 
-def check_invalid_characters(title):
-    """Raise ValueError if title contains any invalid characters;
+def check_disallowed_characters(title):
+    """Raise ValueError if title contains any disallowed characters;
     those with special meaning in file system.
     """
-    invalids = [os.extsep, os.sep]
+    disalloweds = [os.extsep, os.sep]
     if os.altsep:
-        invalids.append(os.altsep)
-    for invalid in invalids:
-        if invalid in title:
-            raise ValueError(f"The title may not contain the character '{invalid}'.")
+        disalloweds.append(os.altsep)
+    for disallowed in disalloweds:
+        if disallowed in title:
+            raise ValueError(f"The title may not contain the character '{disallowed}'.")
 
 
 if __name__ == "__main__":
@@ -728,4 +729,3 @@ if __name__ == "__main__":
     ic(book.all_texts)
     # book.index.write()
     # book.archive()
-    

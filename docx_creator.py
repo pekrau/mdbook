@@ -78,7 +78,9 @@ class Creator:
             constants.QUOTE_STYLE, docx.enum.style.WD_STYLE_TYPE.PARAGRAPH
         )
         style.paragraph_format.left_indent = docx.shared.Pt(constants.QUOTE_LEFT_INDENT)
-        style.paragraph_format.right_indent = docx.shared.Pt(constants.QUOTE_RIGHT_INDENT)
+        style.paragraph_format.right_indent = docx.shared.Pt(
+            constants.QUOTE_RIGHT_INDENT
+        )
         style.font.name = constants.QUOTE_FONT
 
         # Set Dublin core metadata.
@@ -559,8 +561,10 @@ class Creator:
             entries = self.footnotes.setdefault(self.current_text.fullname, {})
             number = len(entries) + 1
             key = label
-        elif self.footnotes_location in (constants.FOOTNOTES_EACH_CHAPTER,
-                                         constants.FOOTNOTES_END_OF_BOOK):
+        elif self.footnotes_location in (
+            constants.FOOTNOTES_EACH_CHAPTER,
+            constants.FOOTNOTES_END_OF_BOOK,
+        ):
             fullname = self.current_text.chapter.fullname
             entries = self.footnotes.setdefault(fullname, {})
             number = len(entries) + 1
@@ -575,8 +579,10 @@ class Creator:
         if self.footnotes_location == constants.FOOTNOTES_EACH_TEXT:
             fullname = self.current_text.fullname
             key = label
-        elif self.footnotes_location in (constants.FOOTNOTES_EACH_CHAPTER,
-                                         constants.FOOTNOTES_END_OF_BOOK):
+        elif self.footnotes_location in (
+            constants.FOOTNOTES_EACH_CHAPTER,
+            constants.FOOTNOTES_END_OF_BOOK,
+        ):
             fullname = self.current_text.chapter.fullname
             key = f"{fullname}-{label}"
         self.footnotes[fullname][key]["ast_children"] = ast["children"]
@@ -590,6 +596,7 @@ class Creator:
             run.bold = True
         elif self.reference_font == constants.UNDERLINE:
             run.underline = True
+
 
 # From https://github.com/python-openxml/python-docx/issues/74#issuecomment-261169410
 def add_hyperlink(paragraph, url, text, color="2222FF", underline=True):

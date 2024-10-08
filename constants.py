@@ -3,7 +3,7 @@
 import functools
 import os.path
 
-VERSION = (2, 2, 1)
+VERSION = (2, 3, 0)
 __version__ = ".".join([str(n) for n in VERSION])
 
 
@@ -169,7 +169,9 @@ REFERENCE_LINKS = dict(
     isbn=("ISBN", "https://isbnsearch.org/isbn/{value}"),
 )
 
-DOCX_MIMETYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+DOCX_MIMETYPE = (
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+)
 PDF_MIMETYPE = "application/pdf"
 GZIP_MIMETYPE = "application/gzip"
 

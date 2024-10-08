@@ -19,7 +19,7 @@ import docx_creator
 import pdf_creator
 import utils
 
-from book import read_frontmatter, Book
+from book import Book, read_frontmatter, write_frontmatter, check_disallowed_characters
 
 NAV_STYLE_TEMPLATE = "outline-color: {color}; outline-width:8px; outline-style:solid; padding:0px 10px; border-radius:5px;"
 
@@ -38,6 +38,7 @@ except KeyError:
 # Key: bid; value: Book instance.
 books = {}
 
+
 def get_book(bid):
     "Get the book contents, cached."
     try:
@@ -46,6 +47,7 @@ def get_book(bid):
         book = Book(os.path.join(MDBOOKS, bid))
         books[bid] = book
         return book
+
 
 def get_references():
     "Get the references book, cached."
@@ -57,20 +59,34 @@ def get_references():
         return _references
 
 
+def error(message):
+    return Response(status_code=409, content=message)
+
+
 def nav(book=None, item=None, title=None, actions=None):
     "The standard navigation bar."
     if book is None:
         entries = [Ul(Li(A(Img(src="/mdbook.svg"), href="/")))]
     else:
-        entries = [Ul(Li(A(Img(src="/mdbook.svg"), href="/")),
-                      Li(A(book.title, href=f"/{book.id}")))]
+        entries = [
+            Ul(
+                Li(A(Img(src="/mdbook.svg"), href="/")),
+                Li(A(book.title, href=f"/{book.id}")),
+            )
+        ]
     if item:
-        entries.append(Ul(Li(Strong(item.fullname),
-                             Br(),
-                             Small(f'{Tx("Status")}: {Tx(item.status)}'))))
+        entries.append(
+            Ul(
+                Li(
+                    Strong(item.fullname),
+                    Br(),
+                    Small(f'{Tx("Status")}: {Tx(item.status)}'),
+                )
+            )
+        )
         nav_style = NAV_STYLE_TEMPLATE.format(color=item.status.color)
     elif title:
-        entries.append(Ul(Li(title)))
+        entries.append(Ul(Li(Strong(title))))
         if book is None:
             nav_style = NAV_STYLE_TEMPLATE.format(color="black")
         else:
@@ -83,7 +99,7 @@ def nav(book=None, item=None, title=None, actions=None):
     pages = []
     if item is not None:
         if item.parent:
-            if item.parent.level == 0: # Book.
+            if item.parent.level == 0:  # Book.
                 url = "/"
             elif item.parent.is_section:
                 url = f"/{book.id}/section/{item.parent.urlpath}"
@@ -103,25 +119,40 @@ def nav(book=None, item=None, title=None, actions=None):
                 url = f"/{book.id}/text/{item.next.urlpath}"
             pages.append(A(NotStr(f"&ShortRightArrow; {item.next.title}"), href=url))
     if book is not None:
-        pages.extend([A(Tx("Title"), href=f"/{book.id}/title"),
-                      A(Tx("Index"), href=f"/{book.id}/index"),
-                      A(Tx("Statuses"), href=f"/{book.id}/statuses")])
+        pages.extend(
+            [
+                A(Tx("Title"), href=f"/{book.id}/title"),
+                A(Tx("Index"), href=f"/{book.id}/index"),
+                A(Tx("Statuses"), href=f"/{book.id}/statuses"),
+            ]
+        )
     pages.append(A(Tx("References"), href="/references"))
     items = []
     if len(pages) == 1:
         if title != Tx("References"):
             items.append(Ul(Li(pages[0], NotStr("&nbsp;"))))
     else:
-        items.append(Li(Details(Summary(Tx("Pages")),
-                                Ul(*[Li(p) for p in pages]),
-                                cls="dropdown")))
+        items.append(
+            Li(
+                Details(
+                    Summary(Tx("Pages")), Ul(*[Li(p) for p in pages]), cls="dropdown"
+                )
+            )
+        )
     if actions:
-        items.append(Li(Details(Summary(Tx("Actions")),
-                                Ul(*[Li(c) for c in actions]),
-                                cls="dropdown")))
+        items.append(
+            Li(
+                Details(
+                    Summary(Tx("Actions")),
+                    Ul(*[Li(c) for c in actions]),
+                    cls="dropdown",
+                )
+            )
+        )
     if items:
         entries.append(Ul(*items))
     return Nav(*entries, style=nav_style)
+
 
 def toc(book, items, show_arrows=False):
     "Recursive lists of sections and texts."
@@ -131,32 +162,47 @@ def toc(book, items, show_arrows=False):
         n_characters = f"{utils.thousands(len(item))}"
         data = f'{Tx(item.status)}; {n_words} {Tx("words")}; {n_characters} {Tx("characters")}'
         if show_arrows:
-            arrows = [NotStr("&nbsp;"),
-                      A(NotStr("&ShortUpArrow;"), href=f"/up/{item.urlpath}"),
-                      NotStr("&nbsp;"),
-                      A(NotStr("&ShortDownArrow;"), href=f"/down/{item.urlpath}")]
+            arrows = [
+                NotStr("&nbsp;"),
+                A(NotStr("&ShortUpArrow;"), href=f"/{book.id}/up/{item.urlpath}"),
+                NotStr("&nbsp;"),
+                A(NotStr("&ShortDownArrow;"), href=f"/{book.id}/down/{item.urlpath}"),
+            ]
         else:
             arrows = []
         if item.is_section:
-            parts.append(Li(A(str(item),
-                              style=f"color: {item.status.color};",
-                              href=f"/section/{item.urlpath}"),
-                            NotStr("&nbsp;&nbsp;&nbsp;"),
-                            Small(data, style="color: silver;"),
-                            *arrows,
-                            style=f"color: {item.status.color};",))
+            parts.append(
+                Li(
+                    A(
+                        str(item),
+                        style=f"color: {item.status.color};",
+                        href=f"/{book.id}/section/{item.urlpath}",
+                    ),
+                    NotStr("&nbsp;&nbsp;&nbsp;"),
+                    Small(data, style="color: silver;"),
+                    *arrows,
+                    style=f"color: {item.status.color};",
+                )
+            )
             parts.append(toc(book, item.items, show_arrows=show_arrows))
         else:
-            parts.append(Li(A(str(item),
-                              style=f"color: {item.status.color};",
-                              href=f"/text/{item.urlpath}"),
-                            NotStr("&nbsp;&nbsp;&nbsp;"),
-                            Small(data, style="color: silver;"),
-                            *arrows))
+            parts.append(
+                Li(
+                    A(
+                        str(item),
+                        style=f"color: {item.status.color};",
+                        href=f"/{book.id}/text/{item.urlpath}",
+                    ),
+                    NotStr("&nbsp;&nbsp;&nbsp;"),
+                    Small(data, style="color: silver;"),
+                    *arrows,
+                )
+            )
     return Ol(*parts)
 
+
 @rt("/")
-def home():
+def get():
     "Home page; list of books."
     books = []
     for bid in os.listdir(MDBOOKS):
@@ -167,56 +213,76 @@ def home():
             filepath = os.path.join(dirpath, "index.md")
             with open(filepath) as infile:
                 frontmatter, content = read_frontmatter(infile.read())
-            books.append({"bid": bid,
-                          "title": frontmatter.get("title", bid),
-                          "dirpath": dirpath,
-                          "authors": frontmatter.get("authors", []),
-                          "modified": utils.timestr(filepath)})
+            books.append(
+                {
+                    "bid": bid,
+                    "title": frontmatter.get("title", bid),
+                    "dirpath": dirpath,
+                    "authors": frontmatter.get("authors", []),
+                    "modified": utils.timestr(filepath),
+                }
+            )
         except OSError:
             pass
     books.sort(key=lambda b: b["modified"], reverse=True)
     rows = []
     for book in books:
-        rows.append(Tr(Td(A(book["title"], href=f'/{book["bid"]}')),
-                       Td(book["modified"])))
-    return (Title("mdbooks"),
-            Header(nav(title="mdbooks",
-                       actions=[A(f'{Tx("Create")} TGZ', href="/tgz")]),
-                   cls="container"),
-            Main(Table(*rows), cls="container")
-            )
+        rows.append(
+            Tr(Td(A(book["title"], href=f'/{book["bid"]}')), Td(book["modified"]))
+        )
+    return (
+        Title("mdbooks"),
+        Header(
+            nav(
+                title="mdbooks",
+                actions=[
+                    A(f'{Tx("Download")} TGZ', href="/tgz"),
+                    A(f'{Tx("Create")} {Tx("book")}', href="/book"),
+                ],
+            ),
+            cls="container",
+        ),
+        Main(Table(*rows), cls="container"),
+    )
+
 
 @rt("/tgz")
-def tgz():
-    "Create a gzipped tar file of all books and return."
+def get():
+    "Create a gzipped tar file of all books and return it."
     output = io.BytesIO()
     with tarfile.open(fileobj=output, mode="w:gz") as archivefile:
         for name in os.listdir(MDBOOKS):
             archivefile.add(os.path.join(MDBOOKS, name), arcname=name, recursive=True)
     filename = f"mdbooks {utils.timestr()}.tgz"
-    return Response(status_code=200,
-                    content=output.getvalue(),
-                    media_type=constants.GZIP_MIMETYPE,
-                    headers={"Content-Disposition": 
-                             f'attachment; filename="{filename}"'})
+    return Response(
+        content=output.getvalue(),
+        media_type=constants.GZIP_MIMETYPE,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
 
 @rt("/references")
-def references():
+def get():
     "Page for list of references."
     references = get_references()
     references.read()
     items = []
     for ref in references.items:
-        parts = [Img(src="/clipboard.svg",
-                     title="Refid to clipboard",
-                     style="cursor: pointer;",
-                     cls="to_clipboard", 
-                     data_clipboard_text=f'[@{ref["id"]}]'),
-                 NotStr("&nbsp;"),
-                 A(Strong(ref["id"], style="color: royalblue;"),
-                   href=f'/reference/{ref["id"].replace(" ", "_")}'),
-                 NotStr("&nbsp;"),
-                 ]
+        parts = [
+            Img(
+                src="/clipboard.svg",
+                title="Refid to clipboard",
+                style="cursor: pointer;",
+                cls="to_clipboard",
+                data_clipboard_text=f'[@{ref["id"]}]',
+            ),
+            NotStr("&nbsp;"),
+            A(
+                Strong(ref["id"], style="color: royalblue;"),
+                href=f'/reference/{ref["id"].replace(" ", "_")}',
+            ),
+            NotStr("&nbsp;"),
+        ]
         if ref.get("authors"):
             authors = [utils.short_name(a) for a in ref["authors"]]
             if len(authors) > 4:
@@ -250,8 +316,9 @@ def references():
                 url = url.format(value=ref["isbn"])
                 if links:
                     links.append(", ")
-                links.append(A(f'{symbol}:{ref["isbn"]}', 
-                               href=url.format(value=ref["isbn"])))
+                links.append(
+                    A(f'{symbol}:{ref["isbn"]}', href=url.format(value=ref["isbn"]))
+                )
 
         if ref.get("url"):
             parts.append(Br())
@@ -263,21 +330,21 @@ def references():
             url = url.format(value=ref["doi"])
             if links:
                 links.append(", ")
-            links.append(A(f'{symbol}:{ref["doi"]}', 
-                           href=url.format(value=ref["doi"])))
+            links.append(A(f'{symbol}:{ref["doi"]}', href=url.format(value=ref["doi"])))
         if ref.get("pmid"):
             symbol, url = constants.REFERENCE_LINKS["pmid"]
             url = url.format(value=ref["pmid"])
             if links:
                 links.append(", ")
-            links.append(A(f'{symbol}:{ref["pmid"]}', 
-                           href=url.format(value=ref["pmid"])))
+            links.append(
+                A(f'{symbol}:{ref["pmid"]}', href=url.format(value=ref["pmid"]))
+            )
 
         if links:
             parts.append(" ")
             parts.extend(links)
 
-        # XXX
+        # XXX link to book text using the reference
         # xrefs = []
         # texts = get_book().references.get(ref["id"], [])
         # for text in sorted(texts, key=lambda t: t.ordinal):
@@ -290,31 +357,53 @@ def references():
         #     parts.append(Small(Br(), *xrefs))
         items.append(P(*parts, id=ref["id"].replace(" ", "_")))
 
-    return (Title(Tx("References")),
-            Header(nav(title=Tx("References"),
-                       actions=[A(Tx("Add BibTex"), href="/bibtex")]),
-                   cls="container"),
-            Main(*items, cls="container")
-            )
+    return (
+        Title(Tx("References")),
+        Header(
+            nav(title=Tx("References"), actions=[A(Tx("Add BibTex"), href="/bibtex")]),
+            cls="container",
+        ),
+        Main(*items, cls="container"),
+    )
+
 
 @rt("/reference/{refid:str}")
-def get(refid:str):
+def get(refid: str):
     "Page for details of a reference."
     ref = get_references()[refid.replace("_", " ")]
-    rows = [Tr(Td(Tx("Identifier")),
-               Td(f'{ref["id"]}',
-                  NotStr("&nbsp;"),
-                  Img(src="/clipboard.svg",
-                      title="Refid to clipboard",
-                      style="cursor: pointer;",
-                      cls="to_clipboard", 
-                      data_clipboard_text=f'[@{ref["id"]}]'))
-               ),
-            Tr(Td(Tx("Authors")), Td("; ".join(ref.get("authors") or [])))
-            ]
-    for key in ["year", "title", "subtitle", "type", "edition_published", "language",
-                "date", "keywords", "journal", "volume", "number", "pages",
-                "publisher", "source"]:
+    rows = [
+        Tr(
+            Td(Tx("Identifier")),
+            Td(
+                f'{ref["id"]}',
+                NotStr("&nbsp;"),
+                Img(
+                    src="/clipboard.svg",
+                    title="Refid to clipboard",
+                    style="cursor: pointer;",
+                    cls="to_clipboard",
+                    data_clipboard_text=f'[@{ref["id"]}]',
+                ),
+            ),
+        ),
+        Tr(Td(Tx("Authors")), Td("; ".join(ref.get("authors") or []))),
+    ]
+    for key in [
+        "year",
+        "title",
+        "subtitle",
+        "type",
+        "edition_published",
+        "language",
+        "date",
+        "keywords",
+        "journal",
+        "volume",
+        "number",
+        "pages",
+        "publisher",
+        "source",
+    ]:
         value = ref.get(key)
         if value:
             rows.append(Tr(Td((Tx(key.replace("_", " ")).title())), Td(value)))
@@ -331,189 +420,261 @@ def get(refid:str):
         rows.append(Tr(Td("DOI"), Td(A(ref["doi"], href=url))))
     if ref.get("url"):
         rows.append(Tr(Td("Url"), Td(A(ref["url"], href=ref["url"]))))
-    return (Title(refid),
-            Script(src="/clipboard.min.js"),
-            Script("new ClipboardJS('.to_clipboard');"),
-            Header(nav(title=ref["id"],
-                       actions=[A(Tx("Clipboard"),
-                                  href="#",
-                                  cls="to_clipboard", 
-                                  data_clipboard_text=f'[@{ref["id"]}]'),
-                                ]),
-                   cls="container"),
-            Main(Table(*rows),
-                 Div(NotStr(ref.html)),
-                 cls="container"))
-
-@rt("/bibtex", methods=["get", "post"])
-def bibtex(data:str=None):
-    "Page for adding a reference using BibTex data."
-    result = []
-    if data:
-        for entry in bibtexparser.parse_string(data).entries:
-            authors = utils.cleanup(entry.fields_dict["author"].value)
-            authors = [a.strip() for a in authors.split(" and ")]
-            year = entry.fields_dict["year"].value.strip()
-            name = authors[0].split(",")[0].strip()
-            for char in [""] + list("abcdefghijklmnopqrstuvxyz"):
-                id = f"{name} {year}{char}"
-                if get_references().get(id) is None:
-                    break
-            else:
-                raise ValueError(f"Could not form unique id for {name} {year}.")
-            new = dict(id=id, type=entry.entry_type, authors=authors, year=year)
-            for key, field in entry.fields_dict.items():
-                if key == "author":
-                    continue
-                value = utils.cleanup(field.value).strip()
-                if value:
-                    new[key] = value
-            # Split keywords into a list.
-            try:
-                new["keywords"] = [
-                    k.strip() for k in new["keywords"].split(";")
-                ]
-            except KeyError:
-                pass
-            # Change month into date; sometimes has day number.
-            try:
-                month = new.pop("month")
-            except KeyError:
-                pass
-            else:
-                parts = month.split("#")
-                if len(parts) == 2:
-                    month = constants.MONTHS[parts[1].strip().lower()]
-                    day = int("".join([c for c in parts[0] if c in string.digits]))
-                else:
-                    month = constants.MONTHS[parts[0].strip().lower()]
-                    day = 0
-                new["date"] = f"{year}-{month:02d}-{day:02d}"
-            # Change page numbers double dash to single dash.
-            try:
-                pages = new.pop("pages")
-            except KeyError:
-                pass
-            else:
-                new["pages"] = pages.replace("--", "-")
-            abstract = new.pop("abstract", None)
-            reference = get_references().create_text(new["id"])
-            for key, value in new.items():
-                reference[key] = value
-            if abstract:
-                reference.write("**Abstract**\n\n" + abstract)
-            else:
-                reference.write()
-            references = get_references()
-            references.read()
-            references.items.sort(key=lambda r: r["id"].lower())
-            references.write_index()
-            result.append(reference)
-        return (Title("Added reference(s)"),
-                Header(nav(title="Added reference(s)"), cls="container"),
-                Main(Ul(
-                    *[Li(A(r["id"], href=f'/reference/{r["id"]}')) for r in result]),
-                     cls="container")
-                )
-    else:
-        return (Title("Add reference"),
-                Header(nav(title="Add reference"), cls="container"),
-                Main(Form(
-                    Fieldset(
-                        Legend("Bibtex data"),
-                        Textarea(name="data", rows="20")
+    return (
+        Title(refid),
+        Script(src="/clipboard.min.js"),
+        Script("new ClipboardJS('.to_clipboard');"),
+        Header(
+            nav(
+                title=ref["id"],
+                actions=[
+                    A(
+                        Tx("Clipboard"),
+                        href="#",
+                        cls="to_clipboard",
+                        data_clipboard_text=f'[@{ref["id"]}]',
                     ),
-                    Button("Add"),
-                    action=f"/bibtex",
-                    method="post"),
-                     cls="container")
-                )
+                ],
+            ),
+            cls="container",
+        ),
+        Main(Table(*rows), Div(NotStr(ref.html)), cls="container"),
+    )
+
+
+@rt("/bibtex")
+def get():
+    "Page for adding reference(s) using BibTex data."
+    return (
+        Title("Add reference"),
+        Header(nav(title="Add reference"), cls="container"),
+        Main(
+            Form(
+                Fieldset(Legend(Tx("Bibtex data")), Textarea(name="data", rows="20")),
+                Button("Add"),
+                action="/bibtex",
+                method="post",
+            ),
+            cls="container",
+        ),
+    )
+
+
+@rt("/bibtex")
+def post(data: str):
+    "Actually add reference(s) using BibTex data."
+    result = []
+    for entry in bibtexparser.parse_string(data).entries:
+        authors = utils.cleanup(entry.fields_dict["author"].value)
+        authors = [a.strip() for a in authors.split(" and ")]
+        year = entry.fields_dict["year"].value.strip()
+        name = authors[0].split(",")[0].strip()
+        for char in [""] + list("abcdefghijklmnopqrstuvxyz"):
+            id = f"{name} {year}{char}"
+            if get_references().get(id) is None:
+                break
+        else:
+            raise ValueError(f"Could not form unique id for {name} {year}.")
+        new = dict(id=id, type=entry.entry_type, authors=authors, year=year)
+        for key, field in entry.fields_dict.items():
+            if key == "author":
+                continue
+            value = utils.cleanup(field.value).strip()
+            if value:
+                new[key] = value
+        # Split keywords into a list.
+        try:
+            new["keywords"] = [k.strip() for k in new["keywords"].split(";")]
+        except KeyError:
+            pass
+        # Change month into date; sometimes has day number.
+        try:
+            month = new.pop("month")
+        except KeyError:
+            pass
+        else:
+            parts = month.split("#")
+            if len(parts) == 2:
+                month = constants.MONTHS[parts[1].strip().lower()]
+                day = int("".join([c for c in parts[0] if c in string.digits]))
+            else:
+                month = constants.MONTHS[parts[0].strip().lower()]
+                day = 0
+            new["date"] = f"{year}-{month:02d}-{day:02d}"
+        # Change page numbers double dash to single dash.
+        try:
+            pages = new.pop("pages")
+        except KeyError:
+            pass
+        else:
+            new["pages"] = pages.replace("--", "-")
+        abstract = new.pop("abstract", None)
+        reference = get_references().create_text(new["id"])
+        for key, value in new.items():
+            reference[key] = value
+        if abstract:
+            reference.write("**Abstract**\n\n" + abstract)
+        else:
+            reference.write()
+        references = get_references()
+        references.read()
+        references.items.sort(key=lambda r: r["id"].lower())
+        references.write_index()
+        result.append(reference)
+    return (
+        Title("Added reference(s)"),
+        Header(nav(title="Added reference(s)"), cls="container"),
+        Main(
+            Ul(*[Li(A(r["id"], href=f'/reference/{r["id"]}')) for r in result]),
+            cls="container",
+        ),
+    )
+
+
+@rt("/book")
+def get():
+    "Page to create and/or upload book using a gzipped tar file."
+    return (
+        Title(Tx("Create or upload book")),
+        Header(nav(title=Tx("Create or upload book")), cls="container"),
+        Main(
+            Form(
+                Fieldset(
+                    Legend(Tx("Book title")),
+                    Input(type="text", name="bid", required=True, autofocus=True),
+                ),
+                Fieldset(
+                    Legend(Tx("Gzipped tar file")), Input(type="file", name="tgzfile")
+                ),
+                Button(Tx("Create")),
+                action="/book",
+                method="post",
+            ),
+            cls="container",
+        ),
+    )
+
+
+@rt("/book")
+def post(bid: str, tgzfile: UploadFile = None):
+    "Actually create and/or upload book using a gzipped tar file."
+    if bid in books:
+        return error(f'Book "{bid}" already exists.')
+    if not bid:
+        return error("No book identifier provided.")
+    try:
+        check_disallowed_characters(bid)
+    except ValueError:
+        return error(f'Book identifier "{bid}" contains disallowed characters.')
+    dirpath = os.path.join(MDBOOKS, bid)
+    os.mkdir(dirpath)
+    with open(os.path.join(dirpath, "index.md"), "w") as outfile:
+        write_frontmatter(outfile, {"owner": "XXX", "status": repr(constants.STARTED)})
+    return Redirect("/")
+
 
 @rt("/{bid}")
-def get(bid:str):
+def get(bid: str):
     "Book home page; list of sections and texts."
     book = get_book(bid)
     book.read()
-    return (Title(book.title),
-            Header(nav(book=book,
-                       actions=[A(f'{Tx("Statuses")}', href=f"/{bid}/statuses"),
-                                A(f'{Tx("Create")} {Tx("section")}',
-                                  href=f"/{bid}/create_section"),
-                                A(f'{Tx("Create")} {Tx("text")}',
-                                  href=f"/{bid}/create_text"),
-                                A(f'{Tx("Create")} DOCX', href=f"/{bid}/docx"),
-                                A(f'{Tx("Create")} PDF', href=f"/{bid}/pdf"),
-                                A(f'{Tx("Create")} TGZ', href=f"/{bid}/tgz"),
-                                ]),
-                   cls="container"),
-            Main(toc(book, book.items, show_arrows=True), cls="container")
-            )
+    actions = [
+        A(f'{Tx("Statuses")}', href=f"/{bid}/statuses"),
+        A(f'{Tx("Create")} {Tx("section")}', href=f"/{bid}/create_section"),
+        A(f'{Tx("Create")} {Tx("text")}', href=f"/{bid}/create_text"),
+        A(f'{Tx("Create")} DOCX', href=f"/{bid}/docx"),
+        A(f'{Tx("Create")} PDF', href=f"/{bid}/pdf"),
+        A(f'{Tx("Create")} TGZ', href=f"/{bid}/tgz"),
+    ]
+    if len(book.items) == 0:
+        actions.append(A(f'{Tx("Delete")}', href=f"/{bid}/delete/"))
+    return (
+        Title(book.title),
+        Header(nav(book=book, actions=actions), cls="container"),
+        Main(toc(book, book.items, show_arrows=True), cls="container"),
+    )
+
 
 @rt("/{bid}/up/{path:path}")
-def get(bid:str, path:str):
+def get(bid: str, path: str):
     "Move item up in its sibling list."
     book = get_book(bid)
     book[path].up()
     book.write_index()
     return Redirect(f"/{bid}/")
 
+
 @rt("/{bid}/down/{path:path}")
-def get(bid:str, path:str):
+def get(bid: str, path: str):
     "Move item down in its sibling list."
     book = get_book(bid)
     book[path].down()
     book.write_index()
     return Redirect(f"/{bid}/")
 
+
 @rt("/{bid}/text/{path:path}")
-def get(bid:str, path:str):
+def get(bid: str, path: str):
     "View the text, or edit title, content or status and save."
-    text = get_book(bid)[path]
+    book = get_book(bid)
+    text = book[path]
     assert text.is_text
     text.read()
-    return (Title(text.title),
-            Header(nav(item=text,
-                       actions=[A(Tx("Edit"), href=f"/{bid}/edit/{path}"),
-                                A(Tx("Convert to section"), 
-                                  href=f"/{bid}/to_section/{path}"),
-                                A(f'{Tx("Create")} DOCX', href=f"/{bid}/docx/{path}")]),
-                   cls="container"),
-            Main(NotStr(text.html), cls="container")
-            )
+    actions = [
+        A(Tx("Edit"), href=f"/{bid}/edit/{path}"),
+        A(Tx("Convert to section"), href=f"/{bid}/to_section/{path}"),
+        A(f'{Tx("Create")} DOCX', href=f"/{bid}/docx/{path}"),
+        A(f'{Tx("Delete")}', href=f"/{bid}/delete/{path}"),
+    ]
+    return (
+        Title(text.title),
+        Header(nav(book=book, item=text, actions=actions), cls="container"),
+        Main(NotStr(text.html), cls="container"),
+    )
+
 
 @rt("/{bid}/edit/{path:path}")
-def get(bid:str, path:str):
+def get(bid: str, path: str):
     "Edit the item (section or text)."
-    item = get_book(bid)[path]
+    book = get_book(bid)
+    item = book[path]
     fields = [
         Fieldset(
             Label(Tx("New title")),
-                  Input(name="title", value=item.title, required=True))
+            Input(name="title", value=item.title, required=True, autofocus=True),
+        )
     ]
     if item.is_text:
         item.read()
         status_options = []
         for status in constants.STATUSES:
             if item.status == status:
-                status_options.append(Option(Tx(str(status)),
-                                             selected=True, 
-                                             value=repr(status)))
+                status_options.append(
+                    Option(Tx(str(status)), selected=True, value=repr(status))
+                )
             else:
                 status_options.append(Option(Tx(str(status)), value=repr(status)))
         fields.append(
-            Fieldset(Label(Tx("Status"),
-                           Select(*status_options, name="status", required=True)))
+            Fieldset(
+                Label(
+                    Tx("Status"), Select(*status_options, name="status", required=True)
+                )
+            )
         )
         fields.append(Textarea(NotStr(item.content), name="content", rows="30"))
     fields.append(Button("Save"))
-    return (Title(f'{Tx("Edit")} {item.fullname}'),
-            Header(nav(title=f'{Tx("Edit")} {item.fullname}'), cls="container"),
-            Main(Form(*fields, action=f"{bid}//change/{path}", method="post"),
-                 cls="container"),
-            )
+    return (
+        Title(f'{Tx("Edit")} {item.fullname}'),
+        Header(nav(book=book, title=f'{Tx("Edit")} {item.fullname}'), cls="container"),
+        Main(
+            Form(*fields, action=f"/{bid}/change/{path}", method="post"),
+            cls="container",
+        ),
+    )
+
 
 @rt("/{bid}/change/{path:path}")
-def post(bid:str, path:str, title:str, content:str=None, status:str=None):
+def post(bid: str, path: str, title: str, content: str = None, status: str = None):
     "Change the title of the section, or content and status of the text and save."
     item = get_book(bid)[path]
     item.new_title(title)
@@ -525,100 +686,185 @@ def post(bid:str, path:str, title:str, content:str=None, status:str=None):
     else:
         return Redirect(f"/{bid}/section/{item.urlpath}")
 
+
+@rt("/{bid}/delete/{path:path}")
+def get(bid: str, path: str):
+    "Confirm delete of the text, section or book; section and book must be empty."
+    book = get_book(bid)
+    if path == "":
+        if len(book.items) != 0:
+            return error("Cannot delete non-empty book.")
+        item = None
+        title = book.title
+    else:
+        item = book[path]
+        title = item.title
+        if item.is_section and len(item.items) != 0:
+            return error("Cannot delete non-empty section.")
+    return (
+        Title(title),
+        Header(nav(book=book, item=item, title=title), cls="container"),
+        Main(
+            H3(Tx("Delete"), "?"),
+            Form(Button(Tx("Confirm")), action=f"/{bid}/delete/{path}", method="post"),
+            cls="container",
+        ),
+    )
+
+
+@rt("/{bid}/delete/{path:path}")
+def post(bid: str, path: str):
+    "Delete the text, section or book; section or book must be empty."
+    book = get_book(bid)
+    if path == "":
+        if len(book.items) != 0:
+            return error("Cannot delete non-empty book")
+        try:
+            os.remove(os.path.join(book.abspath, "index.md"))
+        except OSError:
+            pass
+        books.pop(book.id)
+        os.rmdir(book.abspath)
+        return Redirect("/")
+    else:
+        item = book[path]
+        try:
+            book.delete(item)
+        except ValueError as msg:
+            return error(str(msg))
+        return Redirect(f"/{bid}")
+
+
 @rt("/{bid}/section/{path:path}")
-def get(bid:str, path:str):
+def get(bid: str, path: str):
     "View the section."
     book = get_book(bid)
     section = book[path]
     assert section.is_section
-    return (Title(section.title),
-            Header(nav(item=section,
-                       actions=[A(Tx("Edit"), href=f"/{bid}/edit/{path}"),
-                                A(f'{Tx("Create")} {Tx("section")}',
-                                  href=f"/{bid}/create_section/{path}"),
-                                A(f'{Tx("Create")} {Tx("text")}',
-                                  href=f"/{bid}/create_text/{path}"),
-                                A(f'{Tx("Create")} DOCX', href=f"/{bid}/docx/{path}")]),
-                   cls="container"),
-            Main(toc(book, section.items), cls="container")
-            )
+    actions = [
+        A(Tx("Edit"), href=f"/{bid}/edit/{path}"),
+        A(f'{Tx("Create")} {Tx("section")}', href=f"/{bid}/create_section/{path}"),
+        A(f'{Tx("Create")} {Tx("text")}', href=f"/{bid}/create_text/{path}"),
+        A(f'{Tx("Create")} DOCX', href=f"/{bid}/docx/{path}"),
+    ]
+    if len(section.items) == 0:
+        actions.append(A(f'{Tx("Delete")}', href=f"/{bid}/delete/{path}"))
+    return (
+        Title(section.title),
+        Header(nav(book=book, item=section, actions=actions), cls="container"),
+        Main(toc(book, section.items), cls="container"),
+    )
+
 
 @rt("/{bid}/to_section/{path:path}")
-def get(bid:str, path:str):
+def get(bid: str, path: str):
     "Convert to section containing a text with a new title out of this text."
-    text  = get_book(bid)[path]
+    book = get_book(bid)
+    text = book[path]
     assert text.is_text
-    return (Title(Tx("Convert to section")),
-            Header(nav(title=Tx("Convert to section")), cls="container"),
-            Main(P(Tx("Text"), ": ", text.fullname),
-                 Form(Button(Tx("Make")),
-                      action=f"/{bid}/to_section/{path}",
-                      method="post"),
-                 cls="container"),
-            )
+    return (
+        Title(Tx("Convert to section")),
+        Header(nav(book=book, title=Tx("Convert to section")), cls="container"),
+        Main(
+            P(Tx("Text"), ": ", text.fullname),
+            Form(
+                Button(Tx("Convert")), action=f"/{bid}/to_section/{path}", method="post"
+            ),
+            cls="container",
+        ),
+    )
+
 
 @rt("/{bid}/to_section/{path:path}")
-def post(bid:str, path:str):
+def post(bid: str, path: str):
     "Convert to section containing a text with a new title out of this text."
-    text  = get_book(bid)[path]
+    text = get_book(bid)[path]
     assert text.is_text
     section = text.to_section()
     assert section.is_section
     return Redirect(f"/{bid}/section/{section.urlpath}")
 
-@rt("/{bid}/create_text/{path:path}")
-def get(bid:str, path:str):
-    "Create a new text in the section."
-    assert get_book(bid)[path].is_section
-    return (Title(Tx("Create text")),
-            Header(nav(title=Tx("Create text")), cls="container"),
-            Main(Form(
-                Fieldset(
-                    Label(Tx("Title")),
-                    Input(name="title", required=True)),
-                Button(Tx("Create")),
-                      action=f"/{bid}/create_text/{path}",
-                      method="post"),
-                 cls="container"),
-            )
 
 @rt("/{bid}/create_text/{path:path}")
-def post(bid:str, path:str, title:str=None):
+def get(bid: str, path: str):
     "Create a new text in the section."
     book = get_book(bid)
-    section = book[path]
-    assert section.is_section
-    new = book.create_text(title, anchor=section)
-    return Redirect(f"/{bid}/section/{path}")
-
-@rt("/{bid}/create_section/{path:path}")
-def get(bid:str, path:str):
-    "Create a new section in the section."
-    "Create a new text in the section."
-    assert get_book(bid)[path].is_section
-    return (Title(Tx("Create section")),
-            Header(nav(title=Tx("Create section")), cls="container"),
-            Main(Form(
+    assert book[path].is_section
+    return (
+        Title(Tx("Create text")),
+        Header(nav(book=book, title=Tx("Create text")), cls="container"),
+        Main(
+            Form(
                 Fieldset(
                     Label(Tx("Title")),
-                    Input(name="title", required=True)),
+                    Input(name="title", required=True, autofocus=True),
+                ),
                 Button(Tx("Create")),
-                      action=f"/{bid}/create_section/{path}",
-                      method="post"),
-                 cls="container"),
-            )
+                action=f"/{bid}/create_text/{path}",
+                method="post",
+            ),
+            cls="container",
+        ),
+    )
+
+
+@rt("/{bid}/create_text/{path:path}")
+def post(bid: str, path: str, title: str = None):
+    "Create a new text in the section."
+    book = get_book(bid)
+    if path == "":
+        parent = book
+    else:
+        parent = book[path]
+        assert parent.is_section
+    new = book.create_text(title, parent=parent)
+    return Redirect(f"/{bid}/section/{path}")
+
 
 @rt("/{bid}/create_section/{path:path}")
-def post(bid:str, path:str, title:str=None):
+def get(bid: str, path: str):
     "Create a new section in the section."
     book = get_book(bid)
-    section = book[path]
-    assert section.is_section
-    new = book.create_section(title, anchor=section)
-    return Redirect(f"/{bid}/section/{path}")
+    if path == "":
+        parent = book
+    else:
+        parent = book[path]
+    return (
+        Title(Tx("Create section")),
+        Header(nav(book=book, title=Tx("Create section")), cls="container"),
+        Main(
+            Form(
+                Fieldset(
+                    Label(Tx("Title")),
+                    Input(name="title", required=True, autofocus=True),
+                ),
+                Button(Tx("Create")),
+                action=f"/{bid}/create_section/{path}",
+                method="post",
+            ),
+            cls="container",
+        ),
+    )
+
+
+@rt("/{bid}/create_section/{path:path}")
+def post(bid: str, path: str, title: str = None):
+    "Create a new section in the section."
+    book = get_book(bid)
+    if path == "":
+        parent = book
+    else:
+        parent = book[path]
+        assert parent.is_section
+    new = book.create_section(title, parent=parent)
+    if path == "":
+        return Redirect(f"/{bid}")
+    else:
+        return Redirect(f"/{bid}/section/{path}")
+
 
 @rt("/{bid}/title")
-def title_page(bid:str):
+def get(bid: str):
     "Title page."
     book = get_book(bid)
     book.index.read()
@@ -627,23 +873,34 @@ def title_page(bid:str):
         segments.append(H2(book.subtitle))
     for author in book.authors:
         segments.append(H3(author))
-    segments.append(P(f'{utils.thousands(book.n_words)} {Tx("words")},'
-                      f' {utils.thousands(len(book))} {Tx("characters")}.'))
+    segments.append(
+        P(
+            f'{utils.thousands(book.n_words)} {Tx("words")},'
+            f' {utils.thousands(len(book))} {Tx("characters")}.'
+        )
+    )
     segments.append(P(f'{Tx("Language")}: {book.frontmatter.get("language", "-")}'))
     segments.append(NotStr(book.index.html))
-    return (Title(Tx("Title")),
-            Header(nav(book=book,
-                       title=Tx("Title"),
-                       actions=[A(f'{Tx("Create")} DOCX', href="/{bid}/docx"),
-                                A(f'{Tx("Create")} PDF', href="/{bid}/pdf"),
-                                A(f'{Tx("Create")} TGZ', href="/{bid}/tgz"),
-                                ]),
-                   cls="container"),
-            Main(*segments, cls="container")
-            )
+    return (
+        Title(Tx("Title")),
+        Header(
+            nav(
+                book=book,
+                title=Tx("Title"),
+                actions=[
+                    A(f'{Tx("Download")} DOCX', href="/{bid}/docx"),
+                    A(f'{Tx("Download")} PDF', href="/{bid}/pdf"),
+                    A(f'{Tx("Download")} TGZ', href="/{bid}/tgz"),
+                ],
+            ),
+            cls="container",
+        ),
+        Main(*segments, cls="container"),
+    )
+
 
 @rt("/{bid}/index")
-def index(bid:str):
+def get(bid: str):
     "Page listing the indexed terms."
     book = get_book(bid)
     items = []
@@ -652,16 +909,19 @@ def index(bid:str):
         for text in sorted(texts, key=lambda t: t.ordinal):
             if links:
                 links.append(NotStr(",&nbsp; "))
-            links.append(A(text.fullname, cls="secondary",
-                           href=f"/{bid}/text/{text.fullname}"))
-        items.append(Li(key, Br(), Small(*links)))
-    return (Title(Tx("Index")),
-            Header(nav(book=book, title=Tx("Index")), cls="container"),
-            Main(Ul(*items), cls="container")
+            links.append(
+                A(text.fullname, cls="secondary", href=f"/{bid}/text/{text.fullname}")
             )
+        items.append(Li(key, Br(), Small(*links)))
+    return (
+        Title(Tx("Index")),
+        Header(nav(book=book, title=Tx("Index")), cls="container"),
+        Main(Ul(*items), cls="container"),
+    )
+
 
 @rt("/{bid}/statuses")
-def statuses(bid:str):
+def get(bid: str):
     "Page listing the statuses and texts in them."
     book = get_book(bid)
     rows = [Tr(Th(Tx("Status"), Th(Tx("Texts"))))]
@@ -671,24 +931,31 @@ def statuses(bid:str):
             if t.status == status:
                 if texts:
                     texts.append(Br())
-                texts.append(A(f"{'.'.join([str(o+1) for o in t.ordinal])}. {t.title}",
-                               href=f"/{bid}/text/{t.urlpath}"))
-        rows.append(Tr(Td(Tx(str(status)), valign="top"),
-                       Td(*texts)))
-    return (Title(Tx("Statuses")),
-            Header(nav(book=book, title=Tx("Statuses")), cls="container"),
-            Main(Table(*rows), cls="container")
-            )
+                texts.append(
+                    A(
+                        f"{'.'.join([str(o+1) for o in t.ordinal])}. {t.title}",
+                        href=f"/{bid}/text/{t.urlpath}",
+                    )
+                )
+        rows.append(Tr(Td(Tx(str(status)), valign="top"), Td(*texts)))
+    return (
+        Title(Tx("Statuses")),
+        Header(nav(book=book, title=Tx("Statuses")), cls="container"),
+        Main(Table(*rows), cls="container"),
+    )
+
 
 @rt("/{bid}/docx")
-def docx(bid:str):
+def get(bid: str):
     "DOCX for the whole book."
     return get_docx(bid)
 
+
 @rt("/{bid}/docx/{path:path}")
-def docx(bid:str, path:str):
+def get(bid: str, path: str):
     "DOCX for a section or text in the book."
     return get_docx(bid, path)
+
 
 def get_docx(bid, path=None):
     "Get the parameters for outputting DOCX file."
@@ -706,43 +973,49 @@ def get_docx(bid, path=None):
             page_break_options.append(Option(str(value), selected=True))
         else:
             page_break_options.append(Option(str(value)))
-    footnotes_location = settings.get("footnotes_location", constants.FOOTNOTES_EACH_TEXT)
+    footnotes_location = settings.get(
+        "footnotes_location", constants.FOOTNOTES_EACH_TEXT
+    )
     footnotes_options = []
     for value in constants.FOOTNOTES_LOCATIONS:
         if value == footnotes_location:
-            footnotes_options.append(Option(Tx(value.capitalize()),
-                                            value=value, selected=True))
+            footnotes_options.append(
+                Option(Tx(value.capitalize()), value=value, selected=True)
+            )
         else:
             footnotes_options.append(Option(Tx(value.capitalize()), value=value))
     reference_font = settings.get("reference_font", constants.NORMAL)
     reference_options = []
     for value in constants.FONT_STYLES:
         if value == reference_font:
-            reference_options.append(Option(Tx(value.capitalize()),
-                                            value=value, selected=True))
+            reference_options.append(
+                Option(Tx(value.capitalize()), value=value, selected=True)
+            )
         else:
             reference_options.append(Option(Tx(value.capitalize())))
     indexed_font = settings.get("indexed_font", constants.NORMAL)
     indexed_options = []
     for value in constants.FONT_STYLES:
         if value == indexed_font:
-            indexed_options.append(Option(Tx(value.capitalize()), 
-                                          value=value, selected=True))
+            indexed_options.append(
+                Option(Tx(value.capitalize()), value=value, selected=True)
+            )
         else:
-            indexed_options.append(Option(Tx(value.capitalize()),
-                                          value=value))
+            indexed_options.append(Option(Tx(value.capitalize()), value=value))
     fields = []
     if item is None:
         fields.append(
             Fieldset(
                 Legend(Tx("Metadata on title page")),
                 Label(
-                    Input(type="checkbox",
-                          name="title_page_metadata",
-                          role="switch",
-                          checked=bool(title_page_metadata)),
-                    Tx("Display")
-                )
+                    Input(
+                        type="checkbox",
+                        name="title_page_metadata",
+                        role="switch",
+                        checked=bool(title_page_metadata),
+                    ),
+                    Tx("Display"),
+                ),
             )
         )
     else:
@@ -750,14 +1023,14 @@ def get_docx(bid, path=None):
     fields.append(
         Fieldset(
             Legend(Tx("Page break level")),
-            Select(*page_break_options, name="page_break_level")
+            Select(*page_break_options, name="page_break_level"),
         )
     )
     if item is None:
         fields.append(
             Fieldset(
                 Legend(Tx("Footnotes location")),
-                Select(*footnotes_options, name="footnotes_location")
+                Select(*footnotes_options, name="footnotes_location"),
             )
         )
     else:
@@ -765,38 +1038,39 @@ def get_docx(bid, path=None):
     fields.append(
         Fieldset(
             Legend(Tx("Reference font")),
-            Select(*reference_options, name="reference_font")
+            Select(*reference_options, name="reference_font"),
         )
     )
     fields.append(
         Fieldset(
-            Legend(Tx("Indexed font")),
-            Select(*indexed_options, name="indexed_font")
+            Legend(Tx("Indexed font")), Select(*indexed_options, name="indexed_font")
         )
     )
-    fields.append(
-        Button(f'{Tx("Create")} DOCX')
-    )
-    
+    fields.append(Button(f'{Tx("Download")} DOCX'))
+
     if path is None:
         title = book.title
     else:
         title = path
-    return (Title(f'{Tx("Create")} DOCX:  {title}'),
-            Header(nav(book=book, title=f'{Tx("Create")} DOCX: {title}'),
-                   cls="container"),
-            Main(Form(*fields, action=f"/{bid}/docx_create", method="post"),
-                 cls="container")
-            )
+    return (
+        Title(f'{Tx("Download")} DOCX:  {title}'),
+        Header(
+            nav(book=book, title=f'{Tx("Download")} DOCX: {title}'), cls="container"
+        ),
+        Main(Form(*fields, action=f"/{bid}/docx", method="post"), cls="container"),
+    )
 
-@rt("/{bid}/docx_create")
-def post(bid:str,
-         path:str=None,
-         title_page_metadata:bool=False,
-         page_break_level:int=None,
-         footnotes_location:str=None,
-         reference_font:str=None,
-         indexed_font:str=None):
+
+@rt("/{bid}/docx")
+def post(
+    bid: str,
+    path: str = None,
+    title_page_metadata: bool = False,
+    page_break_level: int = None,
+    footnotes_location: str = None,
+    reference_font: str = None,
+    indexed_font: str = None,
+):
     "Actually create and return the DOCX file."
     book = get_book(bid)
     if path:
@@ -821,13 +1095,15 @@ def post(bid:str,
         paras = [P(f'{Tx("Text")}: {path}')]
     creator = docx_creator.Creator(book, get_references(), item=item)
     output = creator.create()
-    return Response(status_code=200,
-                    content=output.getvalue(),
-                    media_type=constants.DOCX_MIMETYPE,
-                    headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+    return Response(
+        content=output.getvalue(),
+        media_type=constants.DOCX_MIMETYPE,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
 
 @rt("/{bid}/pdf")
-def pdf(bid:str):
+def pdf(bid: str):
     "Get the parameters for outputting PDF file of the whole book."
     book = get_book(bid)
     settings = book.frontmatter.setdefault("pdf", {})
@@ -848,12 +1124,15 @@ def pdf(bid:str):
         else:
             contents_level_options.append(Option(str(value)))
 
-    footnotes_location = settings.get("footnotes_location",
-                                      constants.FOOTNOTES_EACH_TEXT)
+    footnotes_location = settings.get(
+        "footnotes_location", constants.FOOTNOTES_EACH_TEXT
+    )
     footnotes_options = []
     for value in constants.FOOTNOTES_LOCATIONS:
         if value == footnotes_location:
-            footnotes_options.append(Option(Tx(value.capitalize()), value=value, selected=True))
+            footnotes_options.append(
+                Option(Tx(value.capitalize()), value=value, selected=True)
+            )
         else:
             footnotes_options.append(Option(Tx(value.capitalize()), value=value))
 
@@ -861,22 +1140,28 @@ def pdf(bid:str):
     indexed_options = []
     for value in constants.PDF_INDEXED_XREF_DISPLAY:
         if value == indexed_xref:
-            indexed_options.append(Option(Tx(value.capitalize()), value=value, selected=True))
+            indexed_options.append(
+                Option(Tx(value.capitalize()), value=value, selected=True)
+            )
         else:
             indexed_options.append(Option(Tx(value.capitalize()), value=value))
 
-    return (Title(f'{Tx("Create")} PDF'),
-            Header(nav(book=book, title=f'{Tx("Create")} PDF'), cls="container"),
-            Main(Form(
+    return (
+        Title(f'{Tx("Download")} PDF'),
+        Header(nav(book=book, title=f'{Tx("Download")} PDF'), cls="container"),
+        Main(
+            Form(
                 Fieldset(
                     Legend(Tx("Metadata on title page")),
                     Label(
-                        Input(type="checkbox",
-                              name="title_page_metadata",
-                              role="switch",
-                              checked=bool(title_page_metadata)),
-                        Tx("Display")
-                    )
+                        Input(
+                            type="checkbox",
+                            name="title_page_metadata",
+                            role="switch",
+                            checked=bool(title_page_metadata),
+                        ),
+                        Tx("Display"),
+                    ),
                 ),
                 Fieldset(
                     Legend(Tx("Page break level")),
@@ -885,12 +1170,14 @@ def pdf(bid:str):
                 Fieldset(
                     Legend(Tx("Contents pages")),
                     Label(
-                        Input(type="checkbox",
-                              name="contents_pages",
-                              role="switch",
-                              checked=bool(contents_pages)),
-                        Tx("Display")
-                    )
+                        Input(
+                            type="checkbox",
+                            name="contents_pages",
+                            role="switch",
+                            checked=bool(contents_pages),
+                        ),
+                        Tx("Display"),
+                    ),
                 ),
                 Fieldset(
                     Legend(Tx("Contents level")),
@@ -898,26 +1185,31 @@ def pdf(bid:str):
                 ),
                 Fieldset(
                     Legend(Tx("Footnotes location")),
-                    Select(*footnotes_options, name="footnotes_location")
+                    Select(*footnotes_options, name="footnotes_location"),
                 ),
                 Fieldset(
                     Legend(Tx("Display of indexed term reference")),
-                    Select(*indexed_options, name="indexed_xref")
+                    Select(*indexed_options, name="indexed_xref"),
                 ),
-                Button(f'{Tx("Create")} PDF'),
-                action=f"/{bid}/pdf_create",
-                method="post"),
-                 cls="container")
-            )
+                Button(f'{Tx("Download")} PDF'),
+                action=f"/{bid}/pdf",
+                method="post",
+            ),
+            cls="container",
+        ),
+    )
 
-@rt("/{bid}/pdf_create")
-def post(bid:str,
-         title_page_metadata:bool=False,
-         page_break_level:int=None,
-         contents_pages:bool=False,
-         contents_level:int=None,
-         footnotes_location:str=None,
-         indexed_xref:str=None):
+
+@rt("/{bid}/pdf")
+def post(
+    bid: str,
+    title_page_metadata: bool = False,
+    page_break_level: int = None,
+    contents_pages: bool = False,
+    contents_level: int = None,
+    footnotes_location: str = None,
+    indexed_xref: str = None,
+):
     "Actually create and return the PDF file."
     book = get_book(bid)
     original = copy.deepcopy(book.frontmatter)
@@ -933,22 +1225,24 @@ def post(bid:str,
     filename = book.title + ".pdf"
     creator = pdf_creator.Creator(book, get_references())
     output = creator.create()
-    return Response(status_code=200,
-                    content=output.getvalue(),
-                    media_type=constants.PDF_MIMETYPE,
-                    headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+    return Response(
+        content=output.getvalue(),
+        media_type=constants.PDF_MIMETYPE,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
 
 @rt("/{bid}/tgz")
-def tgz(bid:str):
+def get(bid: str):
     "Create a gzipped tar file of the book and return."
     book = get_book(bid)
     filename = f"{book.title} {utils.timestr()}.tgz"
     output = book.archive()
-    return Response(status_code=200,
-                    content=output.getvalue(),
-                    media_type=constants.GZIP_MIMETYPE,
-                    headers={"Content-Disposition": 
-                             f'attachment; filename="{filename}"'})
+    return Response(
+        content=output.getvalue(),
+        media_type=constants.GZIP_MIMETYPE,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 serve()

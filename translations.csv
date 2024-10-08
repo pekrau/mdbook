@@ -68,7 +68,13 @@ statuses,statuslista
 section,sektion
 text,text
 texts,texter
+convert,omforma
 convert to section,omforma till sektion
-make,skapa
+download,ladda ner
+upload,ladda upp
 save,spara
 source,källa
+book title,boktitel
+gzipped tar file,gzippad tar-fil
+delete,radera
+confirm,bekräfta

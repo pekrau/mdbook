@@ -17,12 +17,15 @@ def short_name(name):
     parts.append("".join([f"{i}." for i in initials]))
     return ", ".join(parts)
 
+
 def thousands(i):
     return f"{i:,}".replace(",", ".")
+
 
 def cleanup(value):
     "Convert LaTeX characters to UTF-8, remove newlines and normalize blanks."
     return latex_utf8.from_latex_to_utf8(" ".join(value.split()))
+
 
 def timestr(filepath=None):
     if filepath:
@@ -67,12 +70,14 @@ class Translator:
     def __call__(self, term):
         return self.translation.get(str(term), term)
 
+
 Tx = Translator(constants.TRANSLATIONS_FILEPATH)
 
 
 if __name__ == "__main__":
     from icecream import ic
     import constants
+
     tr = Translator(constants.TRANSLATIONS_FILE)
     ic(str(tr))
     ic(tr.languages)

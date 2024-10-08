@@ -7,7 +7,7 @@ import datetime
 import io
 import os
 
-import fpdf                     # fpdf2, actually!
+import fpdf  # fpdf2, actually!
 
 import utils
 import constants
@@ -65,13 +65,19 @@ class Creator:
         self.pdf.set_creation_date(datetime.datetime.now())
 
         self.pdf.add_font(
-            "FreeSans", style="", fname=os.path.join(constants.FONT_DIRPATH, "FreeSans.ttf")
+            "FreeSans",
+            style="",
+            fname=os.path.join(constants.FONT_DIRPATH, "FreeSans.ttf"),
         )
         self.pdf.add_font(
-            "FreeSans", style="B", fname=os.path.join(constants.FONT_DIRPATH, "FreeSansBold.ttf")
+            "FreeSans",
+            style="B",
+            fname=os.path.join(constants.FONT_DIRPATH, "FreeSansBold.ttf"),
         )
         self.pdf.add_font(
-            "FreeSans", style="I", fname=os.path.join(constants.FONT_DIRPATH, "FreeSansOblique.ttf")
+            "FreeSans",
+            style="I",
+            fname=os.path.join(constants.FONT_DIRPATH, "FreeSansOblique.ttf"),
         )
         self.pdf.add_font(
             "FreeSans",
@@ -79,13 +85,19 @@ class Creator:
             fname=os.path.join(constants.FONT_DIRPATH, "FreeSansBoldOblique.ttf"),
         )
         self.pdf.add_font(
-            "FreeSerif", style="", fname=os.path.join(constants.FONT_DIRPATH, "FreeSerif.ttf")
+            "FreeSerif",
+            style="",
+            fname=os.path.join(constants.FONT_DIRPATH, "FreeSerif.ttf"),
         )
         self.pdf.add_font(
-            "FreeSerif", style="B", fname=os.path.join(constants.FONT_DIRPATH, "FreeSerifBold.ttf")
+            "FreeSerif",
+            style="B",
+            fname=os.path.join(constants.FONT_DIRPATH, "FreeSerifBold.ttf"),
         )
         self.pdf.add_font(
-            "FreeSerif", style="I", fname=os.path.join(constants.FONT_DIRPATH, "FreeSerifItalic.ttf")
+            "FreeSerif",
+            style="I",
+            fname=os.path.join(constants.FONT_DIRPATH, "FreeSerifItalic.ttf"),
         )
         self.pdf.add_font(
             "FreeSerif",
@@ -93,13 +105,19 @@ class Creator:
             fname=os.path.join(constants.FONT_DIRPATH, "FreeSerifBoldItalic.ttf"),
         )
         self.pdf.add_font(
-            "FreeMono", style="", fname=os.path.join(constants.FONT_DIRPATH, "FreeMono.ttf")
+            "FreeMono",
+            style="",
+            fname=os.path.join(constants.FONT_DIRPATH, "FreeMono.ttf"),
         )
         self.pdf.add_font(
-            "FreeMono", style="B", fname=os.path.join(constants.FONT_DIRPATH, "FreeMonoBold.ttf")
+            "FreeMono",
+            style="B",
+            fname=os.path.join(constants.FONT_DIRPATH, "FreeMonoBold.ttf"),
         )
         self.pdf.add_font(
-            "FreeMono", style="I", fname=os.path.join(constants.FONT_DIRPATH, "FreeMonoOblique.ttf")
+            "FreeMono",
+            style="I",
+            fname=os.path.join(constants.FONT_DIRPATH, "FreeMonoOblique.ttf"),
         )
         self.pdf.add_font(
             "FreeMono",
@@ -622,7 +640,10 @@ class Creator:
             entries = self.footnotes.setdefault(self.current_text.fullname, {})
             number = len(entries) + 1
             key = label
-        elif self.footnotes_location in (constants.FOOTNOTES_EACH_CHAPTER, constants.FOOTNOTES_END_OF_BOOK):
+        elif self.footnotes_location in (
+            constants.FOOTNOTES_EACH_CHAPTER,
+            constants.FOOTNOTES_END_OF_BOOK,
+        ):
             fullname = self.current_text.chapter.fullname
             entries = self.footnotes.setdefault(fullname, {})
             number = len(entries) + 1
@@ -637,7 +658,10 @@ class Creator:
         if self.footnotes_location == constants.FOOTNOTES_EACH_TEXT:
             fullname = self.current_text.fullname
             key = label
-        elif self.footnotes_location in (constants.FOOTNOTES_EACH_CHAPTER, constants.FOOTNOTES_END_OF_BOOK):
+        elif self.footnotes_location in (
+            constants.FOOTNOTES_EACH_CHAPTER,
+            constants.FOOTNOTES_END_OF_BOOK,
+        ):
             fullname = self.current_text.chapter.fullname
             key = f"{fullname}-{label}"
         self.footnotes[fullname][key]["ast_children"] = ast["children"]

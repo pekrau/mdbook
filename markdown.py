@@ -77,7 +77,9 @@ class IndexedRenderer:
     "Output a link to the index page and item."
 
     def render_indexed(self, element):
-        return f'<a class="secondary" href="/index#{element.canonical}">{element.term}</a>'
+        return (
+            f'<a class="secondary" href="/index#{element.canonical}">{element.term}</a>'
+        )
 
 
 class Reference(marko.inline.InlineElement):
@@ -102,11 +104,13 @@ html_converter.use("footnote")
 html_converter.use(
     marko.helpers.MarkoExtension(
         elements=[Subscript, Superscript, Emdash, Indexed, Reference],
-        renderer_mixins=[SubscriptRenderer,
-                         SuperscriptRenderer,
-                         EmdashRenderer,
-                         IndexedRenderer,
-                         ReferenceRenderer],
+        renderer_mixins=[
+            SubscriptRenderer,
+            SuperscriptRenderer,
+            EmdashRenderer,
+            IndexedRenderer,
+            ReferenceRenderer,
+        ],
     )
 )
 
@@ -122,5 +126,3 @@ ast_converter.use(
 )
 
 convert_to_ast = ast_converter.convert
-
-
