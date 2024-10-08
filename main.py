@@ -35,12 +35,13 @@ except KeyError:
     else:
         MDBOOKS = os.getcwd()
 
-# Key: bid; value: Book instance.
+# Book instances cache. Key: bid; value: Book instance.
 books = {}
 
 
 def get_book(bid):
     "Get the book contents, cached."
+    global books
     try:
         return books[bid]
     except KeyError:
@@ -248,7 +249,7 @@ def get():
 
 @rt("/tgz")
 def get():
-    "Create a gzipped tar file of all books and return it."
+    "Download a gzipped tar file of all books."
     output = io.BytesIO()
     with tarfile.open(fileobj=output, mode="w:gz") as archivefile:
         for name in os.listdir(MDBOOKS):
@@ -534,9 +535,10 @@ def post(data: str):
 @rt("/book")
 def get():
     "Page to create and/or upload book using a gzipped tar file."
+    title = f'{Tx("Create or upload")} {Tx("book")}'
     return (
-        Title(Tx("Create or upload book")),
-        Header(nav(title=Tx("Create or upload book")), cls="container"),
+        Title(title),
+        Header(nav(title=title), cls="container"),
         Main(
             Form(
                 Fieldset(
@@ -546,7 +548,7 @@ def get():
                 Fieldset(
                     Legend(Tx("Gzipped tar file")), Input(type="file", name="tgzfile")
                 ),
-                Button(Tx("Create")),
+                Button(Tx("Create or upload")),
                 action="/book",
                 method="post",
             ),
@@ -556,10 +558,8 @@ def get():
 
 
 @rt("/book")
-def post(bid: str, tgzfile: UploadFile = None):
+async def post(bid: str, tgzfile: UploadFile = None):
     "Actually create and/or upload book using a gzipped tar file."
-    if bid in books:
-        return error(f'Book "{bid}" already exists.')
     if not bid:
         return error("No book identifier provided.")
     try:
@@ -567,10 +567,24 @@ def post(bid: str, tgzfile: UploadFile = None):
     except ValueError:
         return error(f'Book identifier "{bid}" contains disallowed characters.')
     dirpath = os.path.join(MDBOOKS, bid)
-    os.mkdir(dirpath)
-    with open(os.path.join(dirpath, "index.md"), "w") as outfile:
-        write_frontmatter(outfile, {"owner": "XXX", "status": repr(constants.STARTED)})
-    return Redirect("/")
+    try:
+        os.mkdir(dirpath)
+    except FileExistsError:
+        return error(f'Book "{bid}" already exists.')
+    if tgzfile is None:
+        with open(os.path.join(dirpath, "index.md"), "w") as outfile:
+            write_frontmatter(outfile,
+                              {"owner": "XXX", "status": repr(constants.STARTED)})
+    else:
+        try:
+            tf = tarfile.open(fileobj=io.BytesIO(await tgzfile.read()), mode="r:gz")
+            if "index.md" not in tf.getnames():
+                raise ValueError("No 'index.md' file in tgz file; not from mdbook?")
+            tf.extractall(path=dirpath)
+        except (tarfile.TarError, ValueError) as msg:
+            return error(f"Error reading tgz file: {msg}")
+        # XXX change owner of book
+    return Redirect(f"/{bid}")
 
 
 @rt("/{bid}")
@@ -582,9 +596,9 @@ def get(bid: str):
         A(f'{Tx("Statuses")}', href=f"/{bid}/statuses"),
         A(f'{Tx("Create")} {Tx("section")}', href=f"/{bid}/create_section"),
         A(f'{Tx("Create")} {Tx("text")}', href=f"/{bid}/create_text"),
-        A(f'{Tx("Create")} DOCX', href=f"/{bid}/docx"),
-        A(f'{Tx("Create")} PDF', href=f"/{bid}/pdf"),
-        A(f'{Tx("Create")} TGZ', href=f"/{bid}/tgz"),
+        A(f'{Tx("Download")} DOCX', href=f"/{bid}/docx"),
+        A(f'{Tx("Download")} PDF', href=f"/{bid}/pdf"),
+        A(f'{Tx("Download")} TGZ', href=f"/{bid}/tgz"),
     ]
     if len(book.items) == 0:
         actions.append(A(f'{Tx("Delete")}', href=f"/{bid}/delete/"))
@@ -623,7 +637,7 @@ def get(bid: str, path: str):
     actions = [
         A(Tx("Edit"), href=f"/{bid}/edit/{path}"),
         A(Tx("Convert to section"), href=f"/{bid}/to_section/{path}"),
-        A(f'{Tx("Create")} DOCX', href=f"/{bid}/docx/{path}"),
+        A(f'{Tx("Download")} DOCX', href=f"/{bid}/docx/{path}"),
         A(f'{Tx("Delete")}', href=f"/{bid}/delete/{path}"),
     ]
     return (
@@ -745,7 +759,7 @@ def get(bid: str, path: str):
         A(Tx("Edit"), href=f"/{bid}/edit/{path}"),
         A(f'{Tx("Create")} {Tx("section")}', href=f"/{bid}/create_section/{path}"),
         A(f'{Tx("Create")} {Tx("text")}', href=f"/{bid}/create_text/{path}"),
-        A(f'{Tx("Create")} DOCX', href=f"/{bid}/docx/{path}"),
+        A(f'{Tx("Download")} DOCX', href=f"/{bid}/docx/{path}"),
     ]
     if len(section.items) == 0:
         actions.append(A(f'{Tx("Delete")}', href=f"/{bid}/delete/{path}"))
@@ -789,10 +803,11 @@ def post(bid: str, path: str):
 def get(bid: str, path: str):
     "Create a new text in the section."
     book = get_book(bid)
-    assert book[path].is_section
+    assert path == "" or book[path].is_section
+    title = f'{Tx("Create")} {Tx("text")}'
     return (
-        Title(Tx("Create text")),
-        Header(nav(book=book, title=Tx("Create text")), cls="container"),
+        Title(title),
+        Header(nav(book=book, title=title), cls="container"),
         Main(
             Form(
                 Fieldset(
@@ -813,25 +828,26 @@ def post(bid: str, path: str, title: str = None):
     "Create a new text in the section."
     book = get_book(bid)
     if path == "":
-        parent = book
+        parent = None
     else:
         parent = book[path]
         assert parent.is_section
     new = book.create_text(title, parent=parent)
-    return Redirect(f"/{bid}/section/{path}")
+    if path:
+        return Redirect(f"/{bid}/section/{path}")
+    else:
+        return Redirect(f"/{bid}")
 
 
 @rt("/{bid}/create_section/{path:path}")
 def get(bid: str, path: str):
     "Create a new section in the section."
     book = get_book(bid)
-    if path == "":
-        parent = book
-    else:
-        parent = book[path]
+    assert path == "" or book[path].is_section
+    title = f'{Tx("Create")} {Tx("section")}'
     return (
-        Title(Tx("Create section")),
-        Header(nav(book=book, title=Tx("Create section")), cls="container"),
+        Title(title),
+        Header(nav(book=book, title=title), cls="container"),
         Main(
             Form(
                 Fieldset(
@@ -852,15 +868,15 @@ def post(bid: str, path: str, title: str = None):
     "Create a new section in the section."
     book = get_book(bid)
     if path == "":
-        parent = book
+        parent = None
     else:
         parent = book[path]
         assert parent.is_section
     new = book.create_section(title, parent=parent)
-    if path == "":
-        return Redirect(f"/{bid}")
-    else:
+    if path:
         return Redirect(f"/{bid}/section/{path}")
+    else:
+        return Redirect(f"/{bid}")
 
 
 @rt("/{bid}/title")
@@ -947,18 +963,18 @@ def get(bid: str):
 
 @rt("/{bid}/docx")
 def get(bid: str):
-    "DOCX for the whole book."
+    "Download the DOCX for the whole book."
     return get_docx(bid)
 
 
 @rt("/{bid}/docx/{path:path}")
 def get(bid: str, path: str):
-    "DOCX for a section or text in the book."
+    "Download the DOCX for a section or text in the book."
     return get_docx(bid, path)
 
 
 def get_docx(bid, path=None):
-    "Get the parameters for outputting DOCX file."
+    "Get the parameters for downloading the DOCX file."
     book = get_book(bid)
     if path:
         item = book[path]
@@ -1071,7 +1087,7 @@ def post(
     reference_font: str = None,
     indexed_font: str = None,
 ):
-    "Actually create and return the DOCX file."
+    "Actually download the DOCX file of the book."
     book = get_book(bid)
     if path:
         path = urllib.parse.unquote(path)
@@ -1089,10 +1105,8 @@ def post(
         if book.frontmatter != original:
             book.index.write()
         filename = book.title + ".docx"
-        paras = []
     else:
         filename = item.title + ".docx"
-        paras = [P(f'{Tx("Text")}: {path}')]
     creator = docx_creator.Creator(book, get_references(), item=item)
     output = creator.create()
     return Response(
@@ -1104,7 +1118,7 @@ def post(
 
 @rt("/{bid}/pdf")
 def pdf(bid: str):
-    "Get the parameters for outputting PDF file of the whole book."
+    "Get the parameters for downloading PDF file of the whole book."
     book = get_book(bid)
     settings = book.frontmatter.setdefault("pdf", {})
     title_page_metadata = settings.get("title_page_metadata", True)
@@ -1210,7 +1224,7 @@ def post(
     footnotes_location: str = None,
     indexed_xref: str = None,
 ):
-    "Actually create and return the PDF file."
+    "Actually download the PDF file of the book."
     book = get_book(bid)
     original = copy.deepcopy(book.frontmatter)
     settings = book.frontmatter.setdefault("pdf", {})
@@ -1234,7 +1248,7 @@ def post(
 
 @rt("/{bid}/tgz")
 def get(bid: str):
-    "Create a gzipped tar file of the book and return."
+    "Download a gzipped tar file of the book."
     book = get_book(bid)
     filename = f"{book.title} {utils.timestr()}.tgz"
     output = book.archive()

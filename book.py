@@ -274,12 +274,14 @@ class Book:
         new = Text(self, parent, title)
         parent.items.append(new)
         self.lookup[new.fullname] = new
+        self.write_index()
         return new
 
     def create_section(self, title, parent=None):
         """Create a new empty section inside the parent section or book.
         Raise ValueError if there is a problem.
         """
+        assert parent is None or isinstance(parent, Section)
         check_disallowed_characters(title)
         if parent is None:
             parent = self
@@ -291,6 +293,7 @@ class Book:
         new = Section(self, parent, title)
         parent.items.append(new)
         self.lookup[new.fullname] = new
+        self.write_index()
         return new
 
     def delete(self, item):
