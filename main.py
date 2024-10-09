@@ -650,6 +650,19 @@ def get(bid:str):
                  Textarea("\n".join(book.frontmatter.get("authors", [])),
                           name="authors", rows="3")),
     ]
+    language_options = []
+    for language in constants.LANGUAGE_CODES:
+        if book.frontmatter.get("language") == language:
+            language_options.append(Option(language, selected=True))
+        else:
+            language_options.append(Option(language))
+    fields.append(
+        Fieldset(
+            Label(
+                Tx("Language"), Select(*language_options, name="language")
+            )
+        )
+    )
     return (
         Title(f'{Tx("Edit")} {book.title}'),
         Header(nav(book=book, title=f'{Tx("Edit")} {book.title}'), cls="container"),
@@ -664,7 +677,7 @@ def get(bid:str):
 
 
 @rt("/{bid}/edit")
-def post(bid:str, title:str, subtitle:str, authors:str):
+def post(bid:str, title:str, subtitle:str, authors:str, language:str=None):
     "Actually edit the book data."
     book = get_book(bid)
     if title:
@@ -681,6 +694,10 @@ def post(bid:str, title:str, subtitle:str, authors:str):
         book.frontmatter["authors"] = authors
     else:
         book.frontmatter.pop("authors", None)
+    if language:
+        book.frontmatter["language"] = language
+    else:
+        book.frontmatter.pop("language", None)
     book.write_index()
     return Redirect(f"/{bid}/title")
 

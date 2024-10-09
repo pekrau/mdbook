@@ -3,11 +3,11 @@
 import functools
 import os.path
 
-VERSION = (2, 5, 0)
+VERSION = (2, 6, 0)
 __version__ = ".".join([str(n) for n in VERSION])
 
 
-DEFAULT_LANGUAGES = ("sv-SE", "en-GB", "en-US")
+LANGUAGE_CODES = ("sv-SE", "en-GB", "en-US")
 
 MARKDOWN_EXT = ".md"
 REFERENCES_DIR = "references"
