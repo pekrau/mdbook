@@ -28,12 +28,12 @@ Tx = utils.Tx
 app, rt = fast_app(live=True, static_path="static")
 
 try:
-    MDBOOKS = os.environ["MDBOOKS"]
+    MDBOOK_DIR = os.environ["MDBOOK_DIR"]
 except KeyError:
     if len(sys.argv) == 2:
-        MDBOOKS = sys.argv[1]
+        MDBOOK_DIR = sys.argv[1]
     else:
-        MDBOOKS = os.getcwd()
+        MDBOOK_DIR = os.getcwd()
 
 # Book instances cache. Key: bid; value: Book instance.
 books = {}
@@ -45,7 +45,7 @@ def get_book(bid):
     try:
         return books[bid]
     except KeyError:
-        book = Book(os.path.join(MDBOOKS, bid))
+        book = Book(os.path.join(MDBOOK_DIR, bid))
         books[bid] = book
         return book
 
@@ -56,12 +56,22 @@ def get_references():
     try:
         return_references
     except NameError:
-        _references = Book(os.path.join(MDBOOKS, constants.REFERENCES_DIR))
+        _references = Book(os.path.join(MDBOOK_DIR, constants.REFERENCES_DIR))
         return _references
 
 
 def error(message):
     return Response(status_code=409, content=message)
+
+
+def metadata(item):
+    n_words = f"{utils.thousands(item.n_words)}"
+    n_characters = f"{utils.thousands(len(item))}"
+    items = [Tx(item.status),
+             f'{n_words} {Tx("words")}; {n_characters} {Tx("characters")}']
+    if isinstance(item, Book) and item.frontmatter.get("language"):
+        items.append(item.frontmatter["language"])
+    return "; ".join(items)
 
 
 def nav(book=None, item=None, title=None, actions=None):
@@ -75,17 +85,26 @@ def nav(book=None, item=None, title=None, actions=None):
                 Li(A(book.title, href=f"/{book.id}")),
             )
         ]
-    if item:
+    if item is not None:
         entries.append(
             Ul(
                 Li(
                     Strong(item.fullname),
                     Br(),
-                    Small(f'{Tx("Status")}: {Tx(item.status)}'),
+                    Small(metadata(item)),
                 )
             )
         )
         nav_style = NAV_STYLE_TEMPLATE.format(color=item.status.color)
+    elif book is not None:
+        entries.append(
+            Ul(
+                Li(
+                    Small(metadata(book)),
+                )
+            )
+        )
+        nav_style = NAV_STYLE_TEMPLATE.format(color=book.status.color)
     elif title:
         entries.append(Ul(Li(Strong(title))))
         if book is None:
@@ -159,9 +178,6 @@ def toc(book, items, show_arrows=False):
     "Recursive lists of sections and texts."
     parts = []
     for item in items:
-        n_words = f"{utils.thousands(item.n_words)}"
-        n_characters = f"{utils.thousands(len(item))}"
-        data = f'{Tx(item.status)}; {n_words} {Tx("words")}; {n_characters} {Tx("characters")}'
         if show_arrows:
             arrows = [
                 NotStr("&nbsp;"),
@@ -180,7 +196,7 @@ def toc(book, items, show_arrows=False):
                         href=f"/{book.id}/section/{item.urlpath}",
                     ),
                     NotStr("&nbsp;&nbsp;&nbsp;"),
-                    Small(data, style="color: silver;"),
+                    Small(metadata(item), style="color: silver;"),
                     *arrows,
                     style=f"color: {item.status.color};",
                 )
@@ -195,7 +211,7 @@ def toc(book, items, show_arrows=False):
                         href=f"/{book.id}/text/{item.urlpath}",
                     ),
                     NotStr("&nbsp;&nbsp;&nbsp;"),
-                    Small(data, style="color: silver;"),
+                    Small(metadata(item)),
                     *arrows,
                 )
             )
@@ -206,11 +222,11 @@ def toc(book, items, show_arrows=False):
 def get():
     "Home page; list of books."
     books = []
-    for bid in os.listdir(MDBOOKS):
+    for bid in os.listdir(MDBOOK_DIR):
         if bid == constants.REFERENCES_DIR:
             continue
         try:
-            dirpath = os.path.join(MDBOOKS, bid)
+            dirpath = os.path.join(MDBOOK_DIR, bid)
             filepath = os.path.join(dirpath, "index.md")
             with open(filepath) as infile:
                 frontmatter, content = read_frontmatter(infile.read())
@@ -237,9 +253,9 @@ def get():
             nav(
                 title="mdbooks",
                 actions=[
-                    A(f'{Tx("Download")} TGZ', href="/tgz"),
                     A(f'{Tx("Create")} {Tx("book")}', href="/book"),
-                ],
+                    A(f'{Tx("Download")} TGZ', href="/tgz"),
+               ],
             ),
             cls="container",
         ),
@@ -252,8 +268,8 @@ def get():
     "Download a gzipped tar file of all books."
     output = io.BytesIO()
     with tarfile.open(fileobj=output, mode="w:gz") as archivefile:
-        for name in os.listdir(MDBOOKS):
-            archivefile.add(os.path.join(MDBOOKS, name), arcname=name, recursive=True)
+        for name in os.listdir(MDBOOK_DIR):
+            archivefile.add(os.path.join(MDBOOK_DIR, name), arcname=name, recursive=True)
     filename = f"mdbooks {utils.timestr()}.tgz"
     return Response(
         content=output.getvalue(),
@@ -566,7 +582,7 @@ async def post(bid: str, tgzfile: UploadFile = None):
         check_disallowed_characters(bid)
     except ValueError:
         return error(f'Book identifier "{bid}" contains disallowed characters.')
-    dirpath = os.path.join(MDBOOKS, bid)
+    dirpath = os.path.join(MDBOOK_DIR, bid)
     try:
         os.mkdir(dirpath)
     except FileExistsError:
@@ -629,7 +645,7 @@ def get(bid: str, path: str):
 
 @rt("/{bid}/text/{path:path}")
 def get(bid: str, path: str):
-    "View the text, or edit title, content or status and save."
+    "View the text."
     book = get_book(bid)
     text = book[path]
     assert text.is_text
@@ -643,7 +659,7 @@ def get(bid: str, path: str):
     return (
         Title(text.title),
         Header(nav(book=book, item=text, actions=actions), cls="container"),
-        Main(NotStr(text.html), cls="container"),
+        Main(H3(text.heading), NotStr(text.html), cls="container"),
     )
 
 
@@ -889,13 +905,6 @@ def get(bid: str):
         segments.append(H2(book.subtitle))
     for author in book.authors:
         segments.append(H3(author))
-    segments.append(
-        P(
-            f'{utils.thousands(book.n_words)} {Tx("words")},'
-            f' {utils.thousands(len(book))} {Tx("characters")}.'
-        )
-    )
-    segments.append(P(f'{Tx("Language")}: {book.frontmatter.get("language", "-")}'))
     segments.append(NotStr(book.index.html))
     return (
         Title(Tx("Title")),
