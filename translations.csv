@@ -11,7 +11,6 @@ proofs,korrektur
 final,slutgiltig
 title,titel
 subtitle,undertitel
-new title,ny titel
 index,index
 details,detaljer
 references,referenser
@@ -56,6 +55,7 @@ contents pages,innehållsförteckning
 display,visa
 true,sant
 false,falskt
+display on title page,visa på titelsidan
 display of indexed term reference,visning av referens för indexerad term
 page number,sidnummer
 text full name,textens hela namn
@@ -64,7 +64,7 @@ none,ingen
 Add BibTex,Lägg till BibTex
 number of files,antal filer
 metadata on title page,metadata på titelsidan
-statuses,statuslista
+status list,statuslista
 section,sektion
 text,text
 texts,texter
@@ -75,8 +75,8 @@ upload,ladda upp
 save,spara
 source,källa
 book title,boktitel
-gzipped tar file,gzippad tar-fil
 delete,radera
 confirm,bekräfta
 create or upload,skapa eller ladda upp
 language,språk
+display in output,visa i utdata

@@ -418,7 +418,7 @@ class Item:
     @property
     def heading(self):
         "Title preceded by ordinal."
-        return ".".join([str(i) for i in self.ordinal]) + " " + self.title
+        return f'{".".join([str(i) for i in self.ordinal])}. {self.title}'
 
     @property
     def prev(self):
@@ -485,8 +485,8 @@ class Item:
             unit = "secs"
         return f"{value:.0f} {unit}"
 
-    def new_title(self, new):
-        """New title the item.
+    def set_title(self, new):
+        """Set title for the item.
         Raise ValueError if any problem.
         """
         if new == self.title:

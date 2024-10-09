@@ -102,7 +102,7 @@ class Creator:
             run.font.size = docx.shared.Pt(24)
             run.font.bold = True
             items = list(self.item.all_items)
-        else:
+        elif self.item.is_text:
             paragraph = self.document.add_paragraph(style="Title")
             run = paragraph.add_run(self.item.title)
             run.font.size = docx.shared.Pt(20)
@@ -188,7 +188,8 @@ class Creator:
     def write_text(self, text, level):
         if level <= self.page_break_level:
             self.document.add_page_break()
-        self.write_heading(text.heading, level)
+        if not text.frontmatter.get("suppress_title"):
+            self.write_heading(text.heading, level)
         self.current_text = text
         self.render(text.ast, initialize=True)
         self.write_footnotes_text(text)

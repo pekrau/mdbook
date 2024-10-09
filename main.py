@@ -143,7 +143,7 @@ def nav(book=None, item=None, title=None, actions=None):
             [
                 A(Tx("Title"), href=f"/{book.id}/title"),
                 A(Tx("Index"), href=f"/{book.id}/index"),
-                A(Tx("Statuses"), href=f"/{book.id}/statuses"),
+                A(Tx("Statuslist"), href=f"/{book.id}/statuslist"),
             ]
         )
     pages.append(A(Tx("References"), href="/references"))
@@ -202,11 +202,15 @@ def toc(book, items, show_arrows=False):
                 )
             )
             parts.append(toc(book, item.items, show_arrows=show_arrows))
-        else:
+        elif item.is_text:
+            if item.frontmatter.get("suppress_title"):
+                title = Del(str(item))
+            else:
+                title = str(item)
             parts.append(
                 Li(
                     A(
-                        str(item),
+                        title,
                         style=f"color: {item.status.color};",
                         href=f"/{book.id}/text/{item.urlpath}",
                     ),
@@ -478,7 +482,7 @@ def get():
 
 
 @rt("/bibtex")
-def post(data: str):
+def post(data:str):
     "Actually add reference(s) using BibTex data."
     result = []
     for entry in bibtexparser.parse_string(data).entries:
@@ -558,11 +562,12 @@ def get():
         Main(
             Form(
                 Fieldset(
-                    Legend(Tx("Book title")),
+                    Legend(Tx("Title")),
                     Input(type="text", name="bid", required=True, autofocus=True),
                 ),
                 Fieldset(
-                    Legend(Tx("Gzipped tar file")), Input(type="file", name="tgzfile")
+                    Legend(Tx(f'{Tx("Upload")} TGZ')),
+                    Input(type="file", name="tgzfile")
                 ),
                 Button(Tx("Create or upload")),
                 action="/book",
@@ -574,7 +579,7 @@ def get():
 
 
 @rt("/book")
-async def post(bid: str, tgzfile: UploadFile = None):
+async def post(bid:str, tgzfile:UploadFile=None):
     "Actually create and/or upload book using a gzipped tar file."
     if not bid:
         return error("No book identifier provided.")
@@ -587,19 +592,20 @@ async def post(bid: str, tgzfile: UploadFile = None):
         os.mkdir(dirpath)
     except FileExistsError:
         return error(f'Book "{bid}" already exists.')
-    if tgzfile is None:
+    content = await tgzfile.read()
+    if content:
+        try:
+            tf = tarfile.open(fileobj=io.BytesIO(content), mode="r:gz")
+            if "index.md" not in tf.getnames():
+                raise ValueError("No 'index.md' file in TGZ file; not from mdbook?")
+            tf.extractall(path=dirpath)
+        except (tarfile.TarError, ValueError) as msg:
+            return error(f"Error reading TGZ file: {msg}")
+        # XXX change owner of book
+    else:
         with open(os.path.join(dirpath, "index.md"), "w") as outfile:
             write_frontmatter(outfile,
                               {"owner": "XXX", "status": repr(constants.STARTED)})
-    else:
-        try:
-            tf = tarfile.open(fileobj=io.BytesIO(await tgzfile.read()), mode="r:gz")
-            if "index.md" not in tf.getnames():
-                raise ValueError("No 'index.md' file in tgz file; not from mdbook?")
-            tf.extractall(path=dirpath)
-        except (tarfile.TarError, ValueError) as msg:
-            return error(f"Error reading tgz file: {msg}")
-        # XXX change owner of book
     return Redirect(f"/{bid}")
 
 
@@ -609,7 +615,8 @@ def get(bid: str):
     book = get_book(bid)
     book.read()
     actions = [
-        A(f'{Tx("Statuses")}', href=f"/{bid}/statuses"),
+        A(f'{Tx("Edit")}', href=f"/{bid}/edit"),
+        A(f'{Tx("Status list")}', href=f"/{bid}/statuslist"),
         A(f'{Tx("Create")} {Tx("section")}', href=f"/{bid}/create_section"),
         A(f'{Tx("Create")} {Tx("text")}', href=f"/{bid}/create_text"),
         A(f'{Tx("Download")} DOCX', href=f"/{bid}/docx"),
@@ -623,6 +630,59 @@ def get(bid: str):
         Header(nav(book=book, actions=actions), cls="container"),
         Main(toc(book, book.items, show_arrows=True), cls="container"),
     )
+
+
+@rt("/{bid}/edit")
+def get(bid:str):
+    "Page for editing the book data."
+    book = get_book(bid)
+    fields = [
+        Fieldset(
+            Label(Tx("Title")),
+            Input(name="title", value=book.frontmatter.get("title", ""),
+                  autofocus=True),
+        ),
+        Fieldset(
+            Label(Tx("Subtitle")),
+            Input(name="subtitle", value=book.frontmatter.get("subtitle", "")),
+        ),
+        Fieldset(Legend(Tx("Authors")),
+                 Textarea("\n".join(book.frontmatter.get("authors", [])),
+                          name="authors", rows="3")),
+    ]
+    return (
+        Title(f'{Tx("Edit")} {book.title}'),
+        Header(nav(book=book, title=f'{Tx("Edit")} {book.title}'), cls="container"),
+        Main(
+            Form(*fields,
+                 Button(Tx("Save")),
+                 action=f"/{bid}/edit",
+                 method="post"),
+            cls="container",
+        ),
+    )
+
+
+@rt("/{bid}/edit")
+def post(bid:str, title:str, subtitle:str, authors:str):
+    "Actually edit the book data."
+    book = get_book(bid)
+    if title:
+        book.frontmatter["title"] = title
+    else:
+        book.frontmatter.pop("title", None)
+    if subtitle:
+        book.frontmatter["subtitle"] = subtitle
+    else:
+        book.frontmatter.pop("subtitle", None)
+    if authors:
+        authors = [a.strip() for a in authors.split("\n")]
+    if authors:
+        book.frontmatter["authors"] = authors
+    else:
+        book.frontmatter.pop("authors", None)
+    book.write_index()
+    return Redirect(f"/{bid}/title")
 
 
 @rt("/{bid}/up/{path:path}")
@@ -656,26 +716,44 @@ def get(bid: str, path: str):
         A(f'{Tx("Download")} DOCX', href=f"/{bid}/docx/{path}"),
         A(f'{Tx("Delete")}', href=f"/{bid}/delete/{path}"),
     ]
+    if text.frontmatter.get("suppress_title"):
+        items = [H3(Del(text.heading))]
+    else:
+        items = [H3(text.heading)]
     return (
         Title(text.title),
         Header(nav(book=book, item=text, actions=actions), cls="container"),
-        Main(H3(text.heading), NotStr(text.html), cls="container"),
+        Main(*items, NotStr(text.html), cls="container"),
     )
 
 
 @rt("/{bid}/edit/{path:path}")
 def get(bid: str, path: str):
-    "Edit the item (section or text)."
+    "Page for editing the item (section or text)."
     book = get_book(bid)
     item = book[path]
     fields = [
         Fieldset(
-            Label(Tx("New title")),
+            Label(Tx("Title")),
             Input(name="title", value=item.title, required=True, autofocus=True),
         )
     ]
     if item.is_text:
         item.read()
+        fields.append(
+            Fieldset(
+                Legend(Tx("Title")),
+                Label(
+                    Input(
+                        type="checkbox",
+                        name="display_title",
+                        role="switch",
+                        checked=not(bool(item.frontmatter.get("suppress_title")))
+                    ),
+                    Tx("Display in output"),
+                ),
+            )
+        )
         status_options = []
         for status in constants.STATUSES:
             if item.status == status:
@@ -697,18 +775,23 @@ def get(bid: str, path: str):
         Title(f'{Tx("Edit")} {item.fullname}'),
         Header(nav(book=book, title=f'{Tx("Edit")} {item.fullname}'), cls="container"),
         Main(
-            Form(*fields, action=f"/{bid}/change/{path}", method="post"),
+            Form(*fields, action=f"/{bid}/edit/{path}", method="post"),
             cls="container",
         ),
     )
 
 
-@rt("/{bid}/change/{path:path}")
-def post(bid: str, path: str, title: str, content: str = None, status: str = None):
-    "Change the title of the section, or content and status of the text and save."
+@rt("/{bid}/edit/{path:path}")
+def post(bid:str, path:str, title:str, content:str=None, display_title:bool=None, status:str=None):
+    "Actually edit the item (section or text).."
     item = get_book(bid)[path]
-    item.new_title(title)
+    item.set_title(title)
     if item.is_text:
+        ic(display_title)
+        if display_title:
+            item.frontmatter.pop("suppress_title", None)
+        else:
+            item.frontmatter["suppress_title"] = True
         if status is not None:
             item.status = status
         item.write(content=content)
@@ -788,7 +871,7 @@ def get(bid: str, path: str):
 
 @rt("/{bid}/to_section/{path:path}")
 def get(bid: str, path: str):
-    "Convert to section containing a text with a new title out of this text."
+    "Convert to section containing a text with this text."
     book = get_book(bid)
     text = book[path]
     assert text.is_text
@@ -807,7 +890,7 @@ def get(bid: str, path: str):
 
 @rt("/{bid}/to_section/{path:path}")
 def post(bid: str, path: str):
-    "Convert to section containing a text with a new title out of this text."
+    "Convert to section containing a text with this text."
     text = get_book(bid)[path]
     assert text.is_text
     section = text.to_section()
@@ -913,9 +996,10 @@ def get(bid: str):
                 book=book,
                 title=Tx("Title"),
                 actions=[
-                    A(f'{Tx("Download")} DOCX', href="/{bid}/docx"),
-                    A(f'{Tx("Download")} PDF', href="/{bid}/pdf"),
-                    A(f'{Tx("Download")} TGZ', href="/{bid}/tgz"),
+                    A(f'{Tx("Edit")}', href=f"/{bid}/edit"),
+                    A(f'{Tx("Download")} DOCX', href=f"/{bid}/docx"),
+                    A(f'{Tx("Download")} PDF', href=f"/{bid}/pdf"),
+                    A(f'{Tx("Download")} TGZ', href=f"/{bid}/tgz"),
                 ],
             ),
             cls="container",
@@ -945,9 +1029,9 @@ def get(bid: str):
     )
 
 
-@rt("/{bid}/statuses")
+@rt("/{bid}/statuslist")
 def get(bid: str):
-    "Page listing the statuses and texts in them."
+    "Page listing each status and texts in it."
     book = get_book(bid)
     rows = [Tr(Th(Tx("Status"), Th(Tx("Texts"))))]
     for status in constants.STATUSES:
@@ -964,8 +1048,8 @@ def get(bid: str):
                 )
         rows.append(Tr(Td(Tx(str(status)), valign="top"), Td(*texts)))
     return (
-        Title(Tx("Statuses")),
-        Header(nav(book=book, title=Tx("Statuses")), cls="container"),
+        Title(Tx("Status list")),
+        Header(nav(book=book, title=Tx("Status list")), cls="container"),
         Main(Table(*rows), cls="container"),
     )
 
@@ -1039,7 +1123,7 @@ def get_docx(bid, path=None):
                         role="switch",
                         checked=bool(title_page_metadata),
                     ),
-                    Tx("Display"),
+                    Tx("Display on title page."),
                 ),
             )
         )
@@ -1183,7 +1267,7 @@ def pdf(bid: str):
                             role="switch",
                             checked=bool(title_page_metadata),
                         ),
-                        Tx("Display"),
+                        Tx("Display on title page."),
                     ),
                 ),
                 Fieldset(
@@ -1199,7 +1283,7 @@ def pdf(bid: str):
                             role="switch",
                             checked=bool(contents_pages),
                         ),
-                        Tx("Display"),
+                        Tx("Display in output"),
                     ),
                 ),
                 Fieldset(

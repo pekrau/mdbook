@@ -229,7 +229,7 @@ class Creator:
                 self.pdf.add_page()
         if level <= self.contents_level:
             self.pdf.start_section(text.heading, level=level - 1)
-        if text.get("display_heading", True):
+        if not text.frontmatter.get("suppress_title"):
             self.write_heading(text.heading, level)
         self.current_text = text
         self.render(text.ast)
