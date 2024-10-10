@@ -19,28 +19,59 @@ import markdown
 FRONTMATTER = re.compile(r"^---([\n\r].*?[\n\r])---[\n\r](.*)$", re.DOTALL)
 
 
-def read_frontmatter(content):
-    "Return the frontmatter as dictionary and the remaining content."
+def read_markdown(target, filepath):
+    "Read frontmatter and content from the Markdown file to the target."
+    try:
+        with open(filepath) as infile:
+            content = infile.read()
+    except FileNotFoundError:
+        content = ""
     match = FRONTMATTER.match(content)
     if match:
-        return yaml.safe_load(match.group(1)), content[match.start(2) :]
+        target.frontmatter = yaml.safe_load(match.group(1))
+        target.content = content[match.start(2) :]
     else:
-        return {}, content
+        target.frontmatter = {}
+        target.content = content
+    target.html = markdown.convert_to_html(target.content)
+    target.ast = markdown.convert_to_ast(target.content)
 
 
-def write_frontmatter(outfile, frontmatter):
-    if not frontmatter:
-        return
-    outfile.write("---\n")
-    outfile.write(yaml.dump(frontmatter, allow_unicode=True))
-    outfile.write("---\n")
+def write_markdown(source, filepath, content=None):
+    """"Write frontmatter and content to the Markdown file from the source.
+    Update the content, if provided.
+    Clean up the Markdown content:
+    - Strip each line from the right. (Markdown line breaks not allowed.)
+    - Do not write out multiple consecutive empty lines.
+    """
+    if content is not None:
+        source.content = content
+        source.html = markdown.convert_to_html(source.content)
+        source.ast = markdown.convert_to_ast(source.content)
+    with open(filepath, "w") as outfile:
+        if source.frontmatter:
+            outfile.write("---\n")
+            outfile.write(yaml.dump(source.frontmatter, allow_unicode=True))
+            outfile.write("---\n")
+        if source.content:
+            lines = []
+            prev_empty = False
+            for line in source.content.split("\n"):
+                line = line.rstrip()
+                empty = not bool(line)
+                if empty and prev_empty:
+                    continue
+                prev_empty = empty
+                lines.append(line)
+            source.content = "\n".join(lines)
+            outfile.write(source.content)
 
 
 class Book:
     "Root container for Markdown book texts in files and directories."
 
-    def __init__(self, absdirpath):
-        self.absdirpath = absdirpath
+    def __init__(self, abspath):
+        self.abspath = abspath
         self.read()
 
     def __str__(self):
@@ -50,8 +81,8 @@ class Book:
         return f"Book('{self}')"
 
     def __len__(self):
-        "Number of characters in Markdown content in all texts."
-        return sum([len(i) for i in self.all_texts]) + len(self.index)
+        "Number of characters in Markdown content in all items."
+        return sum([len(i) for i in self.items]) + len(self.content)
 
     def __bool__(self):
         "Always True; not dependent on len."
@@ -61,19 +92,16 @@ class Book:
         return self.lookup[fullname]
 
     def read(self):
-        "Read all items from files. Set up references and indexed lookups."
-        try:
-            self.index = Text(self, self, "index.md")
-        except OSError:
-            with open(os.path.join(self.absdirpath, "index.md"), "w") as outfile:
-                pass
-        self.frontmatter = self.index.frontmatter
+        """"Read all items (sections, texts) recursively from files.
+        Set up references and indexed lookups.
+        """
+        read_markdown(self, os.path.join(self.abspath, "index.md"))
 
         self.items = []
         self.lookup = {}
 
         # Section and Text instances for directories and files that actually exist.
-        for itemname in sorted(os.listdir(self.absdirpath)):
+        for itemname in sorted(os.listdir(self.abspath)):
             # Skip emacs temporary edit file.
             if itemname.startswith(".#"):
                 continue
@@ -81,8 +109,9 @@ class Book:
             if itemname == "index.md":
                 continue
 
-            itempath = os.path.join(self.absdirpath, itemname)
+            itempath = os.path.join(self.abspath, itemname)
             if os.path.isdir(itempath):
+                # This will recursively read all items beneath this one.
                 self.items.append(Section(self, self, itemname))
 
             elif itemname.endswith(constants.MARKDOWN_EXT):
@@ -91,26 +120,32 @@ class Book:
                     self.items.append(item)
             else:
                 pass
+        # Set the order to be that explicity given, if any.
+        self.set_items_order(self, self.frontmatter.get("items"))
 
         for item in self.all_items:
             self.lookup[item.fullname] = item
-
         self.references = {}
         for item in self.all_texts:
             self.find_references(item, item.ast)
-
         self.indexed = {}
         for item in self.all_texts:
             self.find_indexed(item, item.ast)
 
-        # Re-order items according to the 'index.md' file; save if any change.
+        # Write out "index.md" if order changed.
+        self.write()
+
+    def write(self, content=None, force=False):
+        """Write the 'index.md' file, if changed. 
+        This is *not* recursive.
+        """
         original = copy.deepcopy(self.frontmatter)
-        self.set_items_order(self, self.frontmatter.get("items", []))
         self.frontmatter["items"] = self.get_items_order(self)
-        if self.frontmatter != original:
-            self.index.write()
+        if force or self.frontmatter != original or (content is not None and self.content != content):
+            write_markdown(self, os.path.join(self.abspath, "index.md"), content=content)
 
     def set_items_order(self, container, items_order):
+        "Chnage order of items in container according to given items_order."
         original = dict([i.title, i] for i in container.items)
         container.items = []
         for ordered in items_order:
@@ -133,10 +168,6 @@ class Book:
             else:
                 result.append(dict(title=item.title))
         return result
-
-    @property
-    def abspath(self):
-        return self.absdirpath
 
     @property
     def fullname(self):
@@ -174,7 +205,7 @@ class Book:
     @property
     def n_words(self):
         "Approximate number of words in the book."
-        return sum([i.n_words for i in self.all_texts]) + self.index.n_words
+        return sum([i.n_words for i in self.items]) + len(self.content.split())
 
     @property
     def status(self):
@@ -190,11 +221,11 @@ class Book:
 
     @property
     def id(self):
-        return os.path.basename(self.absdirpath)
+        return os.path.basename(self.abspath)
 
     @property
     def title(self):
-        return self.frontmatter.get("title") or os.path.basename(self.absdirpath)
+        return self.frontmatter.get("title") or os.path.basename(self.abspath)
 
     @title.setter
     def title(self, title):
@@ -274,7 +305,8 @@ class Book:
         new = Text(self, parent, title)
         parent.items.append(new)
         self.lookup[new.fullname] = new
-        self.write_index()
+        self.write()
+        self.book.write()
         return new
 
     def create_section(self, title, parent=None):
@@ -293,7 +325,8 @@ class Book:
         new = Section(self, parent, title)
         parent.items.append(new)
         self.lookup[new.fullname] = new
-        self.write_index()
+        self.write()
+        self.book.write()
         return new
 
     def delete(self, item):
@@ -306,34 +339,29 @@ class Book:
             os.remove(item.abspath)
         self.lookup.pop(item.fullname)
         item.parent.items.remove(item)
-        self.write_index()
+        self.book.write()
 
-    def write_index(self):
-        "Write the updated 'index.md' file."
-        self.frontmatter["items"] = self.get_items_order(self)
-        self.index.write()
-
-    def archive(self):
+    def get_archive(self):
         """Write all files for this book to a gzipped tar file.
-        Return the BytesIO instance containing the file.
+        Return the BytesIO instance containing the tgz file.
         """
         output = io.BytesIO()
         with tarfile.open(fileobj=output, mode="w:gz") as archivefile:
-            archivefile.add(self.index.abspath, arcname="index.md")
+            filepath = os.path.join(self.abspath, "index.md")
+            if os.path.exists(filepath):
+                archivefile.add(filepath, arcname="index.md")
             for item in self.items:
                 archivefile.add(item.abspath, arcname=item.filename(), recursive=True)
         return output
 
     def check_integrity(self):
-        assert os.path.exists(self.abspath), (self, self.abspath)
-        assert os.path.isdir(self.abspath), (self, self.abspath)
-        assert len(self.lookup) == len(self.all_items), (
-            ic(
-                len(self.lookup),
-                len(self.all_items),
-                self.lookup.keys(),
-                self.all_items,
-            ),
+        assert os.path.exists(self.abspath), ic(self, self.abspath)
+        assert os.path.isdir(self.abspath), ic(self, self.abspath)
+        assert len(self.lookup) == len(self.all_items), ic(
+            len(self.lookup),
+            len(self.all_items),
+            self.lookup.keys(),
+            self.all_items,
         )
         for item in self.all_items:
             assert item.book is self, (self, item)
@@ -364,7 +392,11 @@ class Item:
         return True
 
     def read(self):
-        "To be implemented by inheriting classes."
+        "To be implemented by inheriting classes. This is recursive."
+        raise NotImplementedError
+
+    def write(self):
+        "To be implemented by inheriting classes. This is *not* recursive."
         raise NotImplementedError
 
     @property
@@ -401,9 +433,9 @@ class Item:
     @property
     def index(self):
         "The zero-based index of this item among its siblings."
-        for result, item in enumerate(self.parent.items):
+        for count, item in enumerate(self.parent.items):
             if item is self:
-                return result
+                return count
 
     @property
     def ordinal(self):
@@ -505,7 +537,7 @@ class Item:
         os.rename(oldabspath, self.abspath)
         for item in items:
             self.book.lookup[item.fullname] = item
-        self.book.write_index()
+        self.book.write()
 
     def up(self):
         "Move this item up in its list of siblings."
@@ -524,10 +556,10 @@ class Item:
             self.parent.items.insert(index + 1, self.parent.items.pop(index))
 
     def check_integrity(self):
-        assert isinstance(self.book, Book), self
-        assert self in self.parent.items, self
-        assert self.fullname in self.book.lookup, self
-        assert os.path.exists(self.abspath), self
+        assert isinstance(self.book, Book), ic(self)
+        assert self in self.parent.items, ic(self)
+        assert self.fullname in self.book.lookup, ic(self)
+        assert os.path.exists(self.abspath), ic(self)
 
 
 class Section(Item):
@@ -539,24 +571,38 @@ class Section(Item):
 
     def __len__(self):
         "Number of characters in Markdown content in all texts in the sections."
-        return sum([len(i) for i in self.all_texts])
+        return sum([len(i) for i in self.items])
 
     @property
     def is_section(self):
         return True
 
     def read(self):
-        for itemtitle in sorted(os.listdir(self.abspath)):
+        """Read all items in the subdirectory, and the 'index.md' file, if any.
+        This is recursive; all sections and texts below this are also read.
+        """
+        read_markdown(self, os.path.join(self.abspath, "index.md"))
+        for name in sorted(os.listdir(self.abspath)):
             # Skip unsaved emacs files.
-            if itemtitle.startswith(".#"):
+            if name.startswith(".#"):
                 continue
-            itempath = os.path.join(self.abspath, itemtitle)
+            # Skip the already read 'index.md' file.
+            if name == "index.md":
+                continue
+            itempath = os.path.join(self.abspath, name)
             if os.path.isdir(itempath):
-                self.items.append(Section(self.book, self, itemtitle))
-            elif itemtitle.endswith(constants.MARKDOWN_EXT):
-                self.items.append(Text(self.book, self, itemtitle))
-            else:
+                self.items.append(Section(self.book, self, name))
+            elif name.endswith(constants.MARKDOWN_EXT):
+                self.items.append(Text(self.book, self, name))
+            else:               # Skip any non-Markdown files.
                 pass
+
+    def write(self, content=None):
+        """Write the 'index.md' file, if any content.
+        If no Markdown content is provided, then use the current.
+        This is *not* recursive.
+        """
+        write_markdown(self, os.path.join(self.abspath, "index.md"), content=content)
 
     @property
     def all_items(self):
@@ -577,8 +623,8 @@ class Section(Item):
 
     @property
     def n_words(self):
-        "Approximate number of words in the texts of the section."
-        return sum([i.n_words for i in self.all_texts])
+        "Approximate number of words in the items in and below this section."
+        return sum([i.n_words for i in self.items]) + len(self.content.split())
 
     @property
     def status(self):
@@ -596,7 +642,7 @@ class Section(Item):
 
     def check_integrity(self):
         super().check_integrity()
-        assert os.path.isdir(self.abspath), self
+        assert os.path.isdir(self.abspath), ic(self)
 
 
 class Text(Item):
@@ -629,34 +675,13 @@ class Text(Item):
 
     def read(self):
         "Read the frontmatter (if any) and content from the Markdown file."
-        with open(self.abspath) as infile:
-            content = infile.read()
-        self.frontmatter, self.content = read_frontmatter(content)
-        self.html = markdown.convert_to_html(self.content)
-        self.ast = markdown.convert_to_ast(self.content)
+        read_markdown(self, self.abspath)
 
     def write(self, content=None):
         """Write the text, with current frontmatter and the given Markdown content.
         If no Markdown content is provided, then use the current.
-        Do some cleanup:
-        - Strip each line from the right.
-        - Do not write out multiple empty lines after another.
         """
-        with open(self.abspath, "w") as outfile:
-            write_frontmatter(outfile, self.frontmatter)
-            if content is not None:
-                lines = []
-                prev_empty = False
-                for line in content.split("\n"):
-                    line = line.rstrip()
-                    empty = not bool(line)
-                    if empty and prev_empty:
-                        continue
-                    prev_empty = empty
-                    lines.append(line)
-                    lines.append("\n")
-                self.content = "".join(lines)
-            outfile.write(self.content)
+        write_markdown(self, self.abspath, content=content)
 
     @property
     def all_items(self):
@@ -670,6 +695,7 @@ class Text(Item):
 
     @property
     def n_words(self):
+        "Approximate number of words in the text."
         return len(self.content.split())
 
     @property
@@ -693,7 +719,7 @@ class Text(Item):
             return self.title + constants.MARKDOWN_EXT
 
     def to_section(self):
-        "Convert to section with the title of this text and move this text into it."
+        "Create a section with the title of this text and move this text into it."
         oldtextpath = self.abspath
         sectionpath = os.path.splitext(oldtextpath)[0]
         os.mkdir(sectionpath)
@@ -704,13 +730,12 @@ class Text(Item):
         self.book.lookup[section.fullname] = section
         self.parent = section
         self.book.lookup[self.fullname] = self
-        self.book.frontmatter["items"] = self.book.get_items_order(self.book)
-        self.book.index.write()
+        self.book.write()
         return section
 
     def check_integrity(self):
         super().check_integrity()
-        assert os.path.isfile(self.abspath)
+        assert os.path.isfile(self.abspath), ic(self)
 
 
 def check_disallowed_characters(title):
@@ -730,5 +755,3 @@ if __name__ == "__main__":
     # book = Book("/home/pekrau/Dropbox/texter/lejonen")
     ic(book)
     ic(book.all_texts)
-    # book.index.write()
-    # book.archive()

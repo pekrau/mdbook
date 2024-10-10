@@ -2,7 +2,6 @@
 
 from icecream import ic
 
-import copy
 import io
 import os
 import string
@@ -19,7 +18,7 @@ import docx_creator
 import pdf_creator
 import utils
 
-from book import Book, read_frontmatter, write_frontmatter, check_disallowed_characters
+from book import Book, read_markdown, check_disallowed_characters
 
 NAV_STYLE_TEMPLATE = "outline-color: {color}; outline-width:8px; outline-style:solid; padding:0px 10px; border-radius:5px;"
 
@@ -196,27 +195,22 @@ def toc(book, items, show_arrows=False):
                         href=f"/{book.id}/section/{item.urlpath}",
                     ),
                     NotStr("&nbsp;&nbsp;&nbsp;"),
-                    Small(metadata(item), style="color: silver;"),
-                    *arrows,
-                    style=f"color: {item.status.color};",
+                    Small(metadata(item)),
+                    *arrows
                 )
             )
             parts.append(toc(book, item.items, show_arrows=show_arrows))
         elif item.is_text:
-            if item.frontmatter.get("suppress_title"):
-                title = Del(str(item))
-            else:
-                title = str(item)
             parts.append(
                 Li(
                     A(
-                        title,
+                        str(item),
                         style=f"color: {item.status.color};",
                         href=f"/{book.id}/text/{item.urlpath}",
                     ),
                     NotStr("&nbsp;&nbsp;&nbsp;"),
                     Small(metadata(item)),
-                    *arrows,
+                    *arrows
                 )
             )
     return Ol(*parts)
@@ -225,6 +219,7 @@ def toc(book, items, show_arrows=False):
 @rt("/")
 def get():
     "Home page; list of books."
+    class Container: pass
     books = []
     for bid in os.listdir(MDBOOK_DIR):
         if bid == constants.REFERENCES_DIR:
@@ -232,18 +227,18 @@ def get():
         try:
             dirpath = os.path.join(MDBOOK_DIR, bid)
             filepath = os.path.join(dirpath, "index.md")
-            with open(filepath) as infile:
-                frontmatter, content = read_frontmatter(infile.read())
+            c = Container()
+            read_markdown(c, filepath)
             books.append(
                 {
                     "bid": bid,
-                    "title": frontmatter.get("title", bid),
+                    "title": c.frontmatter.get("title", bid),
                     "dirpath": dirpath,
-                    "authors": frontmatter.get("authors", []),
+                    "authors": c.frontmatter.get("authors", []),
                     "modified": utils.timestr(filepath),
                 }
             )
-        except OSError:
+        except FileNotFoundError:
             pass
     books.sort(key=lambda b: b["modified"], reverse=True)
     rows = []
@@ -255,7 +250,7 @@ def get():
         Title("mdbooks"),
         Header(
             nav(
-                title="mdbooks",
+                title=f"mdbooks {constants.__version__}",
                 actions=[
                     A(f'{Tx("Create")} {Tx("book")}', href="/book"),
                     A(f'{Tx("Download")} TGZ', href="/tgz"),
@@ -540,7 +535,7 @@ def post(data:str):
         references = get_references()
         references.read()
         references.items.sort(key=lambda r: r["id"].lower())
-        references.write_index()
+        references.write()
         result.append(reference)
     return (
         Title("Added reference(s)"),
@@ -601,11 +596,6 @@ async def post(bid:str, tgzfile:UploadFile=None):
             tf.extractall(path=dirpath)
         except (tarfile.TarError, ValueError) as msg:
             return error(f"Error reading TGZ file: {msg}")
-        # XXX change owner of book
-    else:
-        with open(os.path.join(dirpath, "index.md"), "w") as outfile:
-            write_frontmatter(outfile,
-                              {"owner": "XXX", "status": repr(constants.STARTED)})
     return Redirect(f"/{bid}")
 
 
@@ -638,17 +628,19 @@ def get(bid:str):
     book = get_book(bid)
     fields = [
         Fieldset(
-            Label(Tx("Title")),
+            Legend(Tx("Title")),
             Input(name="title", value=book.frontmatter.get("title", ""),
                   autofocus=True),
         ),
         Fieldset(
-            Label(Tx("Subtitle")),
+            Legend(Tx("Subtitle")),
             Input(name="subtitle", value=book.frontmatter.get("subtitle", "")),
         ),
-        Fieldset(Legend(Tx("Authors")),
-                 Textarea("\n".join(book.frontmatter.get("authors", [])),
-                          name="authors", rows="3")),
+        Fieldset(
+            Legend(Tx("Authors")),
+            Textarea("\n".join(book.frontmatter.get("authors", [])),
+                     name="authors", rows="3")
+        )
     ]
     language_options = []
     for language in constants.LANGUAGE_CODES:
@@ -658,9 +650,14 @@ def get(bid:str):
             language_options.append(Option(language))
     fields.append(
         Fieldset(
-            Label(
-                Tx("Language"), Select(*language_options, name="language")
-            )
+            Legend(Tx("Language")),
+            Select(*language_options, name="language")
+        )
+    )
+    fields.append(
+        Fieldset(
+            Legend(Tx("Text")),
+            Textarea(NotStr(book.content), name="content", rows="10", placeholder="Content")
         )
     )
     return (
@@ -677,7 +674,7 @@ def get(bid:str):
 
 
 @rt("/{bid}/edit")
-def post(bid:str, title:str, subtitle:str, authors:str, language:str=None):
+def post(bid:str, title:str, subtitle:str, authors:str, content:str, language:str=None):
     "Actually edit the book data."
     book = get_book(bid)
     if title:
@@ -698,7 +695,7 @@ def post(bid:str, title:str, subtitle:str, authors:str, language:str=None):
         book.frontmatter["language"] = language
     else:
         book.frontmatter.pop("language", None)
-    book.write_index()
+    book.write(content=content, force=True)
     return Redirect(f"/{bid}/title")
 
 
@@ -707,7 +704,7 @@ def get(bid: str, path: str):
     "Move item up in its sibling list."
     book = get_book(bid)
     book[path].up()
-    book.write_index()
+    book.write()
     return Redirect(f"/{bid}/")
 
 
@@ -716,7 +713,7 @@ def get(bid: str, path: str):
     "Move item down in its sibling list."
     book = get_book(bid)
     book[path].down()
-    book.write_index()
+    book.write()
     return Redirect(f"/{bid}/")
 
 
@@ -733,14 +730,34 @@ def get(bid: str, path: str):
         A(f'{Tx("Download")} DOCX', href=f"/{bid}/docx/{path}"),
         A(f'{Tx("Delete")}', href=f"/{bid}/delete/{path}"),
     ]
-    if text.frontmatter.get("suppress_title"):
-        items = [H3(Del(text.heading))]
-    else:
-        items = [H3(text.heading)]
     return (
         Title(text.title),
         Header(nav(book=book, item=text, actions=actions), cls="container"),
-        Main(*items, NotStr(text.html), cls="container"),
+        Main(H3(text.heading), NotStr(text.html), cls="container"),
+    )
+
+
+@rt("/{bid}/section/{path:path}")
+def get(bid: str, path: str):
+    "View the section."
+    book = get_book(bid)
+    section = book[path]
+    assert section.is_section
+    actions = [
+        A(Tx("Edit"), href=f"/{bid}/edit/{path}"),
+        A(f'{Tx("Create")} {Tx("section")}', href=f"/{bid}/create_section/{path}"),
+        A(f'{Tx("Create")} {Tx("text")}', href=f"/{bid}/create_text/{path}"),
+        A(f'{Tx("Download")} DOCX', href=f"/{bid}/docx/{path}"),
+    ]
+    if len(section.items) == 0:
+        actions.append(A(f'{Tx("Delete")}', href=f"/{bid}/delete/{path}"))
+    return (
+        Title(section.title),
+        Header(nav(book=book, item=section, actions=actions), cls="container"),
+        Main(H3(section.heading),
+             toc(book, section.items),
+             NotStr(section.html),
+             cls="container"),
     )
 
 
@@ -757,20 +774,6 @@ def get(bid: str, path: str):
     ]
     if item.is_text:
         item.read()
-        fields.append(
-            Fieldset(
-                Legend(Tx("Title")),
-                Label(
-                    Input(
-                        type="checkbox",
-                        name="display_title",
-                        role="switch",
-                        checked=not(bool(item.frontmatter.get("suppress_title")))
-                    ),
-                    Tx("Display in output"),
-                ),
-            )
-        )
         status_options = []
         for status in constants.STATUSES:
             if item.status == status:
@@ -781,12 +784,16 @@ def get(bid: str, path: str):
                 status_options.append(Option(Tx(str(status)), value=repr(status)))
         fields.append(
             Fieldset(
-                Label(
-                    Tx("Status"), Select(*status_options, name="status", required=True)
-                )
+                Legend(Tx("Status")),
+                Select(*status_options, name="status", required=True)
             )
         )
-        fields.append(Textarea(NotStr(item.content), name="content", rows="30"))
+    fields.append(
+        Fieldset(
+            Legend(Tx("Text")),
+            Textarea(NotStr(item.content), name="content", rows="30")
+        )
+    )
     fields.append(Button("Save"))
     return (
         Title(f'{Tx("Edit")} {item.fullname}'),
@@ -799,21 +806,17 @@ def get(bid: str, path: str):
 
 
 @rt("/{bid}/edit/{path:path}")
-def post(bid:str, path:str, title:str, content:str=None, display_title:bool=None, status:str=None):
+def post(bid:str, path:str, title:str, content:str, status:str=None):
     "Actually edit the item (section or text).."
     item = get_book(bid)[path]
     item.set_title(title)
     if item.is_text:
-        ic(display_title)
-        if display_title:
-            item.frontmatter.pop("suppress_title", None)
-        else:
-            item.frontmatter["suppress_title"] = True
         if status is not None:
             item.status = status
         item.write(content=content)
         return Redirect(f"/{bid}/text/{item.urlpath}")
     else:
+        item.write(content=content)
         return Redirect(f"/{bid}/section/{item.urlpath}")
 
 
@@ -851,7 +854,7 @@ def post(bid: str, path: str):
             return error("Cannot delete non-empty book")
         try:
             os.remove(os.path.join(book.abspath, "index.md"))
-        except OSError:
+        except FileNotFoundError:
             pass
         books.pop(book.id)
         os.rmdir(book.abspath)
@@ -863,27 +866,6 @@ def post(bid: str, path: str):
         except ValueError as msg:
             return error(str(msg))
         return Redirect(f"/{bid}")
-
-
-@rt("/{bid}/section/{path:path}")
-def get(bid: str, path: str):
-    "View the section."
-    book = get_book(bid)
-    section = book[path]
-    assert section.is_section
-    actions = [
-        A(Tx("Edit"), href=f"/{bid}/edit/{path}"),
-        A(f'{Tx("Create")} {Tx("section")}', href=f"/{bid}/create_section/{path}"),
-        A(f'{Tx("Create")} {Tx("text")}', href=f"/{bid}/create_text/{path}"),
-        A(f'{Tx("Download")} DOCX', href=f"/{bid}/docx/{path}"),
-    ]
-    if len(section.items) == 0:
-        actions.append(A(f'{Tx("Delete")}', href=f"/{bid}/delete/{path}"))
-    return (
-        Title(section.title),
-        Header(nav(book=book, item=section, actions=actions), cls="container"),
-        Main(toc(book, section.items), cls="container"),
-    )
 
 
 @rt("/{bid}/to_section/{path:path}")
@@ -999,13 +981,12 @@ def post(bid: str, path: str, title: str = None):
 def get(bid: str):
     "Title page."
     book = get_book(bid)
-    book.index.read()
     segments = [H1(book.title)]
     if book.subtitle:
         segments.append(H2(book.subtitle))
     for author in book.authors:
         segments.append(H3(author))
-    segments.append(NotStr(book.index.html))
+    segments.append(NotStr(book.html))
     return (
         Title(Tx("Title")),
         Header(
@@ -1057,12 +1038,7 @@ def get(bid: str):
             if t.status == status:
                 if texts:
                     texts.append(Br())
-                texts.append(
-                    A(
-                        f"{'.'.join([str(o+1) for o in t.ordinal])}. {t.title}",
-                        href=f"/{bid}/text/{t.urlpath}",
-                    )
-                )
+                texts.append(A(t.heading, href=f"/{bid}/text/{t.urlpath}"))
         rows.append(Tr(Td(Tx(str(status)), valign="top"), Td(*texts)))
     return (
         Title(Tx("Status list")),
@@ -1204,7 +1180,6 @@ def post(
         item = book[path]
     else:
         item = None
-    original = copy.deepcopy(book.frontmatter)
     settings = book.frontmatter.setdefault("docx", {})
     settings["title_page_metadata"] = title_page_metadata
     settings["page_break_level"] = page_break_level
@@ -1212,8 +1187,7 @@ def post(
     settings["reference_font"] = reference_font
     settings["indexed_font"] = indexed_font
     if item is None:
-        if book.frontmatter != original:
-            book.index.write()
+        book.write()
         filename = book.title + ".docx"
     else:
         filename = item.title + ".docx"
@@ -1336,7 +1310,6 @@ def post(
 ):
     "Actually download the PDF file of the book."
     book = get_book(bid)
-    original = copy.deepcopy(book.frontmatter)
     settings = book.frontmatter.setdefault("pdf", {})
     settings["title_page_metadata"] = title_page_metadata
     settings["page_break_level"] = page_break_level
@@ -1344,8 +1317,7 @@ def post(
     settings["contents_level"] = contents_level
     settings["footnotes_location"] = footnotes_location
     settings["indexed_xref"] = indexed_xref
-    if book.frontmatter != original:
-        book.index.write()
+    book.write()
     filename = book.title + ".pdf"
     creator = pdf_creator.Creator(book, get_references())
     output = creator.create()
@@ -1361,7 +1333,7 @@ def get(bid: str):
     "Download a gzipped tar file of the book."
     book = get_book(bid)
     filename = f"{book.title} {utils.timestr()}.tgz"
-    output = book.archive()
+    output = book.get_archive()
     return Response(
         content=output.getvalue(),
         media_type=constants.GZIP_MIMETYPE,
