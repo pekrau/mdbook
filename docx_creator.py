@@ -141,8 +141,7 @@ class Creator:
             if author != self.authors[-1]:
                 paragraph.add_run(", ")
 
-        self.current_text = self.book.index
-        self.render(self.book.index.ast, initialize=True)
+        self.render(self.book.ast, initialize=True)
 
         if self.title_page_metadata:
             paragraph = self.document.add_paragraph()

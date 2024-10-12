@@ -142,7 +142,7 @@ def nav(book=None, item=None, title=None, actions=None):
             [
                 A(Tx("Title"), href=f"/{book.id}/title"),
                 A(Tx("Index"), href=f"/{book.id}/index"),
-                A(Tx("Statuslist"), href=f"/{book.id}/statuslist"),
+                A(Tx("Status list"), href=f"/{book.id}/statuslist"),
             ]
         )
     pages.append(A(Tx("References"), href="/references"))
@@ -233,9 +233,11 @@ def get():
                 {
                     "bid": bid,
                     "title": c.frontmatter.get("title", bid),
-                    "dirpath": dirpath,
+                    "book": bool(c.frontmatter.get("items", [])),
                     "authors": c.frontmatter.get("authors", []),
+                    "status": constants.Status.lookup(c.frontmatter.get("status")),
                     "modified": utils.timestr(filepath),
+                    "dirpath": dirpath,
                 }
             )
         except FileNotFoundError:
@@ -244,7 +246,10 @@ def get():
     rows = []
     for book in books:
         rows.append(
-            Tr(Td(A(book["title"], href=f'/{book["bid"]}')), Td(book["modified"]))
+            Tr(Td(A(book["title"], href=f'/{book["bid"]}')),
+               Td(book["book"] and Tx("Book") or Tx("Article")),
+               Td(Tx(book["status"])),
+               Td(book["modified"]))
         )
     return (
         Title("mdbooks"),
@@ -615,10 +620,13 @@ def get(bid: str):
     ]
     if len(book.items) == 0:
         actions.append(A(f'{Tx("Delete")}', href=f"/{bid}/delete/"))
+        content = H3(A(Tx("Article"), href=f"/{bid}/title"))
+    else:
+        content = toc(book, book.items, show_arrows=True)
     return (
         Title(book.title),
         Header(nav(book=book, actions=actions), cls="container"),
-        Main(toc(book, book.items, show_arrows=True), cls="container"),
+        Main(content, cls="container"),
     )
 
 
@@ -642,6 +650,21 @@ def get(bid:str):
                      name="authors", rows="3")
         )
     ]
+    if len(book.items) == 0:
+        status_options = []
+        for status in constants.STATUSES:
+            if book.status == status:
+                status_options.append(
+                    Option(Tx(str(status)), selected=True, value=repr(status))
+                )
+            else:
+                status_options.append(Option(Tx(str(status)), value=repr(status)))
+        fields.append(
+            Fieldset(
+                Legend(Tx("Status")),
+                Select(*status_options, name="status", required=True)
+            )
+        )
     language_options = []
     for language in constants.LANGUAGE_CODES:
         if book.frontmatter.get("language") == language:
@@ -674,23 +697,16 @@ def get(bid:str):
 
 
 @rt("/{bid}/edit")
-def post(bid:str, title:str, subtitle:str, authors:str, content:str, language:str=None):
+def post(bid:str, title:str, subtitle:str, authors:str, content:str, status:str=None, language:str=None):
     "Actually edit the book data."
     book = get_book(bid)
-    if title:
-        book.frontmatter["title"] = title
+    book.frontmatter["title"] = title
+    book.frontmatter["subtitle"] = subtitle
+    book.frontmatter["authors"] = [a.strip() for a in authors.split("\n")]
+    if status:
+        book.frontmatter["status"] = status
     else:
-        book.frontmatter.pop("title", None)
-    if subtitle:
-        book.frontmatter["subtitle"] = subtitle
-    else:
-        book.frontmatter.pop("subtitle", None)
-    if authors:
-        authors = [a.strip() for a in authors.split("\n")]
-    if authors:
-        book.frontmatter["authors"] = authors
-    else:
-        book.frontmatter.pop("authors", None)
+        book.frontmatter.pop("status", None)
     if language:
         book.frontmatter["language"] = language
     else:
@@ -1116,7 +1132,7 @@ def get_docx(bid, path=None):
                         role="switch",
                         checked=bool(title_page_metadata),
                     ),
-                    Tx("Display on title page."),
+                    Tx("Display"),
                 ),
             )
         )
@@ -1258,7 +1274,7 @@ def pdf(bid: str):
                             role="switch",
                             checked=bool(title_page_metadata),
                         ),
-                        Tx("Display on title page."),
+                        Tx("Display"),
                     ),
                 ),
                 Fieldset(

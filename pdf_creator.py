@@ -176,8 +176,7 @@ class Creator:
         self.state.reset()
         self.state.ln(2)
 
-        self.current_text = self.book.index
-        self.render(self.book.index.ast)
+        self.render(self.book.ast)
 
         if self.title_page_metadata:
             self.state.ln(2)

@@ -141,6 +141,7 @@ class Book:
         """
         original = copy.deepcopy(self.frontmatter)
         self.frontmatter["items"] = self.get_items_order(self)
+        self.frontmatter["status"] = repr(self.status)
         if force or self.frontmatter != original or (content is not None and self.content != content):
             write_markdown(self, os.path.join(self.abspath, "index.md"), content=content)
 
@@ -210,9 +211,12 @@ class Book:
     @property
     def status(self):
         "Return the lowest status for the sub-items."
-        status = constants.FINAL
-        for item in self.items:
-            status = min(status, item.status)
+        if self.items:
+            status = constants.FINAL
+            for item in self.items:
+                status = min(status, item.status)
+        else:
+            status = constants.Status.lookup(self.frontmatter.get("status"))
         return status
 
     @property
@@ -306,7 +310,6 @@ class Book:
         parent.items.append(new)
         self.lookup[new.fullname] = new
         self.write()
-        self.book.write()
         return new
 
     def create_section(self, title, parent=None):
@@ -326,7 +329,6 @@ class Book:
         parent.items.append(new)
         self.lookup[new.fullname] = new
         self.write()
-        self.book.write()
         return new
 
     def delete(self, item):
@@ -339,7 +341,7 @@ class Book:
             os.remove(item.abspath)
         self.lookup.pop(item.fullname)
         item.parent.items.remove(item)
-        self.book.write()
+        self.write()
 
     def get_archive(self):
         """Write all files for this book to a gzipped tar file.
