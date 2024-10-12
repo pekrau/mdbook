@@ -24,7 +24,12 @@ NAV_STYLE_TEMPLATE = "outline-color: {color}; outline-width:8px; outline-style:s
 
 Tx = utils.Tx
 
-app, rt = fast_app(live=True, static_path="static")
+app, rt = fast_app(live=True, 
+                   static_path="static",
+                   hdrs=(
+                       Link(rel="stylesheet", href="/mods.css", type="text/css"),
+                   )
+                   )
 
 try:
     MDBOOK_DIR = os.environ["MDBOOK_DIR"]
