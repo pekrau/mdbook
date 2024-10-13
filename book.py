@@ -15,6 +15,7 @@ import yaml
 
 import constants
 import markdown
+import utils
 
 FRONTMATTER = re.compile(r"^---([\n\r].*?[\n\r])---[\n\r](.*)$", re.DOTALL)
 
@@ -70,9 +71,9 @@ def write_markdown(source, filepath, content=None):
 class Book:
     "Root container for Markdown book texts in files and directories."
 
-    def __init__(self, abspath):
+    def __init__(self, abspath, index_only=False):
         self.abspath = abspath
-        self.read()
+        self.read(index_only=index_only)
 
     def __str__(self):
         return self.title
@@ -91,11 +92,13 @@ class Book:
     def __getitem__(self, fullname):
         return self.lookup[fullname]
 
-    def read(self):
+    def read(self, index_only=False):
         """"Read all items (sections, texts) recursively from files.
         Set up references and indexed lookups.
         """
         read_markdown(self, os.path.join(self.abspath, "index.md"))
+        if index_only:
+            return
 
         self.items = []
         self.lookup = {}
@@ -121,7 +124,7 @@ class Book:
             else:
                 pass
         # Set the order to be that explicity given, if any.
-        self.set_items_order(self, self.frontmatter.get("items"))
+        self.set_items_order(self, self.frontmatter.get("items", []))
 
         for item in self.all_items:
             self.lookup[item.fullname] = item
@@ -171,8 +174,67 @@ class Book:
         return result
 
     @property
+    def id(self):
+        return os.path.basename(self.abspath)
+
+    @property
     def fullname(self):
         return ""
+
+    @property
+    def type(self):
+        return "book" if len(self.frontmatter["items"]) else "article"
+
+    @property
+    def modified(self):
+        return utils.timestr(os.path.join(self.abspath, "index.md"))
+
+    @property
+    def status(self):
+        "Return the lowest status for the sub-items."
+        if hasattr(self, "items") and self.items:
+            status = constants.FINAL
+            for item in self.items:
+                status = min(status, item.status)
+        else:
+            status = constants.Status.lookup(self.frontmatter.get("status"))
+        return status
+
+    @property
+    def is_text(self):
+        return False
+
+    @property
+    def title(self):
+        return self.frontmatter.get("title") or os.path.basename(self.abspath)
+
+    @title.setter
+    def title(self, title):
+        self.frontmatter["title"] = title
+
+    @property
+    def subtitle(self):
+        return self.frontmatter.get("subtitle")
+
+    @subtitle.setter
+    def subtitle(self, subtitle):
+        self.frontmatter["subtitle"] = subtitle
+
+    @property
+    def authors(self):
+        return self.frontmatter.get("authors") or []
+
+    @authors.setter
+    def authors(self, authors):
+        self.frontmatter["authors"] = authors
+
+    @property
+    def language(self):
+        return self.frontmatter.get("language")
+
+    @language.setter
+    def language(self, language):
+        self.frontmatter["language"] = language
 
     @property
     def parent(self):
@@ -207,57 +269,6 @@ class Book:
     def n_words(self):
         "Approximate number of words in the book."
         return sum([i.n_words for i in self.items]) + len(self.content.split())
-
-    @property
-    def status(self):
-        "Return the lowest status for the sub-items."
-        if self.items:
-            status = constants.FINAL
-            for item in self.items:
-                status = min(status, item.status)
-        else:
-            status = constants.Status.lookup(self.frontmatter.get("status"))
-        return status
-
-    @property
-    def is_text(self):
-        return False
-
-    @property
-    def id(self):
-        return os.path.basename(self.abspath)
-
-    @property
-    def title(self):
-        return self.frontmatter.get("title") or os.path.basename(self.abspath)
-
-    @title.setter
-    def title(self, title):
-        self.frontmatter["title"] = title
-
-    @property
-    def subtitle(self):
-        return self.frontmatter.get("subtitle")
-
-    @subtitle.setter
-    def subtitle(self, subtitle):
-        self.frontmatter["subtitle"] = subtitle
-
-    @property
-    def authors(self):
-        return self.frontmatter.get("authors") or []
-
-    @authors.setter
-    def authors(self, authors):
-        self.frontmatter["authors"] = authors
-
-    @property
-    def language(self):
-        return self.frontmatter.get("language")
-
-    @language.setter
-    def language(self, language):
-        self.frontmatter["language"] = language
 
     @property
     def docx(self):
@@ -305,7 +316,7 @@ class Book:
         if os.path.exists(dirpath) or os.path.exists(filepath):
             raise ValueError(f"The title is already in use within '{parent}'.")
         with open(filepath, "w") as outfile:
-            write_frontmatter(outfile, {"status": repr(constants.STATUSES[0])})
+            pass
         new = Text(self, parent, title)
         parent.items.append(new)
         self.lookup[new.fullname] = new

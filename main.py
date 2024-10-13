@@ -1,4 +1,4 @@
-"Web view and edit of Markdown book contents."
+"Web view and edit of Markdown books."
 
 from icecream import ic
 
@@ -24,8 +24,23 @@ NAV_STYLE_TEMPLATE = "outline-color: {color}; outline-width:8px; outline-style:s
 
 Tx = utils.Tx
 
+def error(message, status_code=409):
+    return Response(content=message, status_code=409)
+
+
+login_redir = RedirectResponse("/login", status_code=303)
+
+def before(req, sess):
+    "Login session handling."
+    auth = req.scope["auth"] = sess.get("auth", None)
+    if not auth:
+        return login_redir
+
+beforeware = Beforeware(before, skip=[r'/favicon\.ico', r'/static/.*', r'.*\.css', r'.*\.js', r'.*\.svg', '/login'])
+
 app, rt = fast_app(live=True, 
                    static_path="static",
+                   before=beforeware,
                    hdrs=(
                        Link(rel="stylesheet", href="/mods.css", type="text/css"),
                    )
@@ -62,10 +77,6 @@ def get_references():
     except NameError:
         _references = Book(os.path.join(MDBOOK_DIR, constants.REFERENCES_DIR))
         return _references
-
-
-def error(message):
-    return Response(status_code=409, content=message)
 
 
 def metadata(item):
@@ -178,6 +189,17 @@ def nav(book=None, item=None, title=None, actions=None):
     return Nav(*entries, style=nav_style)
 
 
+def footer(auth=None):
+    return Footer(Hr(),
+                  Small(
+                      Div(
+                          Div(auth, " ", A("logout", href="/logout")),
+                          Div(f"mdbook {constants.__version__}", align="right"),
+                          cls="grid")
+                  ),
+                  cls="container")
+
+
 def toc(book, items, show_arrows=False):
     "Recursive lists of sections and texts."
     parts = []
@@ -222,7 +244,7 @@ def toc(book, items, show_arrows=False):
 
 
 @rt("/")
-def get():
+def get(auth):
     "Home page; list of books."
     class Container: pass
     books = []
@@ -231,36 +253,24 @@ def get():
             continue
         try:
             dirpath = os.path.join(MDBOOK_DIR, bid)
-            filepath = os.path.join(dirpath, "index.md")
-            c = Container()
-            read_markdown(c, filepath)
-            books.append(
-                {
-                    "bid": bid,
-                    "title": c.frontmatter.get("title", bid),
-                    "book": bool(c.frontmatter.get("items", [])),
-                    "authors": c.frontmatter.get("authors", []),
-                    "status": constants.Status.lookup(c.frontmatter.get("status")),
-                    "modified": utils.timestr(filepath),
-                    "dirpath": dirpath,
-                }
-            )
+            book = Book(dirpath, index_only=True)
+            books.append(book)
         except FileNotFoundError:
             pass
-    books.sort(key=lambda b: b["modified"], reverse=True)
+    books.sort(key=lambda b: b.modified, reverse=True)
     rows = []
     for book in books:
         rows.append(
-            Tr(Td(A(book["title"], href=f'/{book["bid"]}')),
-               Td(book["book"] and Tx("Book") or Tx("Article")),
-               Td(Tx(book["status"])),
-               Td(book["modified"]))
+            Tr(Td(A(book.title, href=f'/{book.id}')),
+               Td(Tx(book.type.capitalize())),
+               Td(Tx(book.status)),
+               Td(book.modified))
         )
     return (
-        Title("mdbooks"),
+        Title(Tx("Books")),
         Header(
             nav(
-                title=f"mdbooks {constants.__version__}",
+                title=Tx("Books"),
                 actions=[
                     A(f'{Tx("Create")} {Tx("book")}', href="/book"),
                     A(f'{Tx("Download")} TGZ', href="/tgz"),
@@ -269,17 +279,49 @@ def get():
             cls="container",
         ),
         Main(Table(*rows), cls="container"),
+        footer(auth)
     )
+
+@rt("/login")
+def get():
+    "Login form."
+    if not (os.environ.get("MDBOOK_USER") and os.environ.get("MDBOOK_PASSWORD")):
+        return Titled("Invalid setup",
+                      H3("Invalid setup"),
+                      P("Environment variables MDBOOK_USER and/or MDBOOK_PASSWORD not set."))
+    else:
+        return Titled("Login", Form(
+            Input(id="user", placeholder=Tx("User")),
+            Input(id="password", type="password", placeholder=Tx("Password")),
+            Button(Tx("Login")),
+            action="/login",
+            method="post"))
+
+
+@rt("/login")
+def post(user:str, password:str, sess):
+    if not user or not password:
+        return login_redir
+    if user != os.environ["MDBOOK_USER"] or password != os.environ["MDBOOK_PASSWORD"]:
+        return error(message="invalid credentials", status_code=403)
+    sess['auth'] = user
+    return RedirectResponse('/', status_code=303)
+
+
+@rt("/logout")
+def get(sess):
+    del sess["auth"]
+    return login_redir
 
 
 @rt("/tgz")
-def get():
+def get(auth):
     "Download a gzipped tar file of all books."
     output = io.BytesIO()
     with tarfile.open(fileobj=output, mode="w:gz") as archivefile:
         for name in os.listdir(MDBOOK_DIR):
             archivefile.add(os.path.join(MDBOOK_DIR, name), arcname=name, recursive=True)
-    filename = f"mdbooks {utils.timestr()}.tgz"
+    filename = f"mdbook_{utils.timestr()}.tgz"
     return Response(
         content=output.getvalue(),
         media_type=constants.GZIP_MIMETYPE,
@@ -288,7 +330,7 @@ def get():
 
 
 @rt("/references")
-def get():
+def get(auth):
     "Page for list of references."
     references = get_references()
     references.read()
@@ -390,11 +432,12 @@ def get():
             cls="container",
         ),
         Main(*items, cls="container"),
+        footer(auth)
     )
 
 
 @rt("/reference/{refid:str}")
-def get(refid: str):
+def get(auth, refid: str):
     "Page for details of a reference."
     ref = get_references()[refid.replace("_", " ")]
     rows = [
@@ -465,11 +508,12 @@ def get(refid: str):
             cls="container",
         ),
         Main(Table(*rows), Div(NotStr(ref.html)), cls="container"),
+        footer(auth)
     )
 
 
 @rt("/bibtex")
-def get():
+def get(auth):
     "Page for adding reference(s) using BibTex data."
     return (
         Title("Add reference"),
@@ -483,11 +527,12 @@ def get():
             ),
             cls="container",
         ),
+        footer(auth)
     )
 
 
 @rt("/bibtex")
-def post(data:str):
+def post(auth, data:str):
     "Actually add reference(s) using BibTex data."
     result = []
     for entry in bibtexparser.parse_string(data).entries:
@@ -554,11 +599,12 @@ def post(data:str):
             Ul(*[Li(A(r["id"], href=f'/reference/{r["id"]}')) for r in result]),
             cls="container",
         ),
+        footer(auth)
     )
 
 
 @rt("/book")
-def get():
+def get(auth):
     "Page to create and/or upload book using a gzipped tar file."
     title = f'{Tx("Create or upload")} {Tx("book")}'
     return (
@@ -580,11 +626,12 @@ def get():
             ),
             cls="container",
         ),
+        footer(auth)
     )
 
 
 @rt("/book")
-async def post(bid:str, tgzfile:UploadFile=None):
+async def post(auth, bid:str, tgzfile:UploadFile=None):
     "Actually create and/or upload book using a gzipped tar file."
     if not bid:
         return error("No book identifier provided.")
@@ -606,17 +653,19 @@ async def post(bid:str, tgzfile:UploadFile=None):
             tf.extractall(path=dirpath)
         except (tarfile.TarError, ValueError) as msg:
             return error(f"Error reading TGZ file: {msg}")
+    book = Book(dirpath)
+    book.frontmatter["owner"] = auth
+    book.write(force=True)
     return Redirect(f"/{bid}")
 
 
 @rt("/{bid}")
-def get(bid: str):
+def get(auth, bid: str):
     "Book home page; list of sections and texts."
     book = get_book(bid)
     book.read()
     actions = [
         A(f'{Tx("Edit")}', href=f"/{bid}/edit"),
-        A(f'{Tx("Status list")}', href=f"/{bid}/statuslist"),
         A(f'{Tx("Create")} {Tx("section")}', href=f"/{bid}/create_section"),
         A(f'{Tx("Create")} {Tx("text")}', href=f"/{bid}/create_text"),
         A(f'{Tx("Download")} DOCX', href=f"/{bid}/docx"),
@@ -632,11 +681,12 @@ def get(bid: str):
         Title(book.title),
         Header(nav(book=book, actions=actions), cls="container"),
         Main(content, cls="container"),
+        footer(auth)
     )
 
 
 @rt("/{bid}/edit")
-def get(bid:str):
+def get(auth, bid:str):
     "Page for editing the book data."
     book = get_book(bid)
     fields = [
@@ -698,11 +748,12 @@ def get(bid:str):
                  method="post"),
             cls="container",
         ),
+        footer(auth)
     )
 
 
 @rt("/{bid}/edit")
-def post(bid:str, title:str, subtitle:str, authors:str, content:str, status:str=None, language:str=None):
+def post(auth, bid:str, title:str, subtitle:str, authors:str, content:str, status:str=None, language:str=None):
     "Actually edit the book data."
     book = get_book(bid)
     book.frontmatter["title"] = title
@@ -717,11 +768,11 @@ def post(bid:str, title:str, subtitle:str, authors:str, content:str, status:str=
     else:
         book.frontmatter.pop("language", None)
     book.write(content=content, force=True)
-    return Redirect(f"/{bid}/title")
+    return RedirectResponse(f"/{bid}/title", status_code=303)
 
 
 @rt("/{bid}/up/{path:path}")
-def get(bid: str, path: str):
+def get(auth, bid: str, path: str):
     "Move item up in its sibling list."
     book = get_book(bid)
     book[path].up()
@@ -730,7 +781,7 @@ def get(bid: str, path: str):
 
 
 @rt("/{bid}/down/{path:path}")
-def get(bid: str, path: str):
+def get(auth, bid: str, path: str):
     "Move item down in its sibling list."
     book = get_book(bid)
     book[path].down()
@@ -739,7 +790,7 @@ def get(bid: str, path: str):
 
 
 @rt("/{bid}/text/{path:path}")
-def get(bid: str, path: str):
+def get(auth, bid: str, path: str):
     "View the text."
     book = get_book(bid)
     text = book[path]
@@ -755,11 +806,12 @@ def get(bid: str, path: str):
         Title(text.title),
         Header(nav(book=book, item=text, actions=actions), cls="container"),
         Main(H3(text.heading), NotStr(text.html), cls="container"),
+        footer(auth)
     )
 
 
 @rt("/{bid}/section/{path:path}")
-def get(bid: str, path: str):
+def get(auth, bid: str, path: str):
     "View the section."
     book = get_book(bid)
     section = book[path]
@@ -779,11 +831,12 @@ def get(bid: str, path: str):
              toc(book, section.items),
              NotStr(section.html),
              cls="container"),
+        footer(auth)
     )
 
 
 @rt("/{bid}/edit/{path:path}")
-def get(bid: str, path: str):
+def get(auth, bid: str, path: str):
     "Page for editing the item (section or text)."
     book = get_book(bid)
     item = book[path]
@@ -823,11 +876,12 @@ def get(bid: str, path: str):
             Form(*fields, action=f"/{bid}/edit/{path}", method="post"),
             cls="container",
         ),
+        footer(auth)
     )
 
 
 @rt("/{bid}/edit/{path:path}")
-def post(bid:str, path:str, title:str, content:str, status:str=None):
+def post(auth, bid:str, path:str, title:str, content:str, status:str=None):
     "Actually edit the item (section or text).."
     item = get_book(bid)[path]
     item.set_title(title)
@@ -835,14 +889,14 @@ def post(bid:str, path:str, title:str, content:str, status:str=None):
         if status is not None:
             item.status = status
         item.write(content=content)
-        return Redirect(f"/{bid}/text/{item.urlpath}")
+        return RedirectResponse(f"/{bid}/text/{item.urlpath}", status_code=303)
     else:
         item.write(content=content)
-        return Redirect(f"/{bid}/section/{item.urlpath}")
+        return RedirectResponse(f"/{bid}/section/{item.urlpath}", status_code=303)
 
 
 @rt("/{bid}/delete/{path:path}")
-def get(bid: str, path: str):
+def get(auth, bid: str, path: str):
     "Confirm delete of the text, section or book; section and book must be empty."
     book = get_book(bid)
     if path == "":
@@ -863,11 +917,12 @@ def get(bid: str, path: str):
             Form(Button(Tx("Confirm")), action=f"/{bid}/delete/{path}", method="post"),
             cls="container",
         ),
+        footer(auth)
     )
 
 
 @rt("/{bid}/delete/{path:path}")
-def post(bid: str, path: str):
+def post(auth, bid: str, path: str):
     "Delete the text, section or book; section or book must be empty."
     book = get_book(bid)
     if path == "":
@@ -879,18 +934,18 @@ def post(bid: str, path: str):
             pass
         books.pop(book.id)
         os.rmdir(book.abspath)
-        return Redirect("/")
+        return RedirectResponse("/", status_code=303)
     else:
         item = book[path]
         try:
             book.delete(item)
         except ValueError as msg:
             return error(str(msg))
-        return Redirect(f"/{bid}")
+        return RedirectResponse(f"/{bid}", status_code=303)
 
 
 @rt("/{bid}/to_section/{path:path}")
-def get(bid: str, path: str):
+def get(auth, bid: str, path: str):
     "Convert to section containing a text with this text."
     book = get_book(bid)
     text = book[path]
@@ -905,21 +960,22 @@ def get(bid: str, path: str):
             ),
             cls="container",
         ),
+        footer(auth)
     )
 
 
 @rt("/{bid}/to_section/{path:path}")
-def post(bid: str, path: str):
+def post(auth, bid: str, path: str):
     "Convert to section containing a text with this text."
     text = get_book(bid)[path]
     assert text.is_text
     section = text.to_section()
     assert section.is_section
-    return Redirect(f"/{bid}/section/{section.urlpath}")
+    return RedirectResponse(f"/{bid}/section/{section.urlpath}", status_code=303)
 
 
 @rt("/{bid}/create_text/{path:path}")
-def get(bid: str, path: str):
+def get(auth, bid: str, path: str):
     "Create a new text in the section."
     book = get_book(bid)
     assert path == "" or book[path].is_section
@@ -939,11 +995,12 @@ def get(bid: str, path: str):
             ),
             cls="container",
         ),
+        footer(auth)
     )
 
 
 @rt("/{bid}/create_text/{path:path}")
-def post(bid: str, path: str, title: str = None):
+def post(auth, bid: str, path: str, title: str = None):
     "Create a new text in the section."
     book = get_book(bid)
     if path == "":
@@ -953,13 +1010,13 @@ def post(bid: str, path: str, title: str = None):
         assert parent.is_section
     new = book.create_text(title, parent=parent)
     if path:
-        return Redirect(f"/{bid}/section/{path}")
+        return RedirectResponse(f"/{bid}/section/{path}", status_code=303)
     else:
-        return Redirect(f"/{bid}")
+        return RedirectResponse(f"/{bid}", status_code=303)
 
 
 @rt("/{bid}/create_section/{path:path}")
-def get(bid: str, path: str):
+def get(auth, bid: str, path: str):
     "Create a new section in the section."
     book = get_book(bid)
     assert path == "" or book[path].is_section
@@ -979,11 +1036,12 @@ def get(bid: str, path: str):
             ),
             cls="container",
         ),
+        footer(auth)
     )
 
 
 @rt("/{bid}/create_section/{path:path}")
-def post(bid: str, path: str, title: str = None):
+def post(auth, bid: str, path: str, title: str = None):
     "Create a new section in the section."
     book = get_book(bid)
     if path == "":
@@ -993,13 +1051,13 @@ def post(bid: str, path: str, title: str = None):
         assert parent.is_section
     new = book.create_section(title, parent=parent)
     if path:
-        return Redirect(f"/{bid}/section/{path}")
+        return RedirectResponse(f"/{bid}/section/{path}", status_code=303)
     else:
-        return Redirect(f"/{bid}")
+        return RedirectResponse(f"/{bid}", status_code=303)
 
 
 @rt("/{bid}/title")
-def get(bid: str):
+def get(auth, bid: str):
     "Title page."
     book = get_book(bid)
     segments = [H1(book.title)]
@@ -1024,11 +1082,12 @@ def get(bid: str):
             cls="container",
         ),
         Main(*segments, cls="container"),
+        footer(auth)
     )
 
 
 @rt("/{bid}/index")
-def get(bid: str):
+def get(auth, bid: str):
     "Page listing the indexed terms."
     book = get_book(bid)
     items = []
@@ -1045,11 +1104,12 @@ def get(bid: str):
         Title(Tx("Index")),
         Header(nav(book=book, title=Tx("Index")), cls="container"),
         Main(Ul(*items), cls="container"),
+        footer(auth)
     )
 
 
 @rt("/{bid}/statuslist")
-def get(bid: str):
+def get(auth, bid: str):
     "Page listing each status and texts in it."
     book = get_book(bid)
     rows = [Tr(Th(Tx("Status"), Th(Tx("Texts"))))]
@@ -1065,17 +1125,18 @@ def get(bid: str):
         Title(Tx("Status list")),
         Header(nav(book=book, title=Tx("Status list")), cls="container"),
         Main(Table(*rows), cls="container"),
+        footer(auth)
     )
 
 
 @rt("/{bid}/docx")
-def get(bid: str):
+def get(auth, bid: str):
     "Download the DOCX for the whole book."
     return get_docx(bid)
 
 
 @rt("/{bid}/docx/{path:path}")
-def get(bid: str, path: str):
+def get(auth, bid: str, path: str):
     "Download the DOCX for a section or text in the book."
     return get_docx(bid, path)
 
@@ -1181,11 +1242,13 @@ def get_docx(bid, path=None):
             nav(book=book, title=f'{Tx("Download")} DOCX: {title}'), cls="container"
         ),
         Main(Form(*fields, action=f"/{bid}/docx", method="post"), cls="container"),
+        footer(auth)
     )
 
 
 @rt("/{bid}/docx")
 def post(
+        auth,
     bid: str,
     path: str = None,
     title_page_metadata: bool = False,
@@ -1222,7 +1285,7 @@ def post(
 
 
 @rt("/{bid}/pdf")
-def pdf(bid: str):
+def pdf(auth, bid: str):
     "Get the parameters for downloading PDF file of the whole book."
     book = get_book(bid)
     settings = book.frontmatter.setdefault("pdf", {})
@@ -1316,11 +1379,13 @@ def pdf(bid: str):
             ),
             cls="container",
         ),
+        footer(auth)
     )
 
 
 @rt("/{bid}/pdf")
 def post(
+        auth,
     bid: str,
     title_page_metadata: bool = False,
     page_break_level: int = None,
@@ -1350,7 +1415,7 @@ def post(
 
 
 @rt("/{bid}/tgz")
-def get(bid: str):
+def get(auth, bid: str):
     "Download a gzipped tar file of the book."
     book = get_book(bid)
     filename = f"{book.title} {utils.timestr()}.tgz"
