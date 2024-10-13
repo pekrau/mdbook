@@ -39,7 +39,7 @@ def read_markdown(target, filepath):
 
 
 def write_markdown(source, filepath, content=None):
-    """"Write frontmatter and content to the Markdown file from the source.
+    """Write frontmatter and content to the Markdown file from the source.
     Update the content, if provided.
     Clean up the Markdown content:
     - Strip each line from the right. (Markdown line breaks not allowed.)
@@ -93,7 +93,7 @@ class Book:
         return self.lookup[fullname]
 
     def read(self, index_only=False):
-        """"Read all items (sections, texts) recursively from files.
+        """ "Read all items (sections, texts) recursively from files.
         Set up references and indexed lookups.
         """
         read_markdown(self, os.path.join(self.abspath, "index.md"))
@@ -139,14 +139,20 @@ class Book:
         self.write()
 
     def write(self, content=None, force=False):
-        """Write the 'index.md' file, if changed. 
+        """Write the 'index.md' file, if changed.
         This is *not* recursive.
         """
         original = copy.deepcopy(self.frontmatter)
         self.frontmatter["items"] = self.get_items_order(self)
         self.frontmatter["status"] = repr(self.status)
-        if force or self.frontmatter != original or (content is not None and self.content != content):
-            write_markdown(self, os.path.join(self.abspath, "index.md"), content=content)
+        if (
+            force
+            or self.frontmatter != original
+            or (content is not None and self.content != content)
+        ):
+            write_markdown(
+                self, os.path.join(self.abspath, "index.md"), content=content
+            )
 
     def set_items_order(self, container, items_order):
         "Chnage order of items in container according to given items_order."
@@ -277,6 +283,12 @@ class Book:
     @property
     def pdf(self):
         return self.frontmatter.get("pdf") or {}
+
+    def allow_read(self, auth):
+        return self.frontmatter["owner"] == auth
+
+    def allow_write(self, auth):
+        return self.frontmatter["owner"] == auth
 
     def find_references(self, item, ast):
         try:
@@ -607,7 +619,7 @@ class Section(Item):
                 self.items.append(Section(self.book, self, name))
             elif name.endswith(constants.MARKDOWN_EXT):
                 self.items.append(Text(self.book, self, name))
-            else:               # Skip any non-Markdown files.
+            else:  # Skip any non-Markdown files.
                 pass
 
     def write(self, content=None):

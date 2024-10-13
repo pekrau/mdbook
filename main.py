@@ -24,11 +24,13 @@ NAV_STYLE_TEMPLATE = "outline-color: {color}; outline-width:8px; outline-style:s
 
 Tx = utils.Tx
 
+
 def error(message, status_code=409):
     return Response(content=message, status_code=409)
 
 
 login_redir = RedirectResponse("/login", status_code=303)
+
 
 def before(req, sess):
     "Login session handling."
@@ -36,15 +38,18 @@ def before(req, sess):
     if not auth:
         return login_redir
 
-beforeware = Beforeware(before, skip=[r'/favicon\.ico', r'/static/.*', r'.*\.css', r'.*\.js', r'.*\.svg', '/login'])
 
-app, rt = fast_app(live=True, 
-                   static_path="static",
-                   before=beforeware,
-                   hdrs=(
-                       Link(rel="stylesheet", href="/mods.css", type="text/css"),
-                   )
-                   )
+beforeware = Beforeware(
+    before,
+    skip=[r"/favicon\.ico", r"/static/.*", r".*\.css", r".*\.js", r".*\.svg", "/login"],
+)
+
+app, rt = fast_app(
+    live=True,
+    static_path="static",
+    before=beforeware,
+    hdrs=(Link(rel="stylesheet", href="/mods.css", type="text/css"),),
+)
 
 try:
     MDBOOK_DIR = os.environ["MDBOOK_DIR"]
@@ -82,8 +87,10 @@ def get_references():
 def metadata(item):
     n_words = f"{utils.thousands(item.n_words)}"
     n_characters = f"{utils.thousands(len(item))}"
-    items = [Tx(item.status),
-             f'{n_words} {Tx("words")}; {n_characters} {Tx("characters")}']
+    items = [
+        Tx(item.status),
+        f'{n_words} {Tx("words")}; {n_characters} {Tx("characters")}',
+    ]
     if isinstance(item, Book) and item.frontmatter.get("language"):
         items.append(item.frontmatter["language"])
     return "; ".join(items)
@@ -190,14 +197,17 @@ def nav(book=None, item=None, title=None, actions=None):
 
 
 def footer(auth=None):
-    return Footer(Hr(),
-                  Small(
-                      Div(
-                          Div(auth, " ", A("logout", href="/logout")),
-                          Div(f"mdbook {constants.__version__}", align="right"),
-                          cls="grid")
-                  ),
-                  cls="container")
+    return Footer(
+        Hr(),
+        Small(
+            Div(
+                Div(auth, " ", A("logout", href="/logout")),
+                Div(f"mdbook {constants.__version__}", align="right"),
+                cls="grid",
+            )
+        ),
+        cls="container",
+    )
 
 
 def toc(book, items, show_arrows=False):
@@ -223,7 +233,7 @@ def toc(book, items, show_arrows=False):
                     ),
                     NotStr("&nbsp;&nbsp;&nbsp;"),
                     Small(metadata(item)),
-                    *arrows
+                    *arrows,
                 )
             )
             parts.append(toc(book, item.items, show_arrows=show_arrows))
@@ -237,7 +247,7 @@ def toc(book, items, show_arrows=False):
                     ),
                     NotStr("&nbsp;&nbsp;&nbsp;"),
                     Small(metadata(item)),
-                    *arrows
+                    *arrows,
                 )
             )
     return Ol(*parts)
@@ -246,7 +256,10 @@ def toc(book, items, show_arrows=False):
 @rt("/")
 def get(auth):
     "Home page; list of books."
-    class Container: pass
+
+    class Container:
+        pass
+
     books = []
     for bid in os.listdir(MDBOOK_DIR):
         if bid == constants.REFERENCES_DIR:
@@ -254,6 +267,8 @@ def get(auth):
         try:
             dirpath = os.path.join(MDBOOK_DIR, bid)
             book = Book(dirpath, index_only=True)
+            if not book.allow_read(auth):
+                continue
             books.append(book)
         except FileNotFoundError:
             pass
@@ -261,10 +276,12 @@ def get(auth):
     rows = []
     for book in books:
         rows.append(
-            Tr(Td(A(book.title, href=f'/{book.id}')),
-               Td(Tx(book.type.capitalize())),
-               Td(Tx(book.status)),
-               Td(book.modified))
+            Tr(
+                Td(A(book.title, href=f"/{book.id}")),
+                Td(Tx(book.type.capitalize())),
+                Td(Tx(book.status)),
+                Td(book.modified),
+            )
         )
     return (
         Title(Tx("Books")),
@@ -274,38 +291,45 @@ def get(auth):
                 actions=[
                     A(f'{Tx("Create")} {Tx("book")}', href="/book"),
                     A(f'{Tx("Download")} TGZ', href="/tgz"),
-               ],
+                ],
             ),
             cls="container",
         ),
         Main(Table(*rows), cls="container"),
-        footer(auth)
+        footer(auth),
     )
+
 
 @rt("/login")
 def get():
     "Login form."
     if not (os.environ.get("MDBOOK_USER") and os.environ.get("MDBOOK_PASSWORD")):
-        return Titled("Invalid setup",
-                      H3("Invalid setup"),
-                      P("Environment variables MDBOOK_USER and/or MDBOOK_PASSWORD not set."))
+        return Titled(
+            "Invalid setup",
+            H3("Invalid setup"),
+            P("Environment variables MDBOOK_USER and/or MDBOOK_PASSWORD not set."),
+        )
     else:
-        return Titled("Login", Form(
-            Input(id="user", placeholder=Tx("User")),
-            Input(id="password", type="password", placeholder=Tx("Password")),
-            Button(Tx("Login")),
-            action="/login",
-            method="post"))
+        return Titled(
+            "Login",
+            Form(
+                Input(id="user", placeholder=Tx("User")),
+                Input(id="password", type="password", placeholder=Tx("Password")),
+                Button(Tx("Login")),
+                action="/login",
+                method="post",
+            ),
+        )
 
 
 @rt("/login")
-def post(user:str, password:str, sess):
+def post(user: str, password: str, sess):
     if not user or not password:
         return login_redir
     if user != os.environ["MDBOOK_USER"] or password != os.environ["MDBOOK_PASSWORD"]:
         return error(message="invalid credentials", status_code=403)
-    sess['auth'] = user
-    return RedirectResponse('/', status_code=303)
+    sess["auth"] = user
+    return RedirectResponse("/", status_code=303)
 
 
 @rt("/logout")
@@ -320,7 +344,9 @@ def get(auth):
     output = io.BytesIO()
     with tarfile.open(fileobj=output, mode="w:gz") as archivefile:
         for name in os.listdir(MDBOOK_DIR):
-            archivefile.add(os.path.join(MDBOOK_DIR, name), arcname=name, recursive=True)
+            archivefile.add(
+                os.path.join(MDBOOK_DIR, name), arcname=name, recursive=True
+            )
     filename = f"mdbook_{utils.timestr()}.tgz"
     return Response(
         content=output.getvalue(),
@@ -432,7 +458,7 @@ def get(auth):
             cls="container",
         ),
         Main(*items, cls="container"),
-        footer(auth)
+        footer(auth),
     )
 
 
@@ -508,7 +534,7 @@ def get(auth, refid: str):
             cls="container",
         ),
         Main(Table(*rows), Div(NotStr(ref.html)), cls="container"),
-        footer(auth)
+        footer(auth),
     )
 
 
@@ -527,12 +553,12 @@ def get(auth):
             ),
             cls="container",
         ),
-        footer(auth)
+        footer(auth),
     )
 
 
 @rt("/bibtex")
-def post(auth, data:str):
+def post(auth, data: str):
     "Actually add reference(s) using BibTex data."
     result = []
     for entry in bibtexparser.parse_string(data).entries:
@@ -599,7 +625,7 @@ def post(auth, data:str):
             Ul(*[Li(A(r["id"], href=f'/reference/{r["id"]}')) for r in result]),
             cls="container",
         ),
-        footer(auth)
+        footer(auth),
     )
 
 
@@ -618,7 +644,7 @@ def get(auth):
                 ),
                 Fieldset(
                     Legend(Tx(f'{Tx("Upload")} TGZ')),
-                    Input(type="file", name="tgzfile")
+                    Input(type="file", name="tgzfile"),
                 ),
                 Button(Tx("Create or upload")),
                 action="/book",
@@ -626,12 +652,12 @@ def get(auth):
             ),
             cls="container",
         ),
-        footer(auth)
+        footer(auth),
     )
 
 
 @rt("/book")
-async def post(auth, bid:str, tgzfile:UploadFile=None):
+async def post(auth, bid: str, tgzfile: UploadFile = None):
     "Actually create and/or upload book using a gzipped tar file."
     if not bid:
         return error("No book identifier provided.")
@@ -681,19 +707,20 @@ def get(auth, bid: str):
         Title(book.title),
         Header(nav(book=book, actions=actions), cls="container"),
         Main(content, cls="container"),
-        footer(auth)
+        footer(auth),
     )
 
 
 @rt("/{bid}/edit")
-def get(auth, bid:str):
+def get(auth, bid: str):
     "Page for editing the book data."
     book = get_book(bid)
     fields = [
         Fieldset(
             Legend(Tx("Title")),
-            Input(name="title", value=book.frontmatter.get("title", ""),
-                  autofocus=True),
+            Input(
+                name="title", value=book.frontmatter.get("title", ""), autofocus=True
+            ),
         ),
         Fieldset(
             Legend(Tx("Subtitle")),
@@ -701,9 +728,10 @@ def get(auth, bid:str):
         ),
         Fieldset(
             Legend(Tx("Authors")),
-            Textarea("\n".join(book.frontmatter.get("authors", [])),
-                     name="authors", rows="3")
-        )
+            Textarea(
+                "\n".join(book.frontmatter.get("authors", [])), name="authors", rows="3"
+            ),
+        ),
     ]
     if len(book.items) == 0:
         status_options = []
@@ -717,7 +745,7 @@ def get(auth, bid:str):
         fields.append(
             Fieldset(
                 Legend(Tx("Status")),
-                Select(*status_options, name="status", required=True)
+                Select(*status_options, name="status", required=True),
             )
         )
     language_options = []
@@ -727,33 +755,38 @@ def get(auth, bid:str):
         else:
             language_options.append(Option(language))
     fields.append(
-        Fieldset(
-            Legend(Tx("Language")),
-            Select(*language_options, name="language")
-        )
+        Fieldset(Legend(Tx("Language")), Select(*language_options, name="language"))
     )
     fields.append(
         Fieldset(
             Legend(Tx("Text")),
-            Textarea(NotStr(book.content), name="content", rows="10", placeholder="Content")
+            Textarea(
+                NotStr(book.content), name="content", rows="10", placeholder="Content"
+            ),
         )
     )
     return (
         Title(f'{Tx("Edit")} {book.title}'),
         Header(nav(book=book, title=f'{Tx("Edit")} {book.title}'), cls="container"),
         Main(
-            Form(*fields,
-                 Button(Tx("Save")),
-                 action=f"/{bid}/edit",
-                 method="post"),
+            Form(*fields, Button(Tx("Save")), action=f"/{bid}/edit", method="post"),
             cls="container",
         ),
-        footer(auth)
+        footer(auth),
     )
 
 
 @rt("/{bid}/edit")
-def post(auth, bid:str, title:str, subtitle:str, authors:str, content:str, status:str=None, language:str=None):
+def post(
+    auth,
+    bid: str,
+    title: str,
+    subtitle: str,
+    authors: str,
+    content: str,
+    status: str = None,
+    language: str = None,
+):
     "Actually edit the book data."
     book = get_book(bid)
     book.frontmatter["title"] = title
@@ -806,7 +839,7 @@ def get(auth, bid: str, path: str):
         Title(text.title),
         Header(nav(book=book, item=text, actions=actions), cls="container"),
         Main(H3(text.heading), NotStr(text.html), cls="container"),
-        footer(auth)
+        footer(auth),
     )
 
 
@@ -827,11 +860,13 @@ def get(auth, bid: str, path: str):
     return (
         Title(section.title),
         Header(nav(book=book, item=section, actions=actions), cls="container"),
-        Main(H3(section.heading),
-             toc(book, section.items),
-             NotStr(section.html),
-             cls="container"),
-        footer(auth)
+        Main(
+            H3(section.heading),
+            toc(book, section.items),
+            NotStr(section.html),
+            cls="container",
+        ),
+        footer(auth),
     )
 
 
@@ -859,13 +894,13 @@ def get(auth, bid: str, path: str):
         fields.append(
             Fieldset(
                 Legend(Tx("Status")),
-                Select(*status_options, name="status", required=True)
+                Select(*status_options, name="status", required=True),
             )
         )
     fields.append(
         Fieldset(
             Legend(Tx("Text")),
-            Textarea(NotStr(item.content), name="content", rows="30")
+            Textarea(NotStr(item.content), name="content", rows="30"),
         )
     )
     fields.append(Button("Save"))
@@ -876,12 +911,12 @@ def get(auth, bid: str, path: str):
             Form(*fields, action=f"/{bid}/edit/{path}", method="post"),
             cls="container",
         ),
-        footer(auth)
+        footer(auth),
     )
 
 
 @rt("/{bid}/edit/{path:path}")
-def post(auth, bid:str, path:str, title:str, content:str, status:str=None):
+def post(auth, bid: str, path: str, title: str, content: str, status: str = None):
     "Actually edit the item (section or text).."
     item = get_book(bid)[path]
     item.set_title(title)
@@ -917,7 +952,7 @@ def get(auth, bid: str, path: str):
             Form(Button(Tx("Confirm")), action=f"/{bid}/delete/{path}", method="post"),
             cls="container",
         ),
-        footer(auth)
+        footer(auth),
     )
 
 
@@ -960,7 +995,7 @@ def get(auth, bid: str, path: str):
             ),
             cls="container",
         ),
-        footer(auth)
+        footer(auth),
     )
 
 
@@ -995,7 +1030,7 @@ def get(auth, bid: str, path: str):
             ),
             cls="container",
         ),
-        footer(auth)
+        footer(auth),
     )
 
 
@@ -1036,7 +1071,7 @@ def get(auth, bid: str, path: str):
             ),
             cls="container",
         ),
-        footer(auth)
+        footer(auth),
     )
 
 
@@ -1082,7 +1117,7 @@ def get(auth, bid: str):
             cls="container",
         ),
         Main(*segments, cls="container"),
-        footer(auth)
+        footer(auth),
     )
 
 
@@ -1104,7 +1139,7 @@ def get(auth, bid: str):
         Title(Tx("Index")),
         Header(nav(book=book, title=Tx("Index")), cls="container"),
         Main(Ul(*items), cls="container"),
-        footer(auth)
+        footer(auth),
     )
 
 
@@ -1125,7 +1160,7 @@ def get(auth, bid: str):
         Title(Tx("Status list")),
         Header(nav(book=book, title=Tx("Status list")), cls="container"),
         Main(Table(*rows), cls="container"),
-        footer(auth)
+        footer(auth),
     )
 
 
@@ -1242,13 +1277,13 @@ def get_docx(bid, path=None):
             nav(book=book, title=f'{Tx("Download")} DOCX: {title}'), cls="container"
         ),
         Main(Form(*fields, action=f"/{bid}/docx", method="post"), cls="container"),
-        footer(auth)
+        footer(auth),
     )
 
 
 @rt("/{bid}/docx")
 def post(
-        auth,
+    auth,
     bid: str,
     path: str = None,
     title_page_metadata: bool = False,
@@ -1379,13 +1414,13 @@ def pdf(auth, bid: str):
             ),
             cls="container",
         ),
-        footer(auth)
+        footer(auth),
     )
 
 
 @rt("/{bid}/pdf")
 def post(
-        auth,
+    auth,
     bid: str,
     title_page_metadata: bool = False,
     page_break_level: int = None,

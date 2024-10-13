@@ -3,7 +3,7 @@
 import functools
 import os.path
 
-VERSION = (2, 10, 0)
+VERSION = (2, 11, 0)
 __version__ = ".".join([str(n) for n in VERSION])
 
 
