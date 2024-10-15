@@ -1,7 +1,5 @@
 "Create PDF file."
 
-from icecream import ic
-
 import copy
 import datetime
 import io
@@ -316,7 +314,7 @@ class Creator:
             try:
                 method = getattr(self, f"write_reference_{reference['type']}")
             except AttributeError:
-                ic("unknown", reference["type"])
+                print("unknown", reference["type"])
             else:
                 method(reference)
             self.write_reference_external_links(reference)
@@ -456,7 +454,7 @@ class Creator:
         try:
             method = getattr(self, f"render_{ast['element']}")
         except AttributeError:
-            ic("Could not handle ast", ast)
+            print("Could not handle ast", ast)
         else:
             method(ast)
 

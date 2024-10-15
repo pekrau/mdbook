@@ -1,7 +1,5 @@
 "Web view and edit of Markdown books."
 
-from icecream import ic
-
 import io
 import os
 import string
@@ -11,6 +9,7 @@ import urllib
 
 from fasthtml.common import *
 import bibtexparser
+import psutil
 import yaml
 
 import constants
@@ -26,7 +25,7 @@ Tx = utils.Tx
 
 
 def error(message, status_code=409):
-    return Response(content=message, status_code=409)
+    return Response(content=str(message), status_code=409)
 
 
 login_redir = RedirectResponse("/login", status_code=303)
@@ -41,23 +40,17 @@ def before(req, sess):
 
 beforeware = Beforeware(
     before,
-    skip=[r"/favicon\.ico", r"/static/.*", r".*\.css", r".*\.js", r".*\.svg", "/login"],
+    skip=[r"/favicon\.ico", r".*\.css", r".*\.js", r".*\.svg", "/login"],
 )
 
 app, rt = fast_app(
-    live=True,
+    live="MDBOOK_DEVELOPMENT" in os.environ,
     static_path="static",
     before=beforeware,
     hdrs=(Link(rel="stylesheet", href="/mods.css", type="text/css"),),
 )
 
-try:
-    MDBOOK_DIR = os.environ["MDBOOK_DIR"]
-except KeyError:
-    if len(sys.argv) == 2:
-        MDBOOK_DIR = sys.argv[1]
-    else:
-        MDBOOK_DIR = os.getcwd()
+MDBOOK_DIR = os.environ.get("MDBOOK_DIR")
 
 # Book instances cache. Key: bid; value: Book instance.
 books = {}
@@ -69,7 +62,10 @@ def get_book(bid):
     try:
         return books[bid]
     except KeyError:
-        book = Book(os.path.join(MDBOOK_DIR, bid))
+        try:
+            book = Book(os.path.join(MDBOOK_DIR, bid))
+        except FileNotFoundError:
+            raise KeyError("No such book.")
         books[bid] = book
         return book
 
@@ -202,6 +198,7 @@ def footer(auth=None):
         Small(
             Div(
                 Div(auth, " ", A("logout", href="/logout")),
+                Div(utils.thousands(psutil.Process().memory_info().rss)),
                 Div(f"mdbook {constants.__version__}", align="right"),
                 cls="grid",
             )
@@ -257,8 +254,19 @@ def toc(book, items, show_arrows=False):
 def get(auth):
     "Home page; list of books."
 
-    class Container:
-        pass
+    if MDBOOK_DIR is None:
+        return (
+            Title(Tx("Books")),
+            Header(
+                nav(
+                    title=Tx("Books"),
+                actions=[],
+                ),
+                cls="container",
+            ),
+            Main(H3("Error: MDBOOK_DIR has not been defined."), cls="container"),
+            footer(auth),
+        )
 
     books = []
     for bid in os.listdir(MDBOOK_DIR):
@@ -327,7 +335,7 @@ def post(user: str, password: str, sess):
     if not user or not password:
         return login_redir
     if user != os.environ["MDBOOK_USER"] or password != os.environ["MDBOOK_PASSWORD"]:
-        return error(message="invalid credentials", status_code=403)
+        return error("Invalid credentials.", 403)
     sess["auth"] = user
     return RedirectResponse("/", status_code=303)
 
@@ -382,10 +390,6 @@ def get(auth):
             if len(authors) > 4:
                 authors = authors[:4] + ["..."]
             parts.append(", ".join(authors))
-        if ref.get("year"):
-            parts.append(f'({ref["year"]})')
-        if ref.get("edition_published"):
-            parts.append(f'[{ref["edition_published"]}]')
         if ref.get("title"):
             parts.append(Br())
             parts.append(ref["title"])
@@ -395,16 +399,25 @@ def get(auth):
             parts.append(Br())
             parts.append(I(ref["journal"]))
             if ref.get("volume"):
-                parts.append(ref["volume"])
+                parts.append(f' {ref["volume"]}')
             if ref.get("number"):
-                parts.append(f'({ref["number"]})')
+                parts.append(f' ({ref["number"]})')
             if ref.get("pages"):
-                parts.append(":")
-                parts.append(f'pp. {ref["pages"].replace("--", "-")}.')
+                parts.append(f' {ref["pages"].replace("--", "-")}')
+            if ref.get("year"):
+                parts.append(f' ({ref["year"]})')
+            if ref.get("edition_published"):
+                parts.append(f' [{ref["edition_published"]}]')
         elif ref.get("type") == "book":
             parts.append(Br())
             if ref.get("publisher"):
-                parts.append(f'{ref["publisher"]}.')
+                parts.append(f'{ref["publisher"]}')
+                if ref.get("edition_published"):
+                    parts.append(f' {ref["edition_published"]}')
+                    if ref.get("year"):
+                        parts.append(f' [{ref["year"]}]')
+                elif ref.get("year"):
+                    parts.append(f' {ref["year"]}')
             if ref.get("isbn"):
                 symbol, url = constants.REFERENCE_LINKS["isbn"]
                 url = url.format(value=ref["isbn"])
@@ -418,7 +431,7 @@ def get(auth):
             parts.append(Br())
             parts.append(A(ref["url"], href=ref["url"]))
             if ref.get("accessed"):
-                parts.append(f'(Accessed: {ref["accessed"]})')
+                parts.append(f' (Accessed: {ref["accessed"]})')
         if ref.get("doi"):
             symbol, url = constants.REFERENCE_LINKS["doi"]
             url = url.format(value=ref["doi"])
@@ -465,7 +478,10 @@ def get(auth):
 @rt("/reference/{refid:str}")
 def get(auth, refid: str):
     "Page for details of a reference."
-    ref = get_references()[refid.replace("_", " ")]
+    try:
+        ref = get_references()[refid.replace("_", " ")]
+    except KeyError:
+        return error("No such reference.", 404)
     rows = [
         Tr(
             Td(Tx("Identifier")),
@@ -561,10 +577,11 @@ def get(auth):
 def post(auth, data: str):
     "Actually add reference(s) using BibTex data."
     result = []
-    for entry in bibtexparser.parse_string(data).entries:
-        authors = utils.cleanup(entry.fields_dict["author"].value)
+    for entry in bibtexparser.loads(data).entries:
+        print(entry)
+        authors = utils.cleanup(entry["author"])
         authors = [a.strip() for a in authors.split(" and ")]
-        year = entry.fields_dict["year"].value.strip()
+        year = entry["year"].strip()
         name = authors[0].split(",")[0].strip()
         for char in [""] + list("abcdefghijklmnopqrstuvxyz"):
             id = f"{name} {year}{char}"
@@ -572,11 +589,11 @@ def post(auth, data: str):
                 break
         else:
             raise ValueError(f"Could not form unique id for {name} {year}.")
-        new = dict(id=id, type=entry.entry_type, authors=authors, year=year)
-        for key, field in entry.fields_dict.items():
-            if key == "author":
+        new = dict(id=id, type=entry["ENTRYTYPE"], authors=authors, year=year)
+        for key, value in entry.items():
+            if key in ("author", "ID", "ENTRYTYPE"):
                 continue
-            value = utils.cleanup(field.value).strip()
+            value = utils.cleanup(value).strip()
             if value:
                 new[key] = value
         # Split keywords into a list.
@@ -590,7 +607,7 @@ def post(auth, data: str):
         except KeyError:
             pass
         else:
-            parts = month.split("#")
+            parts = month.split("~")
             if len(parts) == 2:
                 month = constants.MONTHS[parts[1].strip().lower()]
                 day = int("".join([c for c in parts[0] if c in string.digits]))
@@ -688,7 +705,10 @@ async def post(auth, bid: str, tgzfile: UploadFile = None):
 @rt("/{bid}")
 def get(auth, bid: str):
     "Book home page; list of sections and texts."
-    book = get_book(bid)
+    try:
+        book = get_book(bid)
+    except KeyError as message:
+        return error(message, 404)
     book.read()
     actions = [
         A(f'{Tx("Edit")}', href=f"/{bid}/edit"),
@@ -962,7 +982,7 @@ def post(auth, bid: str, path: str):
     book = get_book(bid)
     if path == "":
         if len(book.items) != 0:
-            return error("Cannot delete non-empty book")
+            return error("Cannot delete non-empty book.")
         try:
             os.remove(os.path.join(book.abspath, "index.md"))
         except FileNotFoundError:
@@ -974,8 +994,8 @@ def post(auth, bid: str, path: str):
         item = book[path]
         try:
             book.delete(item)
-        except ValueError as msg:
-            return error(str(msg))
+        except ValueError as message:
+            return error(message)
         return RedirectResponse(f"/{bid}", status_code=303)
 
 

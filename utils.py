@@ -75,11 +75,10 @@ Tx = Translator(constants.TRANSLATIONS_FILEPATH)
 
 
 if __name__ == "__main__":
-    from icecream import ic
     import constants
 
     tr = Translator(constants.TRANSLATIONS_FILE)
-    ic(str(tr))
-    ic(tr.languages)
+    print(str(tr))
+    print(tr.languages)
     for term in ["item", "section"]:
-        ic(term, tr(term))
+        print(term, tr(term))

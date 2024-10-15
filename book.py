@@ -1,7 +1,5 @@
 "Markdown book texts in files and directories."
 
-from icecream import ic
-
 import copy
 import datetime
 import io
@@ -380,14 +378,9 @@ class Book:
         return output
 
     def check_integrity(self):
-        assert os.path.exists(self.abspath), ic(self, self.abspath)
-        assert os.path.isdir(self.abspath), ic(self, self.abspath)
-        assert len(self.lookup) == len(self.all_items), ic(
-            len(self.lookup),
-            len(self.all_items),
-            self.lookup.keys(),
-            self.all_items,
-        )
+        assert os.path.exists(self.abspath)
+        assert os.path.isdir(self.abspath)
+        assert len(self.lookup) == len(self.all_items)
         for item in self.all_items:
             assert item.book is self, (self, item)
             assert isinstance(item, Text) or isinstance(item, Section), (self, item)
@@ -581,10 +574,10 @@ class Item:
             self.parent.items.insert(index + 1, self.parent.items.pop(index))
 
     def check_integrity(self):
-        assert isinstance(self.book, Book), ic(self)
-        assert self in self.parent.items, ic(self)
-        assert self.fullname in self.book.lookup, ic(self)
-        assert os.path.exists(self.abspath), ic(self)
+        assert isinstance(self.book, Book)
+        assert self in self.parent.items
+        assert self.fullname in self.book.lookup
+        assert os.path.exists(self.abspath)
 
 
 class Section(Item):
@@ -667,7 +660,7 @@ class Section(Item):
 
     def check_integrity(self):
         super().check_integrity()
-        assert os.path.isdir(self.abspath), ic(self)
+        assert os.path.isdir(self.abspath)
 
 
 class Text(Item):
@@ -760,7 +753,7 @@ class Text(Item):
 
     def check_integrity(self):
         super().check_integrity()
-        assert os.path.isfile(self.abspath), ic(self)
+        assert os.path.isfile(self.abspath)
 
 
 def check_disallowed_characters(title):
@@ -778,5 +771,5 @@ def check_disallowed_characters(title):
 if __name__ == "__main__":
     book = Book("/home/pekrau/Dropbox/texter/test")
     # book = Book("/home/pekrau/Dropbox/texter/lejonen")
-    ic(book)
-    ic(book.all_texts)
+    print(book)
+    print(book.all_texts)

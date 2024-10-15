@@ -96,7 +96,7 @@ class ReferenceRenderer:
     "Output a link to the reference page and item."
 
     def render_reference(self, element):
-        return f'<strong><a href="/references#{element.reference.replace(" ", "_")}">{element.reference}</a></strong>'
+        return f'<strong><a href="/reference/{element.reference}">{element.reference}</a></strong>'
 
 
 html_converter = marko.Markdown()
