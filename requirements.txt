@@ -19,6 +19,7 @@ marko==2.1.2
 oauthlib==3.2.2
 packaging==24.1
 pillow==10.4.0
+psutil==6.0.0
 pyparsing==3.2.0
 python-dateutil==2.9.0.post0
 python-docx==1.1.2
