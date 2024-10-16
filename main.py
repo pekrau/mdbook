@@ -9,19 +9,16 @@ import urllib
 
 from fasthtml.common import *
 import bibtexparser
-import psutil
 import yaml
 
+import components
 import constants
 import docx_creator
 import pdf_creator
 import utils
+from utils import Tx
 
 from book import Book, read_markdown, check_disallowed_characters
-
-NAV_STYLE_TEMPLATE = "outline-color: {color}; outline-width:8px; outline-style:solid; padding:0px 10px; border-radius:5px;"
-
-Tx = utils.Tx
 
 
 def error(message, status_code=409):
@@ -80,176 +77,6 @@ def get_references():
         return _references
 
 
-def metadata(item):
-    n_words = f"{utils.thousands(item.n_words)}"
-    n_characters = f"{utils.thousands(len(item))}"
-    items = [
-        Tx(item.status),
-        f'{n_words} {Tx("words")}; {n_characters} {Tx("characters")}',
-    ]
-    if isinstance(item, Book) and item.frontmatter.get("language"):
-        items.append(item.frontmatter["language"])
-    return "; ".join(items)
-
-
-def nav(book=None, item=None, title=None, actions=None):
-    "The standard navigation bar."
-    if book is None:
-        entries = [Ul(Li(A(Img(src="/mdbook.svg"), href="/")))]
-    else:
-        entries = [
-            Ul(
-                Li(A(Img(src="/mdbook.svg"), href="/")),
-                Li(A(book.title, href=f"/{book.id}")),
-            )
-        ]
-    if item is not None:
-        entries.append(
-            Ul(
-                Li(
-                    Strong(item.fullname),
-                    Br(),
-                    Small(metadata(item)),
-                )
-            )
-        )
-        nav_style = NAV_STYLE_TEMPLATE.format(color=item.status.color)
-    elif book is not None:
-        entries.append(
-            Ul(
-                Li(
-                    Small(metadata(book)),
-                )
-            )
-        )
-        nav_style = NAV_STYLE_TEMPLATE.format(color=book.status.color)
-    elif title:
-        entries.append(Ul(Li(Strong(title))))
-        if book is None:
-            nav_style = NAV_STYLE_TEMPLATE.format(color="black")
-        else:
-            nav_style = NAV_STYLE_TEMPLATE.format(color=book.status.color)
-    elif book is not None:
-        entries.append(Ul(Li(f"Status: {Tx(book.status)}")))
-        nav_style = NAV_STYLE_TEMPLATE.format(color=book.status.color)
-    else:
-        nav_style = NAV_STYLE_TEMPLATE.format(color="black")
-    pages = []
-    if item is not None:
-        if item.parent:
-            if item.parent.level == 0:  # Book.
-                url = "/"
-            elif item.parent.is_section:
-                url = f"/{book.id}/section/{item.parent.urlpath}"
-            else:
-                url = f"/{book.id}/text/{item.parent.urlpath}"
-            pages.append(A(NotStr(f"&ShortUpArrow; {item.parent.title}"), href=url))
-        if item.prev:
-            if item.prev.is_section:
-                url = f"/{book.id}/section/{item.prev.urlpath}"
-            else:
-                url = f"/{book.id}/text/{item.prev.urlpath}"
-            pages.append(A(NotStr(f"&ShortLeftArrow; {item.prev.title}"), href=url))
-        if item.next:
-            if item.next.is_section:
-                url = f"/{book.id}/section/{item.next.urlpath}"
-            else:
-                url = f"/{book.id}/text/{item.next.urlpath}"
-            pages.append(A(NotStr(f"&ShortRightArrow; {item.next.title}"), href=url))
-    if book is not None:
-        pages.extend(
-            [
-                A(Tx("Title"), href=f"/{book.id}/title"),
-                A(Tx("Index"), href=f"/{book.id}/index"),
-                A(Tx("Status list"), href=f"/{book.id}/statuslist"),
-            ]
-        )
-    pages.append(A(Tx("References"), href="/references"))
-    items = []
-    if len(pages) == 1:
-        if title != Tx("References"):
-            items.append(Ul(Li(pages[0], NotStr("&nbsp;"))))
-    else:
-        items.append(
-            Li(
-                Details(
-                    Summary(Tx("Pages")), Ul(*[Li(p) for p in pages]), cls="dropdown"
-                )
-            )
-        )
-    if actions:
-        items.append(
-            Li(
-                Details(
-                    Summary(Tx("Actions")),
-                    Ul(*[Li(c) for c in actions]),
-                    cls="dropdown",
-                )
-            )
-        )
-    if items:
-        entries.append(Ul(*items))
-    return Nav(*entries, style=nav_style)
-
-
-def footer(auth=None):
-    return Footer(
-        Hr(),
-        Small(
-            Div(
-                Div(auth, " ", A("logout", href="/logout")),
-                Div(utils.thousands(psutil.Process().memory_info().rss)),
-                Div(f"mdbook {constants.__version__}", align="right"),
-                cls="grid",
-            )
-        ),
-        cls="container",
-    )
-
-
-def toc(book, items, show_arrows=False):
-    "Recursive lists of sections and texts."
-    parts = []
-    for item in items:
-        if show_arrows:
-            arrows = [
-                NotStr("&nbsp;"),
-                A(NotStr("&ShortUpArrow;"), href=f"/{book.id}/up/{item.urlpath}"),
-                NotStr("&nbsp;"),
-                A(NotStr("&ShortDownArrow;"), href=f"/{book.id}/down/{item.urlpath}"),
-            ]
-        else:
-            arrows = []
-        if item.is_section:
-            parts.append(
-                Li(
-                    A(
-                        str(item),
-                        style=f"color: {item.status.color};",
-                        href=f"/{book.id}/section/{item.urlpath}",
-                    ),
-                    NotStr("&nbsp;&nbsp;&nbsp;"),
-                    Small(metadata(item)),
-                    *arrows,
-                )
-            )
-            parts.append(toc(book, item.items, show_arrows=show_arrows))
-        elif item.is_text:
-            parts.append(
-                Li(
-                    A(
-                        str(item),
-                        style=f"color: {item.status.color};",
-                        href=f"/{book.id}/text/{item.urlpath}",
-                    ),
-                    NotStr("&nbsp;&nbsp;&nbsp;"),
-                    Small(metadata(item)),
-                    *arrows,
-                )
-            )
-    return Ol(*parts)
-
-
 @rt("/")
 def get(auth):
     "Home page; list of books."
@@ -257,15 +84,12 @@ def get(auth):
     if MDBOOK_DIR is None:
         return (
             Title(Tx("Books")),
-            Header(
-                nav(
-                    title=Tx("Books"),
+            components.header(
+                title=Tx("Books"),
                 actions=[],
-                ),
-                cls="container",
             ),
             Main(H3("Error: MDBOOK_DIR has not been defined."), cls="container"),
-            footer(auth),
+            components.footer(auth),
         )
 
     books = []
@@ -285,7 +109,7 @@ def get(auth):
     for book in books:
         rows.append(
             Tr(
-                Td(A(book.title, href=f"/{book.id}")),
+                Td(A(book.title, href=f"/book/{book.id}")),
                 Td(Tx(book.type.capitalize())),
                 Td(Tx(book.status)),
                 Td(book.modified),
@@ -293,73 +117,15 @@ def get(auth):
         )
     return (
         Title(Tx("Books")),
-        Header(
-            nav(
-                title=Tx("Books"),
-                actions=[
-                    A(f'{Tx("Create")} {Tx("book")}', href="/book"),
-                    A(f'{Tx("Download")} TGZ', href="/tgz"),
-                ],
-            ),
-            cls="container",
+        components.header(
+            title=Tx("Books"),
+            actions=[
+                A(f'{Tx("Create")} {Tx("book")}', href="/book"),
+                A(f'{Tx("Download")} TGZ', href="/tgz"),
+            ],
         ),
         Main(Table(*rows), cls="container"),
-        footer(auth),
-    )
-
-
-@rt("/login")
-def get():
-    "Login form."
-    if not (os.environ.get("MDBOOK_USER") and os.environ.get("MDBOOK_PASSWORD")):
-        return Titled(
-            "Invalid setup",
-            H3("Invalid setup"),
-            P("Environment variables MDBOOK_USER and/or MDBOOK_PASSWORD not set."),
-        )
-    else:
-        return Titled(
-            "Login",
-            Form(
-                Input(id="user", placeholder=Tx("User")),
-                Input(id="password", type="password", placeholder=Tx("Password")),
-                Button(Tx("Login")),
-                action="/login",
-                method="post",
-            ),
-        )
-
-
-@rt("/login")
-def post(user: str, password: str, sess):
-    if not user or not password:
-        return login_redir
-    if user != os.environ["MDBOOK_USER"] or password != os.environ["MDBOOK_PASSWORD"]:
-        return error("Invalid credentials.", 403)
-    sess["auth"] = user
-    return RedirectResponse("/", status_code=303)
-
-
-@rt("/logout")
-def get(sess):
-    del sess["auth"]
-    return login_redir
-
-
-@rt("/tgz")
-def get(auth):
-    "Download a gzipped tar file of all books."
-    output = io.BytesIO()
-    with tarfile.open(fileobj=output, mode="w:gz") as archivefile:
-        for name in os.listdir(MDBOOK_DIR):
-            archivefile.add(
-                os.path.join(MDBOOK_DIR, name), arcname=name, recursive=True
-            )
-    filename = f"mdbook_{utils.timestr()}.tgz"
-    return Response(
-        content=output.getvalue(),
-        media_type=constants.GZIP_MIMETYPE,
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        components.footer(auth),
     )
 
 
@@ -459,19 +225,18 @@ def get(auth):
         #         xrefs.append(Br())
         #     xrefs.append(A(text.fullname,
         #                    cls="secondary",
-        #                    href=f"/text/{text.fullname}"))
+        #                    href=f"/book/XXX/{text.fullname}"))
         # if xrefs:
         #     parts.append(Small(Br(), *xrefs))
         items.append(P(*parts, id=ref["id"].replace(" ", "_")))
 
     return (
         Title(Tx("References")),
-        Header(
-            nav(title=Tx("References"), actions=[A(Tx("Add BibTex"), href="/bibtex")]),
-            cls="container",
+        components.header(
+            title=Tx("References"), actions=[A(Tx("Add BibTex"), href="/bibtex")]
         ),
         Main(*items, cls="container"),
-        footer(auth),
+        components.footer(auth),
     )
 
 
@@ -535,22 +300,19 @@ def get(auth, refid: str):
         Title(refid),
         Script(src="/clipboard.min.js"),
         Script("new ClipboardJS('.to_clipboard');"),
-        Header(
-            nav(
-                title=ref["id"],
-                actions=[
-                    A(
-                        Tx("Clipboard"),
-                        href="#",
-                        cls="to_clipboard",
-                        data_clipboard_text=f'[@{ref["id"]}]',
-                    ),
-                ],
-            ),
-            cls="container",
+        components.header(
+            title=ref["id"],
+            actions=[
+                A(
+                    Tx("Clipboard"),
+                    href="#",
+                    cls="to_clipboard",
+                    data_clipboard_text=f'[@{ref["id"]}]',
+                ),
+            ],
         ),
         Main(Table(*rows), Div(NotStr(ref.html)), cls="container"),
-        footer(auth),
+        components.footer(auth),
     )
 
 
@@ -559,7 +321,7 @@ def get(auth):
     "Page for adding reference(s) using BibTex data."
     return (
         Title("Add reference"),
-        Header(nav(title="Add reference"), cls="container"),
+        components.header(title="Add reference"),
         Main(
             Form(
                 Fieldset(Legend(Tx("Bibtex data")), Textarea(name="data", rows="20")),
@@ -569,7 +331,7 @@ def get(auth):
             ),
             cls="container",
         ),
-        footer(auth),
+        components.footer(auth),
     )
 
 
@@ -637,12 +399,12 @@ def post(auth, data: str):
         result.append(reference)
     return (
         Title("Added reference(s)"),
-        Header(nav(title="Added reference(s)"), cls="container"),
+        components.header(title="Added reference(s)"),
         Main(
             Ul(*[Li(A(r["id"], href=f'/reference/{r["id"]}')) for r in result]),
             cls="container",
         ),
-        footer(auth),
+        components.footer(auth),
     )
 
 
@@ -652,7 +414,7 @@ def get(auth):
     title = f'{Tx("Create or upload")} {Tx("book")}'
     return (
         Title(title),
-        Header(nav(title=title), cls="container"),
+        components.header(title=title),
         Main(
             Form(
                 Fieldset(
@@ -669,7 +431,7 @@ def get(auth):
             ),
             cls="container",
         ),
-        footer(auth),
+        components.footer(auth),
     )
 
 
@@ -699,10 +461,10 @@ async def post(auth, bid: str, tgzfile: UploadFile = None):
     book = Book(dirpath)
     book.frontmatter["owner"] = auth
     book.write(force=True)
-    return Redirect(f"/{bid}")
+    return Redirect(f"/book/{bid}")
 
 
-@rt("/{bid}")
+@rt("/book/{bid}")
 def get(auth, bid: str):
     "Book home page; list of sections and texts."
     try:
@@ -711,27 +473,61 @@ def get(auth, bid: str):
         return error(message, 404)
     book.read()
     actions = [
-        A(f'{Tx("Edit")}', href=f"/{bid}/edit"),
-        A(f'{Tx("Create")} {Tx("section")}', href=f"/{bid}/create_section"),
-        A(f'{Tx("Create")} {Tx("text")}', href=f"/{bid}/create_text"),
-        A(f'{Tx("Download")} DOCX', href=f"/{bid}/docx"),
-        A(f'{Tx("Download")} PDF', href=f"/{bid}/pdf"),
-        A(f'{Tx("Download")} TGZ', href=f"/{bid}/tgz"),
+        A(f'{Tx("Edit")}', href=f"/edit/{bid}"),
+        A(f'{Tx("Create")} {Tx("section")}', href=f"/section/{bid}"),
+        A(f'{Tx("Create")} {Tx("text")}', href=f"/text/{bid}"),
+        A(f'{Tx("Download")} DOCX', href=f"/docx/{bid}"),
+        A(f'{Tx("Download")} PDF', href=f"/pdf/{bid}"),
+        A(f'{Tx("Download")} TGZ', href=f"/tgz/{bid}"),
     ]
     if len(book.items) == 0:
-        actions.append(A(f'{Tx("Delete")}', href=f"/{bid}/delete/"))
-        content = H3(A(Tx("Article"), href=f"/{bid}/title"))
+        actions.append(A(f'{Tx("Delete")}', href=f"/delete/{bid}"))
+        content = H3(A(Tx("Article"), href=f"/title/{bid}"))
     else:
-        content = toc(book, book.items, show_arrows=True)
+        content = components.toc(book, book.items, show_arrows=True)
     return (
         Title(book.title),
-        Header(nav(book=book, actions=actions), cls="container"),
+        components.header(book=book, actions=actions),
         Main(content, cls="container"),
-        footer(auth),
+        components.footer(auth),
     )
 
 
-@rt("/{bid}/edit")
+@rt("/book/{bid}/{path:path}")
+def get(auth, bid: str, path: str):
+    "View the text in the book."
+    book = get_book(bid)
+    item = book[path]
+    actions = [A(Tx("Edit"), href=f"/edit/{bid}/{path}")]
+    if item.is_text:
+        item.read()
+        actions.append(A(Tx("Convert to section"), href=f"/to_section/{bid}/{path}"))
+        actions.append(A(f'{Tx("Download")} DOCX', href=f"/docx/{bid}/{path}"))
+        actions.append(A(f'{Tx("Delete")}', href=f"/delete/{bid}/{path}"))
+        segments = []
+    elif item.is_section:
+        actions = [
+            A(f'{Tx("Create")} {Tx("section")}', href=f"/section/{bid}/{path}"),
+            A(f'{Tx("Create")} {Tx("text")}', href=f"/text/{bid}/{path}"),
+            A(f'{Tx("Download")} DOCX', href=f"/docx/{bid}/{path}"),
+        ]
+        if len(item.items) == 0:
+            actions.append(A(f'{Tx("Delete")}', href=f"/delete/{bid}/{path}"))
+        segments = [components.toc(book, item.items)]
+    return (
+        Title(item.title),
+        components.header(book=book, item=item, actions=actions),
+        Main(
+            H3(item.heading),
+            *segments,
+            NotStr(item.html),
+            cls="container",
+        ),
+        components.footer(auth),
+    )
+
+
+@rt("/edit/{bid}")
 def get(auth, bid: str):
     "Page for editing the book data."
     book = get_book(bid)
@@ -787,16 +583,16 @@ def get(auth, bid: str):
     )
     return (
         Title(f'{Tx("Edit")} {book.title}'),
-        Header(nav(book=book, title=f'{Tx("Edit")} {book.title}'), cls="container"),
+        components.header(book=book, title=f'{Tx("Edit")} {book.title}'),
         Main(
-            Form(*fields, Button(Tx("Save")), action=f"/{bid}/edit", method="post"),
+            Form(*fields, Button(Tx("Save")), action=f"/edit/{bid}", method="post"),
             cls="container",
         ),
-        footer(auth),
+        components.footer(auth),
     )
 
 
-@rt("/{bid}/edit")
+@rt("/edit/{bid}")
 def post(
     auth,
     bid: str,
@@ -821,76 +617,10 @@ def post(
     else:
         book.frontmatter.pop("language", None)
     book.write(content=content, force=True)
-    return RedirectResponse(f"/{bid}/title", status_code=303)
+    return RedirectResponse(f"/title/{bid}", status_code=303)
 
 
-@rt("/{bid}/up/{path:path}")
-def get(auth, bid: str, path: str):
-    "Move item up in its sibling list."
-    book = get_book(bid)
-    book[path].up()
-    book.write()
-    return Redirect(f"/{bid}/")
-
-
-@rt("/{bid}/down/{path:path}")
-def get(auth, bid: str, path: str):
-    "Move item down in its sibling list."
-    book = get_book(bid)
-    book[path].down()
-    book.write()
-    return Redirect(f"/{bid}/")
-
-
-@rt("/{bid}/text/{path:path}")
-def get(auth, bid: str, path: str):
-    "View the text."
-    book = get_book(bid)
-    text = book[path]
-    assert text.is_text
-    text.read()
-    actions = [
-        A(Tx("Edit"), href=f"/{bid}/edit/{path}"),
-        A(Tx("Convert to section"), href=f"/{bid}/to_section/{path}"),
-        A(f'{Tx("Download")} DOCX', href=f"/{bid}/docx/{path}"),
-        A(f'{Tx("Delete")}', href=f"/{bid}/delete/{path}"),
-    ]
-    return (
-        Title(text.title),
-        Header(nav(book=book, item=text, actions=actions), cls="container"),
-        Main(H3(text.heading), NotStr(text.html), cls="container"),
-        footer(auth),
-    )
-
-
-@rt("/{bid}/section/{path:path}")
-def get(auth, bid: str, path: str):
-    "View the section."
-    book = get_book(bid)
-    section = book[path]
-    assert section.is_section
-    actions = [
-        A(Tx("Edit"), href=f"/{bid}/edit/{path}"),
-        A(f'{Tx("Create")} {Tx("section")}', href=f"/{bid}/create_section/{path}"),
-        A(f'{Tx("Create")} {Tx("text")}', href=f"/{bid}/create_text/{path}"),
-        A(f'{Tx("Download")} DOCX', href=f"/{bid}/docx/{path}"),
-    ]
-    if len(section.items) == 0:
-        actions.append(A(f'{Tx("Delete")}', href=f"/{bid}/delete/{path}"))
-    return (
-        Title(section.title),
-        Header(nav(book=book, item=section, actions=actions), cls="container"),
-        Main(
-            H3(section.heading),
-            toc(book, section.items),
-            NotStr(section.html),
-            cls="container",
-        ),
-        footer(auth),
-    )
-
-
-@rt("/{bid}/edit/{path:path}")
+@rt("/edit/{bid}/{path:path}")
 def get(auth, bid: str, path: str):
     "Page for editing the item (section or text)."
     book = get_book(bid)
@@ -926,80 +656,110 @@ def get(auth, bid: str, path: str):
     fields.append(Button("Save"))
     return (
         Title(f'{Tx("Edit")} {item.fullname}'),
-        Header(nav(book=book, title=f'{Tx("Edit")} {item.fullname}'), cls="container"),
+        components.header(book=book, title=f'{Tx("Edit")} {item.fullname}'),
         Main(
-            Form(*fields, action=f"/{bid}/edit/{path}", method="post"),
+            Form(*fields, action=f"/edit/{bid}/{path}", method="post"),
             cls="container",
         ),
-        footer(auth),
+        components.footer(auth),
     )
 
 
-@rt("/{bid}/edit/{path:path}")
+@rt("/edit/{bid}/{path:path}")
 def post(auth, bid: str, path: str, title: str, content: str, status: str = None):
-    "Actually edit the item (section or text).."
+    "Actually edit the item (section or text)."
     item = get_book(bid)[path]
     item.set_title(title)
     if item.is_text:
         if status is not None:
             item.status = status
-        item.write(content=content)
-        return RedirectResponse(f"/{bid}/text/{item.urlpath}", status_code=303)
-    else:
-        item.write(content=content)
-        return RedirectResponse(f"/{bid}/section/{item.urlpath}", status_code=303)
+    item.write(content=content)
+    return RedirectResponse(f"/book/{bid}/{item.urlpath}", status_code=303)
 
 
-@rt("/{bid}/delete/{path:path}")
+@rt("/up/{bid}/{path:path}")
 def get(auth, bid: str, path: str):
-    "Confirm delete of the text, section or book; section and book must be empty."
+    "Move item up in its sibling list."
     book = get_book(bid)
-    if path == "":
-        if len(book.items) != 0:
-            return error("Cannot delete non-empty book.")
-        item = None
-        title = book.title
-    else:
-        item = book[path]
-        title = item.title
-        if item.is_section and len(item.items) != 0:
-            return error("Cannot delete non-empty section.")
+    book[path].up()
+    book.write()
+    return Redirect(f"/book/{bid}/")
+
+
+@rt("/down/{bid}/{path:path}")
+def get(auth, bid: str, path: str):
+    "Move item down in its sibling list."
+    book = get_book(bid)
+    book[path].down()
+    book.write()
+    return Redirect(f"/book/{bid}/")
+
+
+@rt("/delete/{bid}")
+def get(auth, bid: str):
+    "Confirm delete of book; must be empty."
+    book = get_book(bid)
+    if len(book.items) != 0:
+        return error("Cannot delete non-empty book.")
     return (
-        Title(title),
-        Header(nav(book=book, item=item, title=title), cls="container"),
+        Title(book.title),
+        components.header(book=book, title=book.title),
         Main(
             H3(Tx("Delete"), "?"),
-            Form(Button(Tx("Confirm")), action=f"/{bid}/delete/{path}", method="post"),
+            Form(Button(Tx("Confirm")), action=f"/delete/{bid}", method="post"),
             cls="container",
         ),
-        footer(auth),
+        components.footer(auth),
     )
 
 
-@rt("/{bid}/delete/{path:path}")
-def post(auth, bid: str, path: str):
-    "Delete the text, section or book; section or book must be empty."
+@rt("/delete/{bid}")
+def post(auth, bid: str):
+    "Delete the book; must be empty."
     book = get_book(bid)
-    if path == "":
-        if len(book.items) != 0:
-            return error("Cannot delete non-empty book.")
-        try:
-            os.remove(os.path.join(book.abspath, "index.md"))
-        except FileNotFoundError:
-            pass
-        books.pop(book.id)
-        os.rmdir(book.abspath)
-        return RedirectResponse("/", status_code=303)
-    else:
-        item = book[path]
-        try:
-            book.delete(item)
-        except ValueError as message:
-            return error(message)
-        return RedirectResponse(f"/{bid}", status_code=303)
+    if len(book.items) != 0:
+        return error("Cannot delete non-empty book.")
+    try:
+        os.remove(os.path.join(book.abspath, "index.md"))
+    except FileNotFoundError:
+        pass
+    books.pop(book.id)
+    os.rmdir(book.abspath)
+    return RedirectResponse("/", status_code=303)
 
 
-@rt("/{bid}/to_section/{path:path}")
+@rt("/delete/{bid}/{path:path}")
+def get(auth, bid: str, path: str):
+    "Confirm delete of the text or section; section must be empty."
+    book = get_book(bid)
+    item = book[path]
+    if item.is_section and len(item.items) != 0:
+        return error("Cannot delete non-empty section.")
+    return (
+        Title(item.title),
+        components.header(book=book, item=item, title=item.title),
+        Main(
+            H3(Tx("Delete"), "?"),
+            Form(Button(Tx("Confirm")), action=f"/delete/{bid}/{path}", method="post"),
+            cls="container",
+        ),
+        components.footer(auth),
+    )
+
+
+@rt("/delete/{bid}/{path:path}")
+def post(auth, bid: str, path: str):
+    "Delete the text or section; section must be empty."
+    book = get_book(bid)
+    item = book[path]
+    try:
+        book.delete(item)
+    except ValueError as message:
+        return error(message)
+    return RedirectResponse(f"/book/{bid}", status_code=303)
+
+
+@rt("/to_section/{bid}/{path:path}")
 def get(auth, bid: str, path: str):
     "Convert to section containing a text with this text."
     book = get_book(bid)
@@ -1007,29 +767,29 @@ def get(auth, bid: str, path: str):
     assert text.is_text
     return (
         Title(Tx("Convert to section")),
-        Header(nav(book=book, title=Tx("Convert to section")), cls="container"),
+        components.header(book=book, title=Tx("Convert to section")),
         Main(
             P(Tx("Text"), ": ", text.fullname),
             Form(
-                Button(Tx("Convert")), action=f"/{bid}/to_section/{path}", method="post"
+                Button(Tx("Convert")), action=f"/to_section/{bid}/{path}", method="post"
             ),
             cls="container",
         ),
-        footer(auth),
+        components.footer(auth),
     )
 
 
-@rt("/{bid}/to_section/{path:path}")
+@rt("/to_section/{bid}/{path:path}")
 def post(auth, bid: str, path: str):
     "Convert to section containing a text with this text."
     text = get_book(bid)[path]
     assert text.is_text
     section = text.to_section()
     assert section.is_section
-    return RedirectResponse(f"/{bid}/section/{section.urlpath}", status_code=303)
+    return RedirectResponse(f"/book/{bid}/{section.urlpath}", status_code=303)
 
 
-@rt("/{bid}/create_text/{path:path}")
+@rt("/text/{bid}/{path:path}")
 def get(auth, bid: str, path: str):
     "Create a new text in the section."
     book = get_book(bid)
@@ -1037,7 +797,7 @@ def get(auth, bid: str, path: str):
     title = f'{Tx("Create")} {Tx("text")}'
     return (
         Title(title),
-        Header(nav(book=book, title=title), cls="container"),
+        components.header(book=book, title=title),
         Main(
             Form(
                 Fieldset(
@@ -1045,16 +805,16 @@ def get(auth, bid: str, path: str):
                     Input(name="title", required=True, autofocus=True),
                 ),
                 Button(Tx("Create")),
-                action=f"/{bid}/create_text/{path}",
+                action=f"/text/{bid}/{path}",
                 method="post",
             ),
             cls="container",
         ),
-        footer(auth),
+        components.footer(auth),
     )
 
 
-@rt("/{bid}/create_text/{path:path}")
+@rt("/text/{bid}/{path:path}")
 def post(auth, bid: str, path: str, title: str = None):
     "Create a new text in the section."
     book = get_book(bid)
@@ -1065,12 +825,12 @@ def post(auth, bid: str, path: str, title: str = None):
         assert parent.is_section
     new = book.create_text(title, parent=parent)
     if path:
-        return RedirectResponse(f"/{bid}/section/{path}", status_code=303)
+        return RedirectResponse(f"/book/{bid}/{path}", status_code=303)
     else:
-        return RedirectResponse(f"/{bid}", status_code=303)
+        return RedirectResponse(f"/book/{bid}", status_code=303)
 
 
-@rt("/{bid}/create_section/{path:path}")
+@rt("/section/{bid}/{path:path}")
 def get(auth, bid: str, path: str):
     "Create a new section in the section."
     book = get_book(bid)
@@ -1078,7 +838,7 @@ def get(auth, bid: str, path: str):
     title = f'{Tx("Create")} {Tx("section")}'
     return (
         Title(title),
-        Header(nav(book=book, title=title), cls="container"),
+        components.header(book=book, title=title),
         Main(
             Form(
                 Fieldset(
@@ -1086,16 +846,16 @@ def get(auth, bid: str, path: str):
                     Input(name="title", required=True, autofocus=True),
                 ),
                 Button(Tx("Create")),
-                action=f"/{bid}/create_section/{path}",
+                action=f"/section/{bid}/{path}",
                 method="post",
             ),
             cls="container",
         ),
-        footer(auth),
+        components.footer(auth),
     )
 
 
-@rt("/{bid}/create_section/{path:path}")
+@rt("/section/{bid}/{path:path}")
 def post(auth, bid: str, path: str, title: str = None):
     "Create a new section in the section."
     book = get_book(bid)
@@ -1106,12 +866,12 @@ def post(auth, bid: str, path: str, title: str = None):
         assert parent.is_section
     new = book.create_section(title, parent=parent)
     if path:
-        return RedirectResponse(f"/{bid}/section/{path}", status_code=303)
+        return RedirectResponse(f"/book/{bid}/{path}", status_code=303)
     else:
-        return RedirectResponse(f"/{bid}", status_code=303)
+        return RedirectResponse(f"/book/{bid}", status_code=303)
 
 
-@rt("/{bid}/title")
+@rt("/title/{bid}")
 def get(auth, bid: str):
     "Title page."
     book = get_book(bid)
@@ -1123,25 +883,22 @@ def get(auth, bid: str):
     segments.append(NotStr(book.html))
     return (
         Title(Tx("Title")),
-        Header(
-            nav(
-                book=book,
-                title=Tx("Title"),
-                actions=[
-                    A(f'{Tx("Edit")}', href=f"/{bid}/edit"),
-                    A(f'{Tx("Download")} DOCX', href=f"/{bid}/docx"),
-                    A(f'{Tx("Download")} PDF', href=f"/{bid}/pdf"),
-                    A(f'{Tx("Download")} TGZ', href=f"/{bid}/tgz"),
-                ],
-            ),
-            cls="container",
+        components.header(
+            book=book,
+            title=Tx("Title"),
+            actions=[
+                A(f'{Tx("Edit")}', href=f"/edit/{bid}"),
+                A(f'{Tx("Download")} DOCX', href=f"/docx/{bid}"),
+                A(f'{Tx("Download")} PDF', href=f"/pdf/{bid}"),
+                A(f'{Tx("Download")} TGZ', href=f"/tgz/{bid}"),
+            ],
         ),
         Main(*segments, cls="container"),
-        footer(auth),
+        components.footer(auth),
     )
 
 
-@rt("/{bid}/index")
+@rt("/index/{bid}")
 def get(auth, bid: str):
     "Page listing the indexed terms."
     book = get_book(bid)
@@ -1152,18 +909,18 @@ def get(auth, bid: str):
             if links:
                 links.append(NotStr(",&nbsp; "))
             links.append(
-                A(text.fullname, cls="secondary", href=f"/{bid}/text/{text.fullname}")
+                A(text.fullname, cls="secondary", href=f"/book/{bid}/{text.fullname}")
             )
         items.append(Li(key, Br(), Small(*links)))
     return (
         Title(Tx("Index")),
-        Header(nav(book=book, title=Tx("Index")), cls="container"),
+        components.header(book=book, title=Tx("Index")),
         Main(Ul(*items), cls="container"),
-        footer(auth),
+        components.footer(auth),
     )
 
 
-@rt("/{bid}/statuslist")
+@rt("/statuslist/{bid}")
 def get(auth, bid: str):
     "Page listing each status and texts in it."
     book = get_book(bid)
@@ -1174,23 +931,23 @@ def get(auth, bid: str):
             if t.status == status:
                 if texts:
                     texts.append(Br())
-                texts.append(A(t.heading, href=f"/{bid}/text/{t.urlpath}"))
+                texts.append(A(t.heading, href=f"/book/{bid}/{t.urlpath}"))
         rows.append(Tr(Td(Tx(str(status)), valign="top"), Td(*texts)))
     return (
         Title(Tx("Status list")),
-        Header(nav(book=book, title=Tx("Status list")), cls="container"),
+        components.header(book=book, title=Tx("Status list")),
         Main(Table(*rows), cls="container"),
-        footer(auth),
+        components.footer(auth),
     )
 
 
-@rt("/{bid}/docx")
+@rt("/docx/{bid}")
 def get(auth, bid: str):
     "Download the DOCX for the whole book."
     return get_docx(bid)
 
 
-@rt("/{bid}/docx/{path:path}")
+@rt("/docx/{bid}/{path:path}")
 def get(auth, bid: str, path: str):
     "Download the DOCX for a section or text in the book."
     return get_docx(bid, path)
@@ -1293,15 +1050,13 @@ def get_docx(bid, path=None):
         title = path
     return (
         Title(f'{Tx("Download")} DOCX:  {title}'),
-        Header(
-            nav(book=book, title=f'{Tx("Download")} DOCX: {title}'), cls="container"
-        ),
-        Main(Form(*fields, action=f"/{bid}/docx", method="post"), cls="container"),
-        footer(auth),
+        components.header(book=book, title=f'{Tx("Download")} DOCX: {title}'),
+        Main(Form(*fields, action=f"/docx/{bid}", method="post"), cls="container"),
+        components.footer(auth),
     )
 
 
-@rt("/{bid}/docx")
+@rt("/docx/{bid}")
 def post(
     auth,
     bid: str,
@@ -1339,7 +1094,7 @@ def post(
     )
 
 
-@rt("/{bid}/pdf")
+@rt("/pdf/{bid}")
 def pdf(auth, bid: str):
     "Get the parameters for downloading PDF file of the whole book."
     book = get_book(bid)
@@ -1385,7 +1140,7 @@ def pdf(auth, bid: str):
 
     return (
         Title(f'{Tx("Download")} PDF'),
-        Header(nav(book=book, title=f'{Tx("Download")} PDF'), cls="container"),
+        components.header(book=book, title=f'{Tx("Download")} PDF'),
         Main(
             Form(
                 Fieldset(
@@ -1429,16 +1184,16 @@ def pdf(auth, bid: str):
                     Select(*indexed_options, name="indexed_xref"),
                 ),
                 Button(f'{Tx("Download")} PDF'),
-                action=f"/{bid}/pdf",
+                action=f"/pdf/{bid}",
                 method="post",
             ),
             cls="container",
         ),
-        footer(auth),
+        components.footer(auth),
     )
 
 
-@rt("/{bid}/pdf")
+@rt("/pdf/{bid}")
 def post(
     auth,
     bid: str,
@@ -1469,12 +1224,68 @@ def post(
     )
 
 
-@rt("/{bid}/tgz")
+@rt("/tgz/{bid}")
 def get(auth, bid: str):
     "Download a gzipped tar file of the book."
     book = get_book(bid)
     filename = f"{book.title} {utils.timestr()}.tgz"
     output = book.get_archive()
+    return Response(
+        content=output.getvalue(),
+        media_type=constants.GZIP_MIMETYPE,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@rt("/login")
+def get():
+    "Login form."
+    if not (os.environ.get("MDBOOK_USER") and os.environ.get("MDBOOK_PASSWORD")):
+        return Titled(
+            "Invalid setup",
+            H3("Invalid setup"),
+            P("Environment variables MDBOOK_USER and/or MDBOOK_PASSWORD not set."),
+        )
+    else:
+        return Titled(
+            "Login",
+            Form(
+                Input(id="user", placeholder=Tx("User")),
+                Input(id="password", type="password", placeholder=Tx("Password")),
+                Button(Tx("Login")),
+                action="/login",
+                method="post",
+            ),
+        )
+
+
+@rt("/login")
+def post(user: str, password: str, sess):
+    "Actually login."
+    if not user or not password:
+        return login_redir
+    if user != os.environ["MDBOOK_USER"] or password != os.environ["MDBOOK_PASSWORD"]:
+        return error("Invalid credentials.", 403)
+    sess["auth"] = user
+    return RedirectResponse("/", status_code=303)
+
+
+@rt("/logout")
+def get(sess):
+    del sess["auth"]
+    return login_redir
+
+
+@rt("/tgz")
+def get(auth):
+    "Download a gzipped tar file of all books."
+    output = io.BytesIO()
+    with tarfile.open(fileobj=output, mode="w:gz") as archivefile:
+        for name in os.listdir(MDBOOK_DIR):
+            archivefile.add(
+                os.path.join(MDBOOK_DIR, name), arcname=name, recursive=True
+            )
+    filename = f"mdbook_{utils.timestr()}.tgz"
     return Response(
         content=output.getvalue(),
         media_type=constants.GZIP_MIMETYPE,
