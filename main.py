@@ -243,8 +243,8 @@ def get(auth):
             title=Tx("References"),
             actions=[
                 A(Tx("Add BibTex"), href="/bibtex"),
-                A(f'{Tx("Download")} {Tx("references")}', href="/references/tgz"),
-                A(f'{Tx("Upload")} {Tx("references")}', href="/references/upload")]
+                A(f'{Tx("Download")} {Tx("references")} TGZ', href="/references/tgz"),
+                A(f'{Tx("Upload")} {Tx("references")} TGZ', href="/references/upload")]
         ),
         Main(*items, cls="container"),
     )
@@ -293,14 +293,21 @@ def get(auth):
 @rt("/references/upload")
 async def post(auth, tgzfile: UploadFile):
     "Actually add or replace references by contents of the uploaded file."
-    # XXX handle subdir?
     content = await tgzfile.read()
-    if content:
-        try:
-            tf = tarfile.open(fileobj=io.BytesIO(content), mode="r:gz")
-            tf.extractall(path=os.path.join(MDBOOK_DIR, constants.REFERENCES_DIR))
-        except (tarfile.TarError, ValueError) as msg:
-            return error(f"Error reading TGZ file: {msg}")
+    if not content:
+        return error("empty TGZ file", 400)
+    try:
+        tf = tarfile.open(fileobj=io.BytesIO(content), mode="r:gz")
+        names = tf.getnames()
+        for name in names:
+            if not name.endswith(".md") or os.path.basename(name) != name:
+                return error("TGZ file must contain only *.md files; no directories", 400)
+        for name in names:
+            if name == "index.md":
+                continue
+            tf.extract(name, path=os.path.join(MDBOOK_DIR, constants.REFERENCES_DIR))
+    except (tarfile.TarError, ValueError) as msg:
+        return error(f"Error reading TGZ file: {msg}")
     return RedirectResponse(f"/references", status_code=303)
 
 
@@ -479,7 +486,7 @@ def get(auth):
         Main(
             Form(
                 Fieldset(
-                    Legend(Tx("Title")),
+                    Legend(Tx("Identifier")),
                     Input(type="text", name="bid", required=True, autofocus=True),
                 ),
                 Fieldset(
@@ -498,15 +505,19 @@ def get(auth):
 @rt("/book")
 async def post(auth, bid: str, tgzfile: UploadFile):
     "Actually create and/or upload book using a gzipped tar file."
+    dirpath = os.path.join(MDBOOK_DIR, bid)
+    if os.path.exists(dirpath):
+        return error(f"book {bid} already exists", 409)
     content = await tgzfile.read()
-    if content:
-        try:
-            tf = tarfile.open(fileobj=io.BytesIO(content), mode="r:gz")
-            if "index.md" not in tf.getnames():
-                raise ValueError("No 'index.md' file in TGZ file; not from mdbook?")
-            tf.extractall(path=dirpath)
-        except (tarfile.TarError, ValueError) as msg:
-            return error(f"Error reading TGZ file: {msg}")
+    if not content:
+        return error("empty TGZ file", 400)
+    try:
+        tf = tarfile.open(fileobj=io.BytesIO(content), mode="r:gz")
+        if "index.md" not in tf.getnames():
+            raise ValueError("No 'index.md' file in TGZ file; not from mdbook?")
+        tf.extractall(path=dirpath)
+    except (tarfile.TarError, ValueError) as msg:
+        return error(f"Error reading TGZ file: {msg}")
     return RedirectResponse(f"/references", status_code=303)
 
 
@@ -540,7 +551,7 @@ def get(auth, bid: str):
 
 @rt("/book/{bid}/{path:path}")
 def get(auth, bid: str, path: str):
-    "View the text in the book."
+    "View the book text or section."
     book = get_book(bid)
     item = book[path]
     actions = [A(Tx("Edit"), href=f"/edit/{bid}/{path}")]
@@ -551,11 +562,9 @@ def get(auth, bid: str, path: str):
         actions.append(A(f'{Tx("Delete")}', href=f"/delete/{bid}/{path}"))
         segments = []
     elif item.is_section:
-        actions = [
-            A(f'{Tx("Create")} {Tx("section")}', href=f"/section/{bid}/{path}"),
-            A(f'{Tx("Create")} {Tx("text")}', href=f"/text/{bid}/{path}"),
-            A(f'{Tx("Download")} DOCX', href=f"/docx/{bid}/{path}"),
-        ]
+        actions.append(A(f'{Tx("Create")} {Tx("section")}', href=f"/section/{bid}/{path}"))
+        actions.append(A(f'{Tx("Create")} {Tx("text")}', href=f"/text/{bid}/{path}"))
+        actions.append(A(f'{Tx("Download")} DOCX', href=f"/docx/{bid}/{path}"))
         if len(item.items) == 0:
             actions.append(A(f'{Tx("Delete")}', href=f"/delete/{bid}/{path}"))
         segments = [components.toc(book, item.items)]
@@ -668,12 +677,10 @@ def get(auth, bid: str, path: str):
     "Page for editing the item (section or text)."
     book = get_book(bid)
     item = book[path]
-    fields = [
-        Fieldset(
-            Label(Tx("Title")),
-            Input(name="title", value=item.title, required=True, autofocus=True),
-        )
-    ]
+    title_field = Fieldset(
+        Label(Tx("Title")),
+        Input(name="title", value=item.title, required=True, autofocus=True),
+    )
     if item.is_text:
         item.read()
         status_options = []
@@ -684,12 +691,18 @@ def get(auth, bid: str, path: str):
                 )
             else:
                 status_options.append(Option(Tx(str(status)), value=repr(status)))
-        fields.append(
-            Fieldset(
-                Legend(Tx("Status")),
-                Select(*status_options, name="status", required=True),
+        fields = [
+            Div(
+                title_field,
+                Fieldset(
+                    Legend(Tx("Status")),
+                    Select(*status_options, name="status", required=True),
+                ),
+                cls="grid"
             )
-        )
+        ]
+    elif item.is_section:
+        fields = [title_field]
     fields.append(
         Fieldset(
             Legend(Tx("Text")),
