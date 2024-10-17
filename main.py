@@ -243,7 +243,8 @@ def get(auth):
             title=Tx("References"),
             actions=[
                 A(Tx("Add BibTex"), href="/bibtex"),
-                A(f'{Tx("Download")} {Tx("references")}', href="/references/tgz"),]
+                A(f'{Tx("Download")} {Tx("references")}', href="/references/tgz"),
+                A(f'{Tx("Upload")} {Tx("references")}', href="/references/upload")]
         ),
         Main(*items, cls="container"),
     )
@@ -265,6 +266,42 @@ def get():
         media_type=constants.GZIP_MIMETYPE,
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@rt("/references/upload")
+def get(auth):
+    "Upload a gzipped tar file of references; replace any with the same name."
+    title = f'{Tx("Upload")} {Tx("references")}'
+    return (
+        Title(title),
+        components.header(title=title),
+        Main(
+            Form(
+                Fieldset(
+                    Legend(Tx(f'{Tx("Upload")} TGZ')),
+                    Input(type="file", name="tgzfile"),
+                ),
+                Button(Tx("Upload")),
+                action="/references/upload",
+                method="post",
+            ),
+            cls="container",
+        ),
+    )
+
+
+@rt("/references/upload")
+async def post(auth, tgzfile: UploadFile):
+    "Actually add or replace references by contents of the uploaded file."
+    # XXX handle subdir?
+    content = await tgzfile.read()
+    if content:
+        try:
+            tf = tarfile.open(fileobj=io.BytesIO(content), mode="r:gz")
+            tf.extractall(path=os.path.join(MDBOOK_DIR, constants.REFERENCES_DIR))
+        except (tarfile.TarError, ValueError) as msg:
+            return error(f"Error reading TGZ file: {msg}")
+    return RedirectResponse(f"/references", status_code=303)
 
 
 @rt("/reference/{refid:str}")
@@ -459,19 +496,8 @@ def get(auth):
 
 
 @rt("/book")
-async def post(auth, bid: str, tgzfile: UploadFile = None):
+async def post(auth, bid: str, tgzfile: UploadFile):
     "Actually create and/or upload book using a gzipped tar file."
-    if not bid:
-        return error("No book identifier provided.")
-    try:
-        check_disallowed_characters(bid)
-    except ValueError:
-        return error(f'Book identifier "{bid}" contains disallowed characters.')
-    dirpath = os.path.join(MDBOOK_DIR, bid)
-    try:
-        os.mkdir(dirpath)
-    except FileExistsError:
-        return error(f'Book "{bid}" already exists.')
     content = await tgzfile.read()
     if content:
         try:
@@ -481,10 +507,7 @@ async def post(auth, bid: str, tgzfile: UploadFile = None):
             tf.extractall(path=dirpath)
         except (tarfile.TarError, ValueError) as msg:
             return error(f"Error reading TGZ file: {msg}")
-    book = Book(dirpath)
-    book.frontmatter["owner"] = auth
-    book.write(force=True)
-    return Redirect(f"/book/{bid}")
+    return RedirectResponse(f"/references", status_code=303)
 
 
 @rt("/book/{bid}")
@@ -702,7 +725,7 @@ def get(auth, bid: str, path: str):
     book = get_book(bid)
     book[path].up()
     book.write()
-    return Redirect(f"/book/{bid}/")
+    return RedirectResponse(f"/book/{bid}/", status_code=303)
 
 
 @rt("/down/{bid}/{path:path}")
@@ -711,7 +734,7 @@ def get(auth, bid: str, path: str):
     book = get_book(bid)
     book[path].down()
     book.write()
-    return Redirect(f"/book/{bid}/")
+    return RedirectResponse(f"/book/{bid}/", status_code=303)
 
 
 @rt("/delete/{bid}")
