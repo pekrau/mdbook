@@ -17,12 +17,12 @@ Requires environment variables:
 - MDBOOK_PASSWORD: Password for the administrator user.
 - MDBOOK_DEVELOPMENT: When defined, puts app into development mode.
 
-Written in Python using:
+Written in [Python](https://www.python.org/) using:
 
-- [FastHTML](https://docs.fastht.ml/)
+- [FastHTML](https://fastht.ml/)
 - [pico CSS](https://picocss.com/)
 - [Marko](https://marko-py.readthedocs.io/)
 - [python-docx](https://python-docx.readthedocs.io/en/latest/)
-- [fpdf2](https://py-pdf.github.io/fpdf2/index.html)
-- [pyyaml](https://pypi.org/project/PyYAML/)
+- [fpdf2](https://py-pdf.github.io/fpdf2/)
+- [PyYAML](https://pypi.org/project/PyYAML/)
 - [bibtexparser](https://pypi.org/project/bibtexparser/)

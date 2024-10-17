@@ -7,8 +7,11 @@ import sys
 import tarfile
 import urllib
 
+import fasthtml
 from fasthtml.common import *
 import bibtexparser
+import marko
+import psutil
 import yaml
 
 import components
@@ -89,7 +92,6 @@ def get(auth):
                 actions=[],
             ),
             Main(H3("Error: MDBOOK_DIR has not been defined."), cls="container"),
-            components.footer(auth),
         )
 
     books = []
@@ -125,7 +127,6 @@ def get(auth):
             ],
         ),
         Main(Table(*rows), cls="container"),
-        components.footer(auth),
     )
 
 
@@ -236,7 +237,6 @@ def get(auth):
             title=Tx("References"), actions=[A(Tx("Add BibTex"), href="/bibtex")]
         ),
         Main(*items, cls="container"),
-        components.footer(auth),
     )
 
 
@@ -312,7 +312,6 @@ def get(auth, refid: str):
             ],
         ),
         Main(Table(*rows), Div(NotStr(ref.html)), cls="container"),
-        components.footer(auth),
     )
 
 
@@ -331,7 +330,6 @@ def get(auth):
             ),
             cls="container",
         ),
-        components.footer(auth),
     )
 
 
@@ -404,7 +402,6 @@ def post(auth, data: str):
             Ul(*[Li(A(r["id"], href=f'/reference/{r["id"]}')) for r in result]),
             cls="container",
         ),
-        components.footer(auth),
     )
 
 
@@ -431,7 +428,6 @@ def get(auth):
             ),
             cls="container",
         ),
-        components.footer(auth),
     )
 
 
@@ -489,7 +485,6 @@ def get(auth, bid: str):
         Title(book.title),
         components.header(book=book, actions=actions),
         Main(content, cls="container"),
-        components.footer(auth),
     )
 
 
@@ -523,7 +518,6 @@ def get(auth, bid: str, path: str):
             NotStr(item.html),
             cls="container",
         ),
-        components.footer(auth),
     )
 
 
@@ -588,7 +582,6 @@ def get(auth, bid: str):
             Form(*fields, Button(Tx("Save")), action=f"/edit/{bid}", method="post"),
             cls="container",
         ),
-        components.footer(auth),
     )
 
 
@@ -661,7 +654,6 @@ def get(auth, bid: str, path: str):
             Form(*fields, action=f"/edit/{bid}/{path}", method="post"),
             cls="container",
         ),
-        components.footer(auth),
     )
 
 
@@ -709,7 +701,6 @@ def get(auth, bid: str):
             Form(Button(Tx("Confirm")), action=f"/delete/{bid}", method="post"),
             cls="container",
         ),
-        components.footer(auth),
     )
 
 
@@ -743,7 +734,6 @@ def get(auth, bid: str, path: str):
             Form(Button(Tx("Confirm")), action=f"/delete/{bid}/{path}", method="post"),
             cls="container",
         ),
-        components.footer(auth),
     )
 
 
@@ -775,7 +765,6 @@ def get(auth, bid: str, path: str):
             ),
             cls="container",
         ),
-        components.footer(auth),
     )
 
 
@@ -810,7 +799,6 @@ def get(auth, bid: str, path: str):
             ),
             cls="container",
         ),
-        components.footer(auth),
     )
 
 
@@ -851,7 +839,6 @@ def get(auth, bid: str, path: str):
             ),
             cls="container",
         ),
-        components.footer(auth),
     )
 
 
@@ -894,7 +881,6 @@ def get(auth, bid: str):
             ],
         ),
         Main(*segments, cls="container"),
-        components.footer(auth),
     )
 
 
@@ -916,7 +902,6 @@ def get(auth, bid: str):
         Title(Tx("Index")),
         components.header(book=book, title=Tx("Index")),
         Main(Ul(*items), cls="container"),
-        components.footer(auth),
     )
 
 
@@ -937,7 +922,6 @@ def get(auth, bid: str):
         Title(Tx("Status list")),
         components.header(book=book, title=Tx("Status list")),
         Main(Table(*rows), cls="container"),
-        components.footer(auth),
     )
 
 
@@ -1052,7 +1036,6 @@ def get_docx(bid, path=None):
         Title(f'{Tx("Download")} DOCX:  {title}'),
         components.header(book=book, title=f'{Tx("Download")} DOCX: {title}'),
         Main(Form(*fields, action=f"/docx/{bid}", method="post"), cls="container"),
-        components.footer(auth),
     )
 
 
@@ -1189,7 +1172,6 @@ def pdf(auth, bid: str):
             ),
             cls="container",
         ),
-        components.footer(auth),
     )
 
 
@@ -1234,6 +1216,30 @@ def get(auth, bid: str):
         content=output.getvalue(),
         media_type=constants.GZIP_MIMETYPE,
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@rt("/information")
+def get(auth):
+    "Various metadata."
+    return Titled(
+        Tx("Information"),
+        components.header(title=Tx("Information")),
+        P(
+            Table(
+                Tr(Td(Tx("User")), Td(auth, " ", A("logout", href="/logout"))),
+                Tr(Td(Tx("Memory usage")), 
+                   Td(utils.thousands(psutil.Process().memory_info().rss), " bytes")),
+                Tr(Td(A("mdbook", href="https://github.com/pekrau/mdbook")), Td(constants.__version__)),
+                Tr(Td(A("Python", href="https://www.python.org/")) , Td(f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}")),
+                Tr(Td(A("fastHTML", href="https://fastht.ml/")) , Td(fasthtml.__version__)),
+                Tr(Td(A("Marko", href="https://marko-py.readthedocs.io/")) , Td(marko.__version__)),
+                Tr(Td(A("python-docx", href="https://python-docx.readthedocs.io/en/latest/")) , Td(docx_creator.docx.__version__)),
+                Tr(Td(A("fpdf2", href="https://py-pdf.github.io/fpdf2/")) , Td(pdf_creator.fpdf.__version__)),
+                Tr(Td(A("PyYAML", href="https://pypi.org/project/PyYAML/")) , Td(yaml.__version__)),
+                Tr(Td(A("bibtexparser", href="https://pypi.org/project/bibtexparser/")) , Td(bibtexparser.__version__)),
+            )
+        )
     )
 
 

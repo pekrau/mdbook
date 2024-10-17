@@ -63,7 +63,7 @@ def header(book=None, item=None, title=None, actions=None):
         else:
             nav_style = NAV_STYLE_TEMPLATE.format(color=book.status.color)
     elif book is not None:
-        entries.append(Ul(Li(f"Status: {Tx(book.status)}")))
+        entries.append(Ul(Li(f'{Tx("Status")}: {Tx(book.status)}')))
         nav_style = NAV_STYLE_TEMPLATE.format(color=book.status.color)
     else:
         nav_style = NAV_STYLE_TEMPLATE.format(color="black")
@@ -82,14 +82,11 @@ def header(book=None, item=None, title=None, actions=None):
             url = f"/book/{book.id}/{item.next.urlpath}"
             pages.append(A(NotStr(f"&ShortRightArrow; {item.next.title}"), href=url))
     if book is not None:
-        pages.extend(
-            [
-                A(Tx("Title"), href=f"/title/{book.id}"),
-                A(Tx("Index"), href=f"/index/{book.id}"),
-                A(Tx("Status list"), href=f"/statuslist/{book.id}"),
-            ]
-        )
+        pages.append(A(Tx("Title"), href=f"/title/{book.id}"))
+        pages.append(A(Tx("Index"), href=f"/index/{book.id}"))
+        pages.append(A(Tx("Status list"), href=f"/statuslist/{book.id}"))
     pages.append(A(Tx("References"), href="/references"))
+    pages.append(A(Tx("Information"), href="/information"))
     items = [
         Li(Details(Summary(Tx("Pages")), Ul(*[Li(p) for p in pages]), cls="dropdown"))
     ]
@@ -105,21 +102,6 @@ def header(book=None, item=None, title=None, actions=None):
         )
     entries.append(Ul(*items))
     return Header(Nav(*entries, style=nav_style), cls="container")
-
-
-def footer(auth=None):
-    return Footer(
-        Hr(),
-        Small(
-            Div(
-                Div(auth, " ", A("logout", href="/logout")),
-                Div(utils.thousands(psutil.Process().memory_info().rss)),
-                Div(f"mdbook {constants.__version__}"),
-                cls="grid",
-            )
-        ),
-        cls="container",
-    )
 
 
 def toc(book, items, show_arrows=False):

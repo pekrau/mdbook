@@ -1,4 +1,4 @@
-anyio==4.6.2
+anyio==4.6.2.post1
 beautifulsoup4==4.12.3
 bibtexparser==1.4.2
 certifi==2024.8.30
