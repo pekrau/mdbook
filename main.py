@@ -82,7 +82,10 @@ def get_references():
     try:
         return_references
     except NameError:
-        _references = Book(os.path.join(MDBOOK_DIR, constants.REFERENCES_DIR))
+        dirpath = os.path.join(MDBOOK_DIR, constants.REFERENCES_DIR)
+        if not os.path.exists(dirpath):
+            os.mkdir(dirpath)
+        _references = Book(dirpath)
         return _references
 
 
