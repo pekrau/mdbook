@@ -1,15 +1,15 @@
 "Fetch and save gzipped tar files from the local and web instances."
 
 import os
+import json
 
 import requests
 
 
-def fetch_and_save(url, dirpath):
+def fetch_and_save(url, dirpath, apikey):
     "Fetch the gzipped tar file and save to local disk."
 
-    apikey = os.environ["MDBOOK_APIKEY"]
-
+    print(f"fetching mdbook.tgz from {url}")
     response = requests.get(url, headers=dict(mdbook_apikey=apikey), stream=True)
 
     if response.status_code != 200:
@@ -22,11 +22,14 @@ def fetch_and_save(url, dirpath):
     if len(parts) != 3:
         raise ValueError("No filename in content-disposition in response")
 
-    with open(os.path.join(dirpath, parts[1]), "wb") as outfile:
+    filepath = os.path.join(dirpath, parts[1])
+    with open(filepath, "wb") as outfile:
         outfile.write(response.raw.read())
+    print(f"wrote mdbook.tgz to {filepath}")
 
 
 if __name__ == "__main__":
-    dirpath = os.environ["MDBOOK_BACKUP_DIR"]
-    fetch_and_save("http://0.0.0.0:5001/tgz", os.path.join(dirpath, "local"))
-    fetch_and_save("https://mdbook.onrender.com/tgz", os.path.join(dirpath, "web"))
+    with open(os.path.join(os.path.dirname(__file__), "crondump.json")) as infile:
+        config = json.load(infile)
+    for instance in config["instances"]:
+        fetch_and_save(instance["url"], instance["dirpath"], config["mdbook_apikey"])
