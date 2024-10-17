@@ -27,12 +27,15 @@ def cleanup(value):
     return latex_utf8.from_latex_to_utf8(" ".join(value.split()))
 
 
-def timestr(filepath=None):
+def timestr(filepath=None, safe=False):
     if filepath:
         result = time.localtime(os.path.getmtime(filepath))
     else:
         result = time.localtime()
-    return time.strftime(constants.DATETIME_ISO_FORMAT, result)
+    result = time.strftime(constants.DATETIME_ISO_FORMAT, result)
+    if safe:
+        result = result.replace(" ", "_").replace(":", "-")
+    return result
 
 
 class Translator:

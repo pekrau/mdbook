@@ -33,7 +33,13 @@ login_redir = RedirectResponse("/login", status_code=303)
 
 def before(req, sess):
     "Login session handling."
-    auth = req.scope["auth"] = sess.get("auth", None)
+    if "MDBOOK_APIKEY" in os.environ and "mdbook_apikey" in req.headers:
+        if req.headers["mdbook_apikey"] == os.environ["MDBOOK_APIKEY"]:
+            auth = req.scope["auth"] = os.environ["MDBOOK_USER"]
+        else:
+            return error("invalid apikey", 403)
+    else:
+        auth = req.scope["auth"] = sess.get("auth", None)
     if not auth:
         return login_redir
 
@@ -234,9 +240,30 @@ def get(auth):
     return (
         Title(Tx("References")),
         components.header(
-            title=Tx("References"), actions=[A(Tx("Add BibTex"), href="/bibtex")]
+            title=Tx("References"),
+            actions=[
+                A(Tx("Add BibTex"), href="/bibtex"),
+                A(f'{Tx("Download")} {Tx("references")}', href="/references/tgz"),]
         ),
         Main(*items, cls="container"),
+    )
+
+
+@rt("/references/tgz")
+def get():
+    "Download a gzipped tar file of all references."
+    output = io.BytesIO()
+    with tarfile.open(fileobj=output, mode="w:gz") as archivefile:
+        dirpath = os.path.join(MDBOOK_DIR, constants.REFERENCES_DIR)
+        for name in os.listdir(dirpath):
+            archivefile.add(
+                os.path.join(dirpath, name), arcname=name
+            )
+    filename = f"mdbook_references_{utils.timestr(safe=True)}.tgz"
+    return Response(
+        content=output.getvalue(),
+        media_type=constants.GZIP_MIMETYPE,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 
@@ -1210,7 +1237,7 @@ def post(
 def get(auth, bid: str):
     "Download a gzipped tar file of the book."
     book = get_book(bid)
-    filename = f"{book.title} {utils.timestr()}.tgz"
+    filename = f"mdbook_{book.id}_{utils.timestr(safe=True)}.tgz"
     output = book.get_archive()
     return Response(
         content=output.getvalue(),
@@ -1291,7 +1318,7 @@ def get(auth):
             archivefile.add(
                 os.path.join(MDBOOK_DIR, name), arcname=name, recursive=True
             )
-    filename = f"mdbook_{utils.timestr()}.tgz"
+    filename = f"mdbook_{utils.timestr(safe=True)}.tgz"
     return Response(
         content=output.getvalue(),
         media_type=constants.GZIP_MIMETYPE,

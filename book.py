@@ -770,6 +770,5 @@ def check_disallowed_characters(title):
 
 if __name__ == "__main__":
     book = Book("/home/pekrau/Dropbox/texter/test")
-    # book = Book("/home/pekrau/Dropbox/texter/lejonen")
     print(book)
     print(book.all_texts)
