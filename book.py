@@ -4,6 +4,7 @@ import copy
 import datetime
 import hashlib
 import io
+import json
 import os
 import re
 import tarfile
@@ -290,10 +291,11 @@ class Book:
     def state(self):
         "Return a dictionary of the current state of the book."
         items = [i.state for i in self.items]
-        digest = hashlib.md5(self.content.encode("utf-8"))
+        digest = hashlib.md5()
+        digest.update(json.dumps(self.frontmatter, sort_keys=True).encode("utf-8"))
+        digest.update(self.content.encode("utf-8"))
         for item in items:
             digest.update(item["digest"].encode("utf-8"))
-        digest.update(self.content.encode("utf-8"))
         filepath = os.path.join(self.abspath, "index.md")
         if not os.path.exists(filepath):
             filepath = self.abspath
@@ -302,7 +304,7 @@ class Book:
             modified=utils.timestr(filepath=filepath, localtime=False, display=False),
             length=sum([i["length"] for i in items]) + len(self.content),
             digest=digest.hexdigest(),
-            items=items
+            items=items,
         )
 
     def allow_write(self, auth):
@@ -680,10 +682,11 @@ class Section(Item):
     def state(self):
         "Return a dictionary of the current state of the section."
         items = [i.state for i in self.items]
-        digest = hashlib.md5(self.content.encode("utf-8"))
+        digest = hashlib.md5()
+        digest.update(json.dumps(self.frontmatter, sort_keys=True).encode("utf-8"))
+        digest.update(self.content.encode("utf-8"))
         for item in items:
             digest.update(item["digest"].encode("utf-8"))
-        digest.update(self.content.encode("utf-8"))
         filepath = os.path.join(self.abspath, "index.md")
         if not os.path.exists(filepath):
             filepath = self.abspath
@@ -692,7 +695,7 @@ class Section(Item):
             modified=utils.timestr(filepath=filepath, localtime=False, display=False),
             length=sum([i["length"] for i in items]) + len(self.content),
             digest=digest.hexdigest(),
-            items=items
+            items=items,
         )
 
     def filename(self, new=None):
@@ -776,11 +779,16 @@ class Text(Item):
     @property
     def state(self):
         "Return a dictionary of the current state of the text."
+        digest = hashlib.md5()
+        digest.update(json.dumps(self.frontmatter, sort_keys=True).encode("utf-8"))
+        digest.update(self.content.encode("utf-8"))
         return dict(
             title=self.title,
-            modified=utils.timestr(filepath=self.abspath, localtime=False, display=False),
+            modified=utils.timestr(
+                filepath=self.abspath, localtime=False, display=False
+            ),
             length=len(self),
-            digest=hashlib.md5(self.content.encode("utf-8")).hexdigest()
+            digest=digest.hexdigest(),
         )
 
     def filename(self, new=None):

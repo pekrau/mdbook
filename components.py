@@ -136,7 +136,5 @@ def toc(book, items, show_arrows=False):
 
 def footer(item):
     return Footer(
-        Hr(),
-        Small(f'{Tx("Modified")}: ', Time(item.modified)),
-        cls="container"
+        Hr(), Small(f'{Tx("Modified")}: ', Time(item.modified)), cls="container"
     )

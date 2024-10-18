@@ -87,12 +87,14 @@ Tx = Translator(constants.TRANSLATIONS_FILEPATH)
 
 
 if __name__ == "__main__":
-    for s in [timestr(),
-              timestr(filepath="README.md"),
-              timestr(display=False),
-              timestr(filepath="README.md", display=False),
-              timestr(localtime=False),
-              timestr(filepath="README.md", localtime=False, display=False)]:
+    for s in [
+        timestr(),
+        timestr(filepath="README.md"),
+        timestr(display=False),
+        timestr(filepath="README.md", display=False),
+        timestr(localtime=False),
+        timestr(filepath="README.md", localtime=False, display=False),
+    ]:
         print(s, "   ", datetime.datetime.fromisoformat(s))
     # import constants
 

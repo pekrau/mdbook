@@ -32,7 +32,8 @@ if __name__ == "__main__":
     with open(os.path.join(os.path.dirname(__file__), "config.json")) as infile:
         config = json.load(infile)
     for instance in config["instances"]:
-        fetch_and_save(instance["host"].rstrip("/") + "/tgz",
-                       instance["mdbook_apikey"],
-                       instance["dumpdir"]
-                       )
+        fetch_and_save(
+            instance["host"].rstrip("/") + "/tgz",
+            instance["mdbook_apikey"],
+            instance["dumpdir"],
+        )

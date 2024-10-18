@@ -95,22 +95,18 @@ def get_references():
 def get(auth):
     "Home page; list of books."
 
-    if MDBOOK_DIR is None:
-        return (
-            Title(Tx("Books")),
-            components.header(
-                title=Tx("Books"),
-                actions=[],
-            ),
-            Main(H3("Error: MDBOOK_DIR has not been defined."), cls="container"),
-        )
+    for envvar in ["MDBOOK_DIR", "MDBOOK_USER", "MDBOOK_PASSWORD"]:
+        if os.environ.get(envvar) is None:
+            return error(f"environment variable {envvar} has not been defined", 500)
 
     books = []
     for bid in os.listdir(MDBOOK_DIR):
+        dirpath = os.path.join(MDBOOK_DIR, bid)
+        if not os.path.isdir(dirpath):
+            continue
         if bid == constants.REFERENCES_DIR:
             continue
         try:
-            dirpath = os.path.join(MDBOOK_DIR, bid)
             book = Book(dirpath, index_only=True)
             if not book.allow_read(auth):
                 continue
@@ -249,7 +245,8 @@ def get(auth):
             actions=[
                 A(Tx("Add BibTex"), href="/bibtex"),
                 A(f'{Tx("Download")} {Tx("references")} TGZ', href="/references/tgz"),
-                A(f'{Tx("Upload")} {Tx("references")} TGZ', href="/references/upload")]
+                A(f'{Tx("Upload")} {Tx("references")} TGZ', href="/references/upload"),
+            ],
         ),
         Main(*items, cls="container"),
     )
@@ -262,9 +259,7 @@ def get():
     with tarfile.open(fileobj=output, mode="w:gz") as archivefile:
         dirpath = os.path.join(MDBOOK_DIR, constants.REFERENCES_DIR)
         for name in os.listdir(dirpath):
-            archivefile.add(
-                os.path.join(dirpath, name), arcname=name
-            )
+            archivefile.add(os.path.join(dirpath, name), arcname=name)
     filename = f"mdbook_references_{utils.timestr(safe=True)}.tgz"
     return Response(
         content=output.getvalue(),
@@ -306,7 +301,9 @@ async def post(auth, tgzfile: UploadFile):
         names = tf.getnames()
         for name in names:
             if not name.endswith(".md") or os.path.basename(name) != name:
-                return error("TGZ file must contain only *.md files; no directories", 400)
+                return error(
+                    "TGZ file must contain only *.md files; no directories", 400
+                )
         for name in names:
             if name == "index.md":
                 continue
@@ -414,7 +411,6 @@ def post(auth, data: str):
     "Actually add reference(s) using BibTex data."
     result = []
     for entry in bibtexparser.loads(data).entries:
-        print(entry)
         authors = utils.cleanup(entry["author"])
         authors = [a.strip() for a in authors.split(" and ")]
         year = entry["year"].strip()
@@ -572,7 +568,9 @@ def get(auth, bid: str, path: str):
         actions.append(A(f'{Tx("Delete")}', href=f"/delete/{bid}/{path}"))
         segments = []
     elif item.is_section:
-        actions.append(A(f'{Tx("Create")} {Tx("section")}', href=f"/section/{bid}/{path}"))
+        actions.append(
+            A(f'{Tx("Create")} {Tx("section")}', href=f"/section/{bid}/{path}")
+        )
         actions.append(A(f'{Tx("Create")} {Tx("text")}', href=f"/text/{bid}/{path}"))
         actions.append(A(f'{Tx("Download")} DOCX', href=f"/docx/{bid}/{path}"))
         if len(item.items) == 0:
@@ -715,7 +713,7 @@ def get(auth, bid: str, path: str):
                     Legend(Tx("Status")),
                     Select(*status_options, name="status", required=True),
                 ),
-                cls="grid"
+                cls="grid",
             )
         ]
     elif item.is_section:
@@ -1344,11 +1342,10 @@ def get(auth, bid: str):
 
 
 @rt("/state/{bid:str}")
-def get(auth, bid:str):
+def get(auth, bid: str):
     "Return JSON for complete state of this book."
     if not bid:
         return error("no book id provided", 400)
-    print("++++++++++")
     try:
         book = get_book(bid)
     except KeyError as message:
@@ -1367,18 +1364,53 @@ def get(auth):
         P(
             Table(
                 Tr(Td(Tx("User")), Td(auth, " ", A("logout", href="/logout"))),
-                Tr(Td(Tx("Memory usage")), 
-                   Td(utils.thousands(psutil.Process().memory_info().rss), " bytes")),
-                Tr(Td(A("mdbook", href="https://github.com/pekrau/mdbook")), Td(constants.__version__)),
-                Tr(Td(A("Python", href="https://www.python.org/")) , Td(f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}")),
-                Tr(Td(A("fastHTML", href="https://fastht.ml/")) , Td(fasthtml.__version__)),
-                Tr(Td(A("Marko", href="https://marko-py.readthedocs.io/")) , Td(marko.__version__)),
-                Tr(Td(A("python-docx", href="https://python-docx.readthedocs.io/en/latest/")) , Td(docx_creator.docx.__version__)),
-                Tr(Td(A("fpdf2", href="https://py-pdf.github.io/fpdf2/")) , Td(pdf_creator.fpdf.__version__)),
-                Tr(Td(A("PyYAML", href="https://pypi.org/project/PyYAML/")) , Td(yaml.__version__)),
-                Tr(Td(A("bibtexparser", href="https://pypi.org/project/bibtexparser/")) , Td(bibtexparser.__version__)),
+                Tr(
+                    Td(Tx("Memory usage")),
+                    Td(utils.thousands(psutil.Process().memory_info().rss), " bytes"),
+                ),
+                Tr(
+                    Td(A("mdbook", href="https://github.com/pekrau/mdbook")),
+                    Td(constants.__version__),
+                ),
+                Tr(
+                    Td(A("Python", href="https://www.python.org/")),
+                    Td(
+                        f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+                    ),
+                ),
+                Tr(
+                    Td(A("fastHTML", href="https://fastht.ml/")),
+                    Td(fasthtml.__version__),
+                ),
+                Tr(
+                    Td(A("Marko", href="https://marko-py.readthedocs.io/")),
+                    Td(marko.__version__),
+                ),
+                Tr(
+                    Td(
+                        A(
+                            "python-docx",
+                            href="https://python-docx.readthedocs.io/en/latest/",
+                        )
+                    ),
+                    Td(docx_creator.docx.__version__),
+                ),
+                Tr(
+                    Td(A("fpdf2", href="https://py-pdf.github.io/fpdf2/")),
+                    Td(pdf_creator.fpdf.__version__),
+                ),
+                Tr(
+                    Td(A("PyYAML", href="https://pypi.org/project/PyYAML/")),
+                    Td(yaml.__version__),
+                ),
+                Tr(
+                    Td(
+                        A("bibtexparser", href="https://pypi.org/project/bibtexparser/")
+                    ),
+                    Td(bibtexparser.__version__),
+                ),
             )
-        )
+        ),
     )
 
 
@@ -1441,18 +1473,20 @@ def get(auth):
 @rt("/state")
 def get(auth):
     "Return JSON for limited state; current books."
-    print("==========")
     books = []
     for name in os.listdir(MDBOOK_DIR):
-        filepath = os.path.join(MDBOOK_DIR, name)
-        if not os.path.isdir(filepath):
+        dirpath = os.path.join(MDBOOK_DIR, name)
+        if not os.path.isdir(dirpath):
             continue
         books.append(
-            dict(id=name,
-                 modified=utils.timestr(filepath=filepath, localtime=False, display=False))
+            dict(
+                id=name,
+                modified=utils.timestr(
+                    filepath=dirpath, localtime=False, display=False
+                ),
+            )
         )
-    return dict(now=utils.timestr(localtime=False, display=False),
-                books=books)
+    return dict(now=utils.timestr(localtime=False, display=False), books=books)
 
 
 serve()
