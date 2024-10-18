@@ -1,5 +1,5 @@
 .sesskey
 .project
-crondump.json
+config.json
 *~
 __pycache__

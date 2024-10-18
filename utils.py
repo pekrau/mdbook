@@ -1,6 +1,7 @@
 "Various simple utility functions."
 
 import csv
+import datetime
 import os.path
 import time
 
@@ -27,12 +28,20 @@ def cleanup(value):
     return latex_utf8.from_latex_to_utf8(" ".join(value.split()))
 
 
-def timestr(filepath=None, safe=False):
+def timestr(filepath=None, localtime=True, display=True, safe=False):
     if filepath:
-        result = time.localtime(os.path.getmtime(filepath))
+        timestamp = os.path.getmtime(filepath)
+        if localtime:
+            result = datetime.datetime.fromtimestamp(timestamp)
+        else:
+            result = datetime.datetime.fromtimestamp(timestamp, datetime.UTC)
+    elif localtime:
+        result = datetime.datetime.now()
     else:
-        result = time.localtime()
-    result = time.strftime(constants.DATETIME_ISO_FORMAT, result)
+        result = datetime.datetime.now(datetime.UTC)
+    result = result.strftime(constants.DATETIME_ISO_FORMAT)
+    if not display:
+        result = result.replace(" ", "T") + "Z"
     if safe:
         result = result.replace(" ", "_").replace(":", "-")
     return result
@@ -78,10 +87,17 @@ Tx = Translator(constants.TRANSLATIONS_FILEPATH)
 
 
 if __name__ == "__main__":
-    import constants
+    for s in [timestr(),
+              timestr(filepath="README.md"),
+              timestr(display=False),
+              timestr(filepath="README.md", display=False),
+              timestr(localtime=False),
+              timestr(filepath="README.md", localtime=False, display=False)]:
+        print(s, "   ", datetime.datetime.fromisoformat(s))
+    # import constants
 
-    tr = Translator(constants.TRANSLATIONS_FILE)
-    print(str(tr))
-    print(tr.languages)
-    for term in ["item", "section"]:
-        print(term, tr(term))
+    # tr = Translator(constants.TRANSLATIONS_FILE)
+    # print(str(tr))
+    # print(tr.languages)
+    # for term in ["item", "section"]:
+    #     print(term, tr(term))

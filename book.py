@@ -2,6 +2,7 @@
 
 import copy
 import datetime
+import hashlib
 import io
 import os
 import re
@@ -191,7 +192,7 @@ class Book:
 
     @property
     def modified(self):
-        return utils.timestr(os.path.join(self.abspath, "index.md"))
+        return utils.timestr(filepath=os.path.join(self.abspath, "index.md"))
 
     @property
     def status(self):
@@ -284,6 +285,25 @@ class Book:
 
     def allow_read(self, auth):
         return self.frontmatter["owner"] == auth
+
+    @property
+    def state(self):
+        "Return a dictionary of the current state of the book."
+        items = [i.state for i in self.items]
+        digest = hashlib.md5(self.content.encode("utf-8"))
+        for item in items:
+            digest.update(item["digest"].encode("utf-8"))
+        digest.update(self.content.encode("utf-8"))
+        filepath = os.path.join(self.abspath, "index.md")
+        if not os.path.exists(filepath):
+            filepath = self.abspath
+        return dict(
+            id=self.id,
+            modified=utils.timestr(filepath=filepath, localtime=False, display=False),
+            length=sum([i["length"] for i in items]) + len(self.content),
+            digest=digest.hexdigest(),
+            items=items
+        )
 
     def allow_write(self, auth):
         return self.frontmatter["owner"] == auth
@@ -441,6 +461,10 @@ class Item:
         return result
 
     @property
+    def modified(self):
+        return utils.timestr(filepath=self.abspath)
+
+    @property
     def is_text(self):
         return False
 
@@ -589,7 +613,7 @@ class Section(Item):
 
     def __len__(self):
         "Number of characters in Markdown content in all texts in the sections."
-        return sum([len(i) for i in self.items])
+        return sum([len(i) for i in self.items]) + len(self.content)
 
     @property
     def is_section(self):
@@ -651,6 +675,25 @@ class Section(Item):
         for item in self.items:
             status = min(status, item.status)
         return status
+
+    @property
+    def state(self):
+        "Return a dictionary of the current state of the section."
+        items = [i.state for i in self.items]
+        digest = hashlib.md5(self.content.encode("utf-8"))
+        for item in items:
+            digest.update(item["digest"].encode("utf-8"))
+        digest.update(self.content.encode("utf-8"))
+        filepath = os.path.join(self.abspath, "index.md")
+        if not os.path.exists(filepath):
+            filepath = self.abspath
+        return dict(
+            title=self.title,
+            modified=utils.timestr(filepath=filepath, localtime=False, display=False),
+            length=sum([i["length"] for i in items]) + len(self.content),
+            digest=digest.hexdigest(),
+            items=items
+        )
 
     def filename(self, new=None):
         if new:
@@ -729,6 +772,16 @@ class Text(Item):
         elif not isinstance(status, constants.Status):
             raise ValueError("Invalid status instance.")
         self.frontmatter["status"] = repr(status)
+
+    @property
+    def state(self):
+        "Return a dictionary of the current state of the text."
+        return dict(
+            title=self.title,
+            modified=utils.timestr(filepath=self.abspath, localtime=False, display=False),
+            length=len(self),
+            digest=hashlib.md5(self.content.encode("utf-8")).hexdigest()
+        )
 
     def filename(self, new=None):
         if new:

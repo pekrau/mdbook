@@ -549,6 +549,7 @@ def get(auth, bid: str):
         Title(book.title),
         components.header(book=book, actions=actions),
         Main(content, cls="container"),
+        components.footer(book),
     )
 
 
@@ -580,6 +581,7 @@ def get(auth, bid: str, path: str):
             NotStr(item.html),
             cls="container",
         ),
+        components.footer(item),
     )
 
 
@@ -1283,6 +1285,17 @@ def get(auth, bid: str):
         media_type=constants.GZIP_MIMETYPE,
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@rt("/state/{bid}")
+def get(auth, bid:str):
+    try:
+        book = get_book(bid)
+    except KeyError as message:
+        return error(message, 404)
+    result = dict(now=utils.timestr(localtime=False, display=False))
+    result.update(book.state)
+    return result
 
 
 @rt("/information")

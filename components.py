@@ -132,3 +132,11 @@ def toc(book, items, show_arrows=False):
         if item.is_section:
             parts.append(toc(book, item.items, show_arrows=show_arrows))
     return Ol(*parts)
+
+
+def footer(item):
+    return Footer(
+        Hr(),
+        Small(f'{Tx("Modified")}: ', Time(item.modified)),
+        cls="container"
+    )

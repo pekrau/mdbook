@@ -6,7 +6,7 @@ import json
 import requests
 
 
-def fetch_and_save(url, dirpath, apikey):
+def fetch_and_save(url, apikey, dirpath):
     "Fetch the gzipped tar file and save to local disk."
 
     print(f"fetching mdbook.tgz from {url}")
@@ -29,7 +29,10 @@ def fetch_and_save(url, dirpath, apikey):
 
 
 if __name__ == "__main__":
-    with open(os.path.join(os.path.dirname(__file__), "crondump.json")) as infile:
+    with open(os.path.join(os.path.dirname(__file__), "config.json")) as infile:
         config = json.load(infile)
     for instance in config["instances"]:
-        fetch_and_save(instance["url"], instance["dirpath"], config["mdbook_apikey"])
+        fetch_and_save(instance["host"].rstrip("/") + "/tgz",
+                       instance["mdbook_apikey"],
+                       instance["dumpdir"]
+                       )
