@@ -65,6 +65,8 @@ books = {}
 def get_book(bid):
     "Get the book contents, cached."
     global books
+    if not bid:
+        raise ValueError("empty bid string")
     try:
         return books[bid]
     except KeyError:
@@ -524,9 +526,11 @@ async def post(auth, bid: str, tgzfile: UploadFile):
     return RedirectResponse(f"/references", status_code=303)
 
 
-@rt("/book/{bid}")
+@rt("/book/{bid:str}")
 def get(auth, bid: str):
     "Book home page; list of sections and texts."
+    if not bid:
+        return error("no book id provided", 400)
     try:
         book = get_book(bid)
     except KeyError as message:
@@ -553,9 +557,11 @@ def get(auth, bid: str):
     )
 
 
-@rt("/book/{bid}/{path:path}")
+@rt("/book/{bid:str}/{path:path}")
 def get(auth, bid: str, path: str):
     "View the book text or section."
+    if not bid:
+        return error("no book id provided", 400)
     book = get_book(bid)
     item = book[path]
     actions = [A(Tx("Edit"), href=f"/edit/{bid}/{path}")]
@@ -585,9 +591,11 @@ def get(auth, bid: str, path: str):
     )
 
 
-@rt("/edit/{bid}")
+@rt("/edit/{bid:str}")
 def get(auth, bid: str):
     "Page for editing the book data."
+    if not bid:
+        return error("no book id provided", 400)
     book = get_book(bid)
     fields = [
         Fieldset(
@@ -649,7 +657,7 @@ def get(auth, bid: str):
     )
 
 
-@rt("/edit/{bid}")
+@rt("/edit/{bid:str}")
 def post(
     auth,
     bid: str,
@@ -661,6 +669,8 @@ def post(
     language: str = None,
 ):
     "Actually edit the book data."
+    if not bid:
+        return error("no book id provided", 400)
     book = get_book(bid)
     book.frontmatter["title"] = title
     book.frontmatter["subtitle"] = subtitle
@@ -677,9 +687,11 @@ def post(
     return RedirectResponse(f"/title/{bid}", status_code=303)
 
 
-@rt("/edit/{bid}/{path:path}")
+@rt("/edit/{bid:str}/{path:path}")
 def get(auth, bid: str, path: str):
     "Page for editing the item (section or text)."
+    if not bid:
+        return error("no book id provided", 400)
     book = get_book(bid)
     item = book[path]
     title_field = Fieldset(
@@ -725,9 +737,11 @@ def get(auth, bid: str, path: str):
     )
 
 
-@rt("/edit/{bid}/{path:path}")
+@rt("/edit/{bid:str}/{path:path}")
 def post(auth, bid: str, path: str, title: str, content: str, status: str = None):
     "Actually edit the item (section or text)."
+    if not bid:
+        return error("no book id provided", 400)
     item = get_book(bid)[path]
     item.set_title(title)
     if item.is_text:
@@ -737,27 +751,33 @@ def post(auth, bid: str, path: str, title: str, content: str, status: str = None
     return RedirectResponse(f"/book/{bid}/{item.urlpath}", status_code=303)
 
 
-@rt("/up/{bid}/{path:path}")
+@rt("/up/{bid:str}/{path:path}")
 def get(auth, bid: str, path: str):
     "Move item up in its sibling list."
+    if not bid:
+        return error("no book id provided", 400)
     book = get_book(bid)
     book[path].up()
     book.write()
     return RedirectResponse(f"/book/{bid}/", status_code=303)
 
 
-@rt("/down/{bid}/{path:path}")
+@rt("/down/{bid:str}/{path:path}")
 def get(auth, bid: str, path: str):
     "Move item down in its sibling list."
+    if not bid:
+        return error("no book id provided", 400)
     book = get_book(bid)
     book[path].down()
     book.write()
     return RedirectResponse(f"/book/{bid}/", status_code=303)
 
 
-@rt("/delete/{bid}")
+@rt("/delete/{bid:str}")
 def get(auth, bid: str):
     "Confirm delete of book; must be empty."
+    if not bid:
+        return error("no book id provided", 400)
     book = get_book(bid)
     if len(book.items) != 0:
         return error("Cannot delete non-empty book.")
@@ -772,9 +792,11 @@ def get(auth, bid: str):
     )
 
 
-@rt("/delete/{bid}")
+@rt("/delete/{bid:str}")
 def post(auth, bid: str):
     "Delete the book; must be empty."
+    if not bid:
+        return error("no book id provided", 400)
     book = get_book(bid)
     if len(book.items) != 0:
         return error("Cannot delete non-empty book.")
@@ -787,9 +809,11 @@ def post(auth, bid: str):
     return RedirectResponse("/", status_code=303)
 
 
-@rt("/delete/{bid}/{path:path}")
+@rt("/delete/{bid:str}/{path:path}")
 def get(auth, bid: str, path: str):
     "Confirm delete of the text or section; section must be empty."
+    if not bid:
+        return error("no book id provided", 400)
     book = get_book(bid)
     item = book[path]
     if item.is_section and len(item.items) != 0:
@@ -805,9 +829,11 @@ def get(auth, bid: str, path: str):
     )
 
 
-@rt("/delete/{bid}/{path:path}")
+@rt("/delete/{bid:str}/{path:path}")
 def post(auth, bid: str, path: str):
     "Delete the text or section; section must be empty."
+    if not bid:
+        return error("no book id provided", 400)
     book = get_book(bid)
     item = book[path]
     try:
@@ -817,9 +843,11 @@ def post(auth, bid: str, path: str):
     return RedirectResponse(f"/book/{bid}", status_code=303)
 
 
-@rt("/to_section/{bid}/{path:path}")
+@rt("/to_section/{bid:str}/{path:path}")
 def get(auth, bid: str, path: str):
     "Convert to section containing a text with this text."
+    if not bid:
+        return error("no book id provided", 400)
     book = get_book(bid)
     text = book[path]
     assert text.is_text
@@ -836,9 +864,11 @@ def get(auth, bid: str, path: str):
     )
 
 
-@rt("/to_section/{bid}/{path:path}")
+@rt("/to_section/{bid:str}/{path:path}")
 def post(auth, bid: str, path: str):
     "Convert to section containing a text with this text."
+    if not bid:
+        return error("no book id provided", 400)
     text = get_book(bid)[path]
     assert text.is_text
     section = text.to_section()
@@ -846,9 +876,11 @@ def post(auth, bid: str, path: str):
     return RedirectResponse(f"/book/{bid}/{section.urlpath}", status_code=303)
 
 
-@rt("/text/{bid}/{path:path}")
+@rt("/text/{bid:str}/{path:path}")
 def get(auth, bid: str, path: str):
     "Create a new text in the section."
+    if not bid:
+        return error("no book id provided", 400)
     book = get_book(bid)
     assert path == "" or book[path].is_section
     title = f'{Tx("Create")} {Tx("text")}'
@@ -870,9 +902,11 @@ def get(auth, bid: str, path: str):
     )
 
 
-@rt("/text/{bid}/{path:path}")
+@rt("/text/{bid:str}/{path:path}")
 def post(auth, bid: str, path: str, title: str = None):
     "Create a new text in the section."
+    if not bid:
+        return error("no book id provided", 400)
     book = get_book(bid)
     if path == "":
         parent = None
@@ -886,9 +920,11 @@ def post(auth, bid: str, path: str, title: str = None):
         return RedirectResponse(f"/book/{bid}", status_code=303)
 
 
-@rt("/section/{bid}/{path:path}")
+@rt("/section/{bid:str}/{path:path}")
 def get(auth, bid: str, path: str):
     "Create a new section in the section."
+    if not bid:
+        return error("no book id provided", 400)
     book = get_book(bid)
     assert path == "" or book[path].is_section
     title = f'{Tx("Create")} {Tx("section")}'
@@ -910,9 +946,11 @@ def get(auth, bid: str, path: str):
     )
 
 
-@rt("/section/{bid}/{path:path}")
+@rt("/section/{bid:str}/{path:path}")
 def post(auth, bid: str, path: str, title: str = None):
     "Create a new section in the section."
+    if not bid:
+        return error("no book id provided", 400)
     book = get_book(bid)
     if path == "":
         parent = None
@@ -926,9 +964,11 @@ def post(auth, bid: str, path: str, title: str = None):
         return RedirectResponse(f"/book/{bid}", status_code=303)
 
 
-@rt("/title/{bid}")
+@rt("/title/{bid:str}")
 def get(auth, bid: str):
     "Title page."
+    if not bid:
+        return error("no book id provided", 400)
     book = get_book(bid)
     segments = [H1(book.title)]
     if book.subtitle:
@@ -952,9 +992,11 @@ def get(auth, bid: str):
     )
 
 
-@rt("/index/{bid}")
+@rt("/index/{bid:str}")
 def get(auth, bid: str):
     "Page listing the indexed terms."
+    if not bid:
+        return error("no book id provided", 400)
     book = get_book(bid)
     items = []
     for key, texts in sorted(book.indexed.items(), key=lambda tu: tu[0].lower()):
@@ -973,9 +1015,11 @@ def get(auth, bid: str):
     )
 
 
-@rt("/statuslist/{bid}")
+@rt("/statuslist/{bid:str}")
 def get(auth, bid: str):
     "Page listing each status and texts in it."
+    if not bid:
+        return error("no book id provided", 400)
     book = get_book(bid)
     rows = [Tr(Th(Tx("Status"), Th(Tx("Texts"))))]
     for status in constants.STATUSES:
@@ -993,15 +1037,19 @@ def get(auth, bid: str):
     )
 
 
-@rt("/docx/{bid}")
+@rt("/docx/{bid:str}")
 def get(auth, bid: str):
     "Download the DOCX for the whole book."
+    if not bid:
+        return error("no book id provided", 400)
     return get_docx(bid)
 
 
-@rt("/docx/{bid}/{path:path}")
+@rt("/docx/{bid:str}/{path:path}")
 def get(auth, bid: str, path: str):
     "Download the DOCX for a section or text in the book."
+    if not bid:
+        return error("no book id provided", 400)
     return get_docx(bid, path)
 
 
@@ -1107,7 +1155,7 @@ def get_docx(bid, path=None):
     )
 
 
-@rt("/docx/{bid}")
+@rt("/docx/{bid:str}")
 def post(
     auth,
     bid: str,
@@ -1119,6 +1167,8 @@ def post(
     indexed_font: str = None,
 ):
     "Actually download the DOCX file of the book."
+    if not bid:
+        return error("no book id provided", 400)
     book = get_book(bid)
     if path:
         path = urllib.parse.unquote(path)
@@ -1145,9 +1195,11 @@ def post(
     )
 
 
-@rt("/pdf/{bid}")
+@rt("/pdf/{bid:str}")
 def pdf(auth, bid: str):
     "Get the parameters for downloading PDF file of the whole book."
+    if not bid:
+        return error("no book id provided", 400)
     book = get_book(bid)
     settings = book.frontmatter.setdefault("pdf", {})
     title_page_metadata = settings.get("title_page_metadata", True)
@@ -1243,7 +1295,7 @@ def pdf(auth, bid: str):
     )
 
 
-@rt("/pdf/{bid}")
+@rt("/pdf/{bid:str}")
 def post(
     auth,
     bid: str,
@@ -1255,6 +1307,8 @@ def post(
     indexed_xref: str = None,
 ):
     "Actually download the PDF file of the book."
+    if not bid:
+        return error("no book id provided", 400)
     book = get_book(bid)
     settings = book.frontmatter.setdefault("pdf", {})
     settings["title_page_metadata"] = title_page_metadata
@@ -1274,9 +1328,11 @@ def post(
     )
 
 
-@rt("/tgz/{bid}")
+@rt("/tgz/{bid:str}")
 def get(auth, bid: str):
     "Download a gzipped tar file of the book."
+    if not bid:
+        return error("no book id provided", 400)
     book = get_book(bid)
     filename = f"mdbook_{book.id}_{utils.timestr(safe=True)}.tgz"
     output = book.get_archive()
@@ -1287,8 +1343,12 @@ def get(auth, bid: str):
     )
 
 
-@rt("/state/{bid}")
+@rt("/state/{bid:str}")
 def get(auth, bid:str):
+    "Return JSON for complete state of this book."
+    if not bid:
+        return error("no book id provided", 400)
+    print("++++++++++")
     try:
         book = get_book(bid)
     except KeyError as message:
@@ -1376,6 +1436,23 @@ def get(auth):
         media_type=constants.GZIP_MIMETYPE,
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@rt("/state")
+def get(auth):
+    "Return JSON for limited state; current books."
+    print("==========")
+    books = []
+    for name in os.listdir(MDBOOK_DIR):
+        filepath = os.path.join(MDBOOK_DIR, name)
+        if not os.path.isdir(filepath):
+            continue
+        books.append(
+            dict(id=name,
+                 modified=utils.timestr(filepath=filepath, localtime=False, display=False))
+        )
+    return dict(now=utils.timestr(localtime=False, display=False),
+                books=books)
 
 
 serve()
