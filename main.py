@@ -62,31 +62,57 @@ MDBOOK_DIR = os.environ.get("MDBOOK_DIR")
 # Instance config file; only for local instances, not for web instances.
 config = utils.get_config()
 
+def get_state_remote(bid=None):
+    "Get the remote site state, optionally for the given bid."
+    if "update" not in config:
+        raise ValueError("remote site update not enabled; missin config['update']")
+    for key in ["site", "apikey"]:
+        if key not in config["update"]:
+            raise ValueError(f"missing entry for '{key}' in config['update']")
+    if bid:
+        url = f'{config["update"]["site"].rstrip("/")}/{bid}/state'
+    else:
+        url = f'{config["update"]["site"].rstrip("/")}/state'
+    headers = dict(apikey=config["update"]["apikey"])
+    response = requests.get(url, headers=headers)
+    if response.status_code == 404:
+        return None
+    elif response.status_code != 200:
+        raise ValueError(f"remote {url} response error: {response.status_code}; {response.content}")
+    return response.json()
+
+
 # Book instances cache. Key: bid; value: Book instance.
 books = {}
 
 
-def get_book(bid):
+def get_book(bid, refresh=False):
     "Get the book contents, cached."
     global books
     if not bid:
-        raise ValueError("empty bid string")
+        raise ValueError("empty 'bid' string")
     try:
-        return books[bid]
+        book = books[bid]
+        if refresh:
+            book.read()
+        return book
     except KeyError:
         try:
             book = Book(os.path.join(MDBOOK_DIR, bid))
         except FileNotFoundError:
-            raise KeyError("no such book")
+            raise KeyError(f"no such book '{bid}'")
         books[bid] = book
         return book
 
 
-def get_references():
+def get_references(refresh=False):
     "Get the references book, cached."
     global _references
     try:
-        return_references
+        _references
+        if refresh:
+            _references.read()
+        return _references
     except NameError:
         dirpath = os.path.join(MDBOOK_DIR, constants.REFERENCES_DIR)
         if not os.path.exists(dirpath):
@@ -146,8 +172,7 @@ def get(auth):
 @rt("/references")
 def get(auth):
     "Page for list of references."
-    references = get_references()
-    references.read()
+    references = get_references(refresh=True)
     references.write()          # Updates the 'index.md' file, if necessary.
     items = []
     for ref in references.items:
@@ -536,10 +561,9 @@ def get(auth, bid: str):
     if not bid:
         return error("no book id provided", 400)
     try:
-        book = get_book(bid)
+        book = get_book(bid, refresh=True)
     except KeyError as message:
         return error(message, 404)
-    book.read()
     book.write()            # Updates the 'index.md' file, if necessary.
     actions = [
         A(f'{Tx("Edit")}', href=f"/edit/{bid}"),
@@ -1362,9 +1386,12 @@ def get(auth, bid: str):
     if not bid:
         return error("no book id provided", 400)
     try:
-        book = get_book(bid)
+        book = get_book(bid, refresh=True)
     except KeyError as message:
-        return error(message, 404)
+        if bid == constants.REFERENCES_DIR:
+            book = get_references()
+        else:
+            return error(message, 404)
     result = dict(now=utils.timestr(localtime=False, display=False))
     result.update(book.state)
     return result
@@ -1506,52 +1533,53 @@ def get_state():
                 now=utils.timestr(localtime=False, display=False),
                 books=books)
 
+
 @rt("/update")
 def get(auth):
     "Compare this local site with the update site."
-    if "update" not in config:
-        return error("update with remote site not enabled")
-    for key in ["site", "apikey"]:
-        if key not in config["update"]:
-            return error(f"missing entry for '{key}' in config['update']", 500)
-    url = f'{config["update"]["site"].rstrip("/")}/state'
-    headers = dict(apikey=config["update"]["apikey"])
-    response = requests.get(url, headers=headers)
-    if response.status_code != 200:
-        return error(f"remote {url} response error: {response.status_code}; {response.content}")
-    remote = response.json()
-    local = get_state()
-    rows = [Tr(Th(Tx("Now"), scope="row"), Td(remote["now"]), Td(local["now"]))]
-    local_books = local["books"].copy()
-    for name, rbook in remote["books"].items():
-        lbook = local_books.pop(name, None)
+    try:
+        remote = get_state_remote()
+    except ValueError as message:
+        return error(message, 500)
+    state = get_state()
+    rows = []
+    books = state["books"].copy()
+    for bid, rbook in remote["books"].items():
+        lbook = books.pop(bid, None)
         if lbook:
+            if lbook["digest"] == rbook["digest"]:
+                action = Tx("Identical")
+            else:
+                action = A(Tx("Update"), href=f"/update/{bid}", role="button")
             rows.append(
-                Tr(Th(name, scope="row"),
-                   Td(rbook["modified"],
+                Tr(Th(bid, scope="row"),
+                   Td(utils.tolocaltime(rbook["modified"]),
                       Br(),
-                      rbook["n_characters"],
+                      f'{utils.thousands(rbook["n_characters"])} {Tx("characters")}'),
+                   Td(utils.tolocaltime(lbook["modified"]),
                       Br(),
-                      Tx("Same") if lbook["digest"] == rbook["digest"] else Tx("Different")),
-                   Td(lbook["modified"],
-                      Br(),
-                      lbook["n_characters"]))
-                )
+                      f'{utils.thousands(lbook["n_characters"])} {Tx("characters")}'),
+                   Td(action),
+                ),
+            )
         else:
             rows.append(
-                Tr(Th(name, scope="row"),
-                   Td(rbook["modified"],
+                Tr(Th(bid, scope="row"),
+                   Td(utils.tolocaltime(rbook["modified"]),
                       Br(),
-                      rbook["n_characters"]),
-                   Td("-"))
-                )
-    for name, lbook in local_books.items():
+                      f'{utils.thousands(rbook["n_characters"])} {Tx("characters")}'),
+                   Td("-"),
+                   Td("?"),
+                   )
+            )
+    for bid, lbook in books.items():
         rows.append(
-            Tr(Th(name, scope="row"),
+            Tr(Th(bid, scope="row"),
                Td("-"),
-               Td(lbook["modified"],
+               Td(utils.tolocaltime(lbook["modified"]),
                   Br(),
-                  lbook["n_characters"])),
+                  f'{utils.thousands(lbook["n_characters"])} {Tx("characters")}'),
+               ),
         )
     return (
         Title(Tx("Update")),
@@ -1559,13 +1587,54 @@ def get(auth):
         Main(
             Table(
                 Thead(
-                    Tr(Th(Tx("Site")),
+                    Tr(Th(),
                        Th(config["update"]["site"], scope="col"),
-                       Th(Tx("This")), scope="col"),
+                       Th(Tx("Here"), scope="col"),
+                       Th(scope="col"),
+                    ),
                 ),
                 Tbody(*rows)
             ),
             cls="container")
     )
+
+
+@rt("/update/{bid:str}")
+def get(auth, bid:str):
+    "Compare this local book with the update site book. One of them may not exist."
+    if not bid:
+        return error("no book id provided", 400)
+    try:
+        remote = get_state_remote(bid)
+    except ValueError as message:
+        return error(message, 500)
+    try:
+        book = get_book(bid, refresh=True)
+        state = book.state
+    except KeyError:
+        if bid == constants.REFERENCES_DIR:
+            book = get_references(refresh=True)
+            state = book.state
+        else:
+            state = {}
+    rows = []
+    return (
+        Title(f'{Tx("Update")} {bid}'),
+        components.header(title=f'{Tx("Update")} {bid}'),
+        Main(
+            Table(
+                Thead(
+                    Tr(Th(config["update"]["site"], scope="col"),
+                       Th(Tx("Here"), scope="col"),
+                    ),
+                ),
+                Tbody(*rows)
+            ),
+            cls="container")
+    )
+
+def diffs(remote, local):
+    "Return list of differences between remote and local state."
+    result = []
 
 serve()

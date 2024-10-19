@@ -710,7 +710,7 @@ class Section(Item):
         return dict(
             title=self.title,
             modified=utils.timestr(filepath=filepath, localtime=False, display=False),
-            length=sum([i["length"] for i in items]) + len(self.content),
+            n_characters=sum([i["n_characters"] for i in items]) + len(self.content),
             digest=self.digest,
             items=items,
         )
@@ -823,7 +823,7 @@ class Text(Item):
             modified=utils.timestr(
                 filepath=self.abspath, localtime=False, display=False
             ),
-            length=len(self),
+            n_characters=self.n_characters,
             digest=self.digest,
         )
 

@@ -53,6 +53,7 @@ def check_disallowed_characters(title):
 
 
 def timestr(filepath=None, localtime=True, display=True, safe=False):
+    "Return time string for modification date of the given file, or now."
     if filepath:
         timestamp = os.path.getmtime(filepath)
         if localtime:
@@ -70,6 +71,11 @@ def timestr(filepath=None, localtime=True, display=True, safe=False):
         result = result.replace(" ", "_").replace(":", "-")
     return result
 
+def tolocaltime(utctime):
+    "Convert a time string in UTC to local time."
+    mytz = datetime.datetime.now(datetime.timezone.utc).astimezone().tzinfo
+    lt = datetime.datetime.fromisoformat(utctime).astimezone(mytz)
+    return lt.strftime(constants.DATETIME_ISO_FORMAT)
 
 class Translator:
     "Simple translation of words and phrases from one language to another."
@@ -111,15 +117,18 @@ Tx = Translator(constants.TRANSLATIONS_FILEPATH)
 
 
 if __name__ == "__main__":
-    for s in [
-        timestr(),
-        timestr(filepath="README.md"),
-        timestr(display=False),
-        timestr(filepath="README.md", display=False),
-        timestr(localtime=False),
-        timestr(filepath="README.md", localtime=False, display=False),
-    ]:
-        print(s, "   ", datetime.datetime.fromisoformat(s))
+    t = "2024-10-19T15:14:03Z"
+    print(t)
+    print(localtime(t))
+    # for s in [
+    #     timestr(),
+    #     timestr(filepath="README.md"),
+    #     timestr(display=False),
+    #     timestr(filepath="README.md", display=False),
+    #     timestr(localtime=False),
+    #     timestr(filepath="README.md", localtime=False, display=False),
+    # ]:
+    #     print(s, "   ", datetime.datetime.fromisoformat(s))
     # import constants
 
     # tr = Translator(constants.TRANSLATIONS_FILE)
