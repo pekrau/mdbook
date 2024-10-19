@@ -21,7 +21,7 @@ import pdf_creator
 import utils
 from utils import Tx
 
-from book import Book, read_markdown, check_disallowed_characters
+from book import Book
 
 
 def error(message, status_code=409):
@@ -73,7 +73,7 @@ def get_book(bid):
         try:
             book = Book(os.path.join(MDBOOK_DIR, bid))
         except FileNotFoundError:
-            raise KeyError("No such book.")
+            raise KeyError("no such book")
         books[bid] = book
         return book
 
@@ -309,7 +309,7 @@ async def post(auth, tgzfile: UploadFile):
                 continue
             tf.extract(name, path=os.path.join(MDBOOK_DIR, constants.REFERENCES_DIR))
     except (tarfile.TarError, ValueError) as msg:
-        return error(f"Error reading TGZ file: {msg}")
+        return error(f"error reading TGZ file: {msg}")
     return RedirectResponse(f"/references", status_code=303)
 
 
@@ -319,7 +319,7 @@ def get(auth, refid: str):
     try:
         ref = get_references()[refid.replace("_", " ")]
     except KeyError:
-        return error("No such reference.", 404)
+        return error("no such reference", 404)
     rows = [
         Tr(
             Td(Tx("Identifier")),
@@ -420,7 +420,7 @@ def post(auth, data: str):
             if get_references().get(id) is None:
                 break
         else:
-            raise ValueError(f"Could not form unique id for {name} {year}.")
+            raise ValueError(f"could not form unique id for {name} {year}")
         new = dict(id=id, type=entry["ENTRYTYPE"], authors=authors, year=year)
         for key, value in entry.items():
             if key in ("author", "ID", "ENTRYTYPE"):
@@ -515,10 +515,10 @@ async def post(auth, bid: str, tgzfile: UploadFile):
     try:
         tf = tarfile.open(fileobj=io.BytesIO(content), mode="r:gz")
         if "index.md" not in tf.getnames():
-            raise ValueError("No 'index.md' file in TGZ file; not from mdbook?")
+            raise ValueError("no 'index.md' file in TGZ file; not from mdbook?")
         tf.extractall(path=dirpath)
     except (tarfile.TarError, ValueError) as msg:
-        return error(f"Error reading TGZ file: {msg}")
+        return error(f"error reading TGZ file: {msg}")
     return RedirectResponse(f"/references", status_code=303)
 
 
@@ -778,7 +778,7 @@ def get(auth, bid: str):
         return error("no book id provided", 400)
     book = get_book(bid)
     if len(book.items) != 0:
-        return error("Cannot delete non-empty book.")
+        return error("cannot delete non-empty book")
     return (
         Title(book.title),
         components.header(book=book, title=book.title),
@@ -797,7 +797,7 @@ def post(auth, bid: str):
         return error("no book id provided", 400)
     book = get_book(bid)
     if len(book.items) != 0:
-        return error("Cannot delete non-empty book.")
+        return error("cannot delete non-empty book")
     try:
         os.remove(os.path.join(book.abspath, "index.md"))
     except FileNotFoundError:
@@ -815,7 +815,7 @@ def get(auth, bid: str, path: str):
     book = get_book(bid)
     item = book[path]
     if item.is_section and len(item.items) != 0:
-        return error("Cannot delete non-empty section.")
+        return error("cannot delete non-empty section")
     return (
         Title(item.title),
         components.header(book=book, item=item, title=item.title),
@@ -1442,7 +1442,7 @@ def post(user: str, password: str, sess):
     if not user or not password:
         return login_redir
     if user != os.environ["MDBOOK_USER"] or password != os.environ["MDBOOK_PASSWORD"]:
-        return error("Invalid credentials.", 403)
+        return error("invalid credentials", 403)
     sess["auth"] = user
     return RedirectResponse("/", status_code=303)
 
@@ -1484,9 +1484,12 @@ def get(auth):
                 modified=utils.timestr(
                     filepath=dirpath, localtime=False, display=False
                 ),
+                digest=book.digest,
             )
         )
-    return dict(now=utils.timestr(localtime=False, display=False), books=books)
+    return dict(type="site",
+                now=utils.timestr(localtime=False, display=False),
+                books=books)
 
 
 serve()

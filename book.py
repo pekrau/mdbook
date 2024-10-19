@@ -291,21 +291,29 @@ class Book:
     def state(self):
         "Return a dictionary of the current state of the book."
         items = [i.state for i in self.items]
-        digest = hashlib.md5()
-        digest.update(json.dumps(self.frontmatter, sort_keys=True).encode("utf-8"))
-        digest.update(self.content.encode("utf-8"))
-        for item in items:
-            digest.update(item["digest"].encode("utf-8"))
         filepath = os.path.join(self.abspath, "index.md")
         if not os.path.exists(filepath):
             filepath = self.abspath
         return dict(
+            type="book",
             id=self.id,
             modified=utils.timestr(filepath=filepath, localtime=False, display=False),
             length=sum([i["length"] for i in items]) + len(self.content),
-            digest=digest.hexdigest(),
+            digest=self.digest,
             items=items,
         )
+
+    @property
+    def digest(self):
+        """Return the hex digest of the contents of the book.
+        Not cached; too messy to keep track of invalidation.
+        """
+        result = hashlib.md5()
+        result.update(json.dumps(self.frontmatter, sort_keys=True).encode("utf-8"))
+        result.update(self.content.encode("utf-8"))
+        for item in self.items:
+            result.update(item.digest.encode("utf-8"))
+        return result.hexdigest()
 
     def allow_write(self, auth):
         return self.frontmatter["owner"] == auth
@@ -340,7 +348,7 @@ class Book:
         Raise ValueError if there is a problem.
         """
         assert parent is None or isinstance(parent, Section)
-        check_disallowed_characters(title)
+        utils.check_disallowed_characters(title)
         if parent is None:
             parent = self
         dirpath = os.path.join(parent.abspath, title)
@@ -360,7 +368,7 @@ class Book:
         Raise ValueError if there is a problem.
         """
         assert parent is None or isinstance(parent, Section)
-        check_disallowed_characters(title)
+        utils.check_disallowed_characters(title)
         if parent is None:
             parent = self
         dirpath = os.path.join(parent.abspath, title)
@@ -569,7 +577,7 @@ class Item:
             return
         if not new:
             raise ValueError("Empty string given for title.")
-        check_disallowed_characters(new)
+        utils.check_disallowed_characters(new)
         newabspath = os.path.join(self.parent.abspath, self.filename(new))
         if os.path.exists(newabspath):
             raise ValueError("The title is already in use.")
@@ -682,11 +690,6 @@ class Section(Item):
     def state(self):
         "Return a dictionary of the current state of the section."
         items = [i.state for i in self.items]
-        digest = hashlib.md5()
-        digest.update(json.dumps(self.frontmatter, sort_keys=True).encode("utf-8"))
-        digest.update(self.content.encode("utf-8"))
-        for item in items:
-            digest.update(item["digest"].encode("utf-8"))
         filepath = os.path.join(self.abspath, "index.md")
         if not os.path.exists(filepath):
             filepath = self.abspath
@@ -694,9 +697,21 @@ class Section(Item):
             title=self.title,
             modified=utils.timestr(filepath=filepath, localtime=False, display=False),
             length=sum([i["length"] for i in items]) + len(self.content),
-            digest=digest.hexdigest(),
+            digest=self.digest,
             items=items,
         )
+
+    @property
+    def digest(self):
+        """Return the hex digest of the contents of the section.
+        Not cached; too messy to keep track of invalidation.
+        """
+        result = hashlib.md5()
+        result.update(json.dumps(self.frontmatter, sort_keys=True).encode("utf-8"))
+        result.update(self.content.encode("utf-8"))
+        for item in self.items:
+            result.update(item.digest.encode("utf-8"))
+        return result.hexdigest()
 
     def filename(self, new=None):
         if new:
@@ -744,8 +759,13 @@ class Text(Item):
     def write(self, content=None):
         """Write the text, with current frontmatter and the given Markdown content.
         If no Markdown content is provided, then use the current.
+        Invalidate the cached digest.
         """
         write_markdown(self, self.abspath, content=content)
+        try:
+            del self._digest
+        except NameError:
+            pass
 
     @property
     def all_items(self):
@@ -779,17 +799,29 @@ class Text(Item):
     @property
     def state(self):
         "Return a dictionary of the current state of the text."
-        digest = hashlib.md5()
-        digest.update(json.dumps(self.frontmatter, sort_keys=True).encode("utf-8"))
-        digest.update(self.content.encode("utf-8"))
         return dict(
+            type="text",
             title=self.title,
             modified=utils.timestr(
                 filepath=self.abspath, localtime=False, display=False
             ),
             length=len(self),
-            digest=digest.hexdigest(),
+            digest=self.digest,
         )
+
+    @property
+    def digest(self):
+        """Return the hex digest of the contents of the text.
+        Cache the result, which must be invalidated after 'write'.
+        """
+        try:
+            return self._digest
+        except AttributeError:
+            digest = hashlib.md5()
+            digest.update(json.dumps(self.frontmatter, sort_keys=True).encode("utf-8"))
+            digest.update(self.content.encode("utf-8"))
+            self._digest = digest.hexdigest()
+            return self._digest
 
     def filename(self, new=None):
         if new:
@@ -815,18 +847,6 @@ class Text(Item):
     def check_integrity(self):
         super().check_integrity()
         assert os.path.isfile(self.abspath)
-
-
-def check_disallowed_characters(title):
-    """Raise ValueError if title contains any disallowed characters;
-    those with special meaning in file system.
-    """
-    disalloweds = [os.extsep, os.sep]
-    if os.altsep:
-        disalloweds.append(os.altsep)
-    for disallowed in disalloweds:
-        if disallowed in title:
-            raise ValueError(f"The title may not contain the character '{disallowed}'.")
 
 
 if __name__ == "__main__":

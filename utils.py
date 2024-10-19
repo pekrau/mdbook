@@ -2,7 +2,7 @@
 
 import csv
 import datetime
-import os.path
+import os
 import time
 
 import constants
@@ -26,6 +26,18 @@ def thousands(i):
 def cleanup(value):
     "Convert LaTeX characters to UTF-8, remove newlines and normalize blanks."
     return latex_utf8.from_latex_to_utf8(" ".join(value.split()))
+
+
+def check_disallowed_characters(title):
+    """Raise ValueError if title contains any disallowed characters;
+    those with special meaning in file system.
+    """
+    disalloweds = [os.extsep, os.sep]
+    if os.altsep:
+        disalloweds.append(os.altsep)
+    for disallowed in disalloweds:
+        if disallowed in title:
+            raise ValueError(f"The title may not contain the character '{disallowed}'.")
 
 
 def timestr(filepath=None, localtime=True, display=True, safe=False):
