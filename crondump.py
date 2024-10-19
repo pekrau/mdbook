@@ -12,7 +12,7 @@ def fetch_and_save(url, apikey, dirpath):
     "Fetch the gzipped tar file and save to local disk."
 
     print(f"fetching mdbook.tgz from {url}")
-    response = requests.get(url, headers=dict(mdbook_apikey=apikey), stream=True)
+    response = requests.get(url, headers=dict(apikey=apikey), stream=True)
 
     if response.status_code != 200:
         raise ValueError(f"invalid status code for response: {response.status_code}")
@@ -35,6 +35,6 @@ if __name__ == "__main__":
     for instance in config["instances"]:
         fetch_and_save(
             instance["site"].rstrip("/") + "/tgz",
-            instance["mdbook_apikey"],
+            instance["apikey"],
             instance["dumpdir"],
         )

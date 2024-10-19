@@ -88,7 +88,7 @@ class Book:
         """ "Read all items (sections, texts) recursively from files.
         Set up references and indexed lookups.
         """
-        read_markdown(self, os.path.join(self.abspath, "index.md"))
+        read_markdown(self, self.indexpath)
         if index_only:
             return
 
@@ -146,9 +146,7 @@ class Book:
             or (self.frontmatter != original)
             or (content is not None and self.content != content)
         ):
-            write_markdown(
-                self, os.path.join(self.abspath, "index.md"), content=content
-            )
+            write_markdown(self, self.indexpath, content=content)
 
     def set_items_order(self, container, items_order):
         "Chnage order of items in container according to given items_order."
@@ -180,6 +178,11 @@ class Book:
         return os.path.basename(self.abspath)
 
     @property
+    def indexpath(self):
+        "Return the absolute file path of the 'index.md' file."
+        return os.path.join(self.abspath, "index.md")
+
+    @property
     def fullname(self):
         return ""
 
@@ -189,7 +192,7 @@ class Book:
 
     @property
     def modified(self):
-        return utils.timestr(filepath=os.path.join(self.abspath, "index.md"))
+        return utils.timestr(filepath=self.indexpath)
 
     @property
     def status(self):
@@ -292,7 +295,7 @@ class Book:
     def state(self):
         "Return a dictionary of the current state of the book."
         items = [i.state for i in self.items]
-        filepath = os.path.join(self.abspath, "index.md")
+        filepath = self.indexpath
         if not os.path.exists(filepath):
             filepath = self.abspath
         return dict(
@@ -403,7 +406,7 @@ class Book:
         """
         output = io.BytesIO()
         with tarfile.open(fileobj=output, mode="w:gz") as archivefile:
-            filepath = os.path.join(self.abspath, "index.md")
+            filepath = self.indexpath
             if os.path.exists(filepath):
                 archivefile.add(filepath, arcname="index.md")
             for item in self.items:
@@ -539,7 +542,9 @@ class Item:
         return item
 
     def filename(self, newname=None):
-        "To be implemented by inheriting classes."
+        """Return the filename of this item.
+        To be implemented by inheriting classes.
+        """
         raise NotImplementedError
 
     @property
@@ -628,11 +633,16 @@ class Section(Item):
     def is_section(self):
         return True
 
+    @property
+    def indexpath(self):
+        "Return the absolute file path of the 'index.md' file."
+        return os.path.join(self.abspath, "index.md")
+
     def read(self):
         """Read all items in the subdirectory, and the 'index.md' file, if any.
         This is recursive; all sections and texts below this are also read.
         """
-        read_markdown(self, os.path.join(self.abspath, "index.md"))
+        read_markdown(self, self.indexpath)
         for name in sorted(os.listdir(self.abspath)):
             # Skip unsaved emacs files.
             if name.startswith(".#"):
@@ -653,7 +663,7 @@ class Section(Item):
         If no Markdown content is provided, then use the current.
         This is *not* recursive.
         """
-        write_markdown(self, os.path.join(self.abspath, "index.md"), content=content)
+        write_markdown(self, self.indexpath, content=content)
 
     @property
     def all_items(self):
@@ -694,7 +704,7 @@ class Section(Item):
     def state(self):
         "Return a dictionary of the current state of the section."
         items = [i.state for i in self.items]
-        filepath = os.path.join(self.abspath, "index.md")
+        filepath = self.indexpath
         if not os.path.exists(filepath):
             filepath = self.abspath
         return dict(
@@ -720,6 +730,7 @@ class Section(Item):
         return result.hexdigest()
 
     def filename(self, new=None):
+        "Return the filename of this item."
         if new:
             return new
         else:
@@ -833,6 +844,7 @@ class Text(Item):
             return self._digest
 
     def filename(self, new=None):
+        "Return the filename of this item."
         if new:
             return new + constants.MARKDOWN_EXT
         else:

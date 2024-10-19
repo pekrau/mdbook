@@ -34,8 +34,8 @@ login_redir = RedirectResponse("/login", status_code=303)
 
 def before(req, sess):
     "Login session handling."
-    if "MDBOOK_APIKEY" in os.environ and "mdbook_apikey" in req.headers:
-        if req.headers["mdbook_apikey"] == os.environ["MDBOOK_APIKEY"]:
+    if "apikey" in req.headers and "MDBOOK_APIKEY" in os.environ:
+        if req.headers["apikey"] == os.environ["MDBOOK_APIKEY"]:
             auth = req.scope["auth"] = os.environ["MDBOOK_USER"]
         else:
             return error("invalid apikey", 403)
@@ -810,7 +810,7 @@ def post(auth, bid: str):
     if len(book.items) != 0:
         return error("cannot delete non-empty book")
     try:
-        os.remove(os.path.join(book.abspath, "index.md"))
+        os.remove(book.indexpath)
     except FileNotFoundError:
         pass
     books.pop(book.id)
@@ -1487,7 +1487,10 @@ def get(auth):
 
 @rt("/state")
 def get(auth):
-    "Return JSON for limited state."
+    return get_state()
+
+def get_state():
+    "Return JSON for site state."
     books = []
     for name in os.listdir(MDBOOK_DIR):
         dirpath = os.path.join(MDBOOK_DIR, name)
@@ -1508,16 +1511,22 @@ def get(auth):
                 now=utils.timestr(localtime=False, display=False),
                 books=books)
 
-
 @rt("/update")
 def get(auth):
     "Compare this local site with the update site."
     if "update" not in config:
         return error("update with remote site not enabled")
-    for key in ["url", "user", "password"]:
+    for key in ["site", "apikey"]:
         if key not in config["update"]:
             return error(f"missing entry for '{key}' in config['update']", 500)
-    # response = requests.get(
+    url = f'{config["update"]["site"].rstrip("/")}/state'
+    headers = dict(apikey=config["update"]["apikey"])
+    response = requests.get(url, headers=headers)
+    if response.status_code != 200:
+        return error(f"remote {url} response error: {response.status_code}; {response.content}")
+    remote = response.json()
+    local = get_state()
+    rows = [Tr(Td(remote["now"]), Td(local["now"]))]
     return (
         Title(Tx("Update")),
         components.header(title=Tx("Update")),
@@ -1527,6 +1536,7 @@ def get(auth):
                     Tr(Th(config["update"]["url"], scope="col"),
                        Th(Tx("This instance")), scope="col"),
                 ),
+                Tbody(*rows)
             ),
             cls="container")
     )
