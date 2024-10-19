@@ -2,11 +2,23 @@
 
 import csv
 import datetime
+import json
 import os
 import time
 
 import constants
 import latex_utf8
+
+
+def get_config():
+    """Get the local instance config file, if any.
+    This is only for local instances, not for web instances.
+    """
+    try:
+        with open(os.path.join(os.path.dirname(__file__), "config.json")) as infile:
+            return json.load(infile)
+    except FileNotFoundError:
+        return {}
 
 
 def short_name(name):

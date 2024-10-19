@@ -81,14 +81,6 @@ class Book:
     def __repr__(self):
         return f"Book('{self}')"
 
-    def __len__(self):
-        "Number of characters in Markdown content in all items."
-        return sum([len(i) for i in self.items]) + len(self.content)
-
-    def __bool__(self):
-        "Always True; not dependent on len."
-        return True
-
     def __getitem__(self, fullname):
         return self.lookup[fullname]
 
@@ -140,14 +132,18 @@ class Book:
 
     def write(self, content=None, force=False):
         """Write the 'index.md' file, if changed.
-        This is *not* recursive.
+        The computations to get the 'n_characters' and 'digest' values
+        are recursive.
+        This does not recursively write any of the contained sections or texts.
         """
         original = copy.deepcopy(self.frontmatter)
         self.frontmatter["items"] = self.get_items_order(self)
         self.frontmatter["status"] = repr(self.status)
+        self.frontmatter["n_characters"] = self.n_characters
+        self.frontmatter["digest"] = self.digest
         if (
             force
-            or self.frontmatter != original
+            or (self.frontmatter != original)
             or (content is not None and self.content != content)
         ):
             write_markdown(
@@ -277,6 +273,11 @@ class Book:
         return sum([i.n_words for i in self.items]) + len(self.content.split())
 
     @property
+    def n_characters(self):
+        "Approximate number of characters in the book."
+        return sum([i.n_characters for i in self.items]) + len(self.content)
+
+    @property
     def docx(self):
         return self.frontmatter.get("docx") or {}
 
@@ -298,7 +299,7 @@ class Book:
             type="book",
             id=self.id,
             modified=utils.timestr(filepath=filepath, localtime=False, display=False),
-            length=sum([i["length"] for i in items]) + len(self.content),
+            n_characters=sum([i["n_characters"] for i in items]) + len(self.content),
             digest=self.digest,
             items=items,
         )
@@ -309,7 +310,9 @@ class Book:
         Not cached; too messy to keep track of invalidation.
         """
         result = hashlib.md5()
-        result.update(json.dumps(self.frontmatter, sort_keys=True).encode("utf-8"))
+        frontmatter = self.frontmatter.copy()
+        frontmatter.pop("digest", None) # Necessary!
+        result.update(json.dumps(frontmatter, sort_keys=True).encode("utf-8"))
         result.update(self.content.encode("utf-8"))
         for item in self.items:
             result.update(item.digest.encode("utf-8"))
@@ -621,10 +624,6 @@ class Section(Item):
         self.items = []
         super().__init__(book, parent, title)
 
-    def __len__(self):
-        "Number of characters in Markdown content in all texts in the sections."
-        return sum([len(i) for i in self.items]) + len(self.content)
-
     @property
     def is_section(self):
         return True
@@ -679,6 +678,11 @@ class Section(Item):
         return sum([i.n_words for i in self.items]) + len(self.content.split())
 
     @property
+    def n_characters(self):
+        "Approximate number of characters in the items in and below this section."
+        return sum([i.n_characters for i in self.items]) + len(self.content)
+
+    @property
     def status(self):
         "Return the lowest status for the sub-items."
         status = constants.FINAL
@@ -707,7 +711,9 @@ class Section(Item):
         Not cached; too messy to keep track of invalidation.
         """
         result = hashlib.md5()
-        result.update(json.dumps(self.frontmatter, sort_keys=True).encode("utf-8"))
+        frontmatter = self.frontmatter.copy()
+        frontmatter.pop("digest", None) # Necessary!
+        result.update(json.dumps(frontmatter, sort_keys=True).encode("utf-8"))
         result.update(self.content.encode("utf-8"))
         for item in self.items:
             result.update(item.digest.encode("utf-8"))
@@ -731,10 +737,6 @@ class Text(Item):
         title, ext = os.path.splitext(title)
         assert not ext or ext == constants.MARKDOWN_EXT
         super().__init__(book, parent, title)
-
-    def __len__(self):
-        "Number of characters in Markdown content."
-        return len(self.content)
 
     def __getitem__(self, key):
         return self.frontmatter[key]
@@ -783,6 +785,11 @@ class Text(Item):
         return len(self.content.split())
 
     @property
+    def n_characters(self):
+        "Approximate number of characters in the text."
+        return len(self.content)
+
+    @property
     def status(self):
         return constants.Status.lookup(self.frontmatter.get("status"))
 
@@ -818,7 +825,9 @@ class Text(Item):
             return self._digest
         except AttributeError:
             digest = hashlib.md5()
-            digest.update(json.dumps(self.frontmatter, sort_keys=True).encode("utf-8"))
+            frontmatter = self.frontmatter.copy()
+            frontmatter.pop("digest", None) # Necessary!
+            digest.update(json.dumps(frontmatter, sort_keys=True).encode("utf-8"))
             digest.update(self.content.encode("utf-8"))
             self._digest = digest.hexdigest()
             return self._digest

@@ -5,6 +5,8 @@ import json
 
 import requests
 
+import utils
+
 
 def fetch_and_save(url, apikey, dirpath):
     "Fetch the gzipped tar file and save to local disk."
@@ -13,14 +15,14 @@ def fetch_and_save(url, apikey, dirpath):
     response = requests.get(url, headers=dict(mdbook_apikey=apikey), stream=True)
 
     if response.status_code != 200:
-        raise ValueError(f"Invalid status code for response: {response.status_code}")
+        raise ValueError(f"invalid status code for response: {response.status_code}")
     try:
         content_disposition = response.headers["content-disposition"]
     except KeyError:
-        raise ValueError("No content-disposition in response")
+        raise ValueError("no content-disposition in response")
     parts = content_disposition.split('"')
     if len(parts) != 3:
-        raise ValueError("No filename in content-disposition in response")
+        raise ValueError("no filename in content-disposition in response")
 
     filepath = os.path.join(dirpath, parts[1])
     with open(filepath, "wb") as outfile:
@@ -29,11 +31,10 @@ def fetch_and_save(url, apikey, dirpath):
 
 
 if __name__ == "__main__":
-    with open(os.path.join(os.path.dirname(__file__), "config.json")) as infile:
-        config = json.load(infile)
+    config = utils.get_config()
     for instance in config["instances"]:
         fetch_and_save(
-            instance["host"].rstrip("/") + "/tgz",
+            instance["site"].rstrip("/") + "/tgz",
             instance["mdbook_apikey"],
             instance["dumpdir"],
         )

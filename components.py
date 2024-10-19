@@ -14,11 +14,10 @@ NAV_STYLE_TEMPLATE = "outline-color: {color}; outline-width:8px; outline-style:s
 
 
 def metadata(item):
-    n_words = f"{utils.thousands(item.n_words)}"
-    n_characters = f"{utils.thousands(len(item))}"
     items = [
         Tx(item.status),
-        f'{n_words} {Tx("words")}; {n_characters} {Tx("characters")}',
+        f'{utils.thousands(item.n_words)} {Tx("words")}; '
+        f'{utils.thousands(item.n_characters)} {Tx("characters")}',
     ]
     if isinstance(item, Book) and item.frontmatter.get("language"):
         items.append(item.frontmatter["language"])

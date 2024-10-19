@@ -12,6 +12,7 @@ from fasthtml.common import *
 import bibtexparser
 import marko
 import psutil
+import requests
 import yaml
 
 import components
@@ -57,6 +58,9 @@ app, rt = fast_app(
 )
 
 MDBOOK_DIR = os.environ.get("MDBOOK_DIR")
+
+# Instance config file; only for local instances, not for web instances.
+config = utils.get_config()
 
 # Book instances cache. Key: bid; value: Book instance.
 books = {}
@@ -124,15 +128,15 @@ def get(auth):
                 Td(book.modified),
             )
         )
+    actions = [
+        A(f'{Tx("Create")} {Tx("book")}', href="/book"),
+        A(f'{Tx("Download")} TGZ', href="/tgz"),
+    ]
+    if "update" in config:
+        actions.append(A(Tx("Update"), href="/update"))
     return (
         Title(Tx("Books")),
-        components.header(
-            title=Tx("Books"),
-            actions=[
-                A(f'{Tx("Create")} {Tx("book")}', href="/book"),
-                A(f'{Tx("Download")} TGZ', href="/tgz"),
-            ],
-        ),
+        components.header(title=Tx("Books"), actions=actions),
         Main(Table(*rows), cls="container"),
     )
 
@@ -142,6 +146,7 @@ def get(auth):
     "Page for list of references."
     references = get_references()
     references.read()
+    references.write()          # Updates the 'index.md' file if required.
     items = []
     for ref in references.items:
         parts = [
@@ -532,6 +537,7 @@ def get(auth, bid: str):
     except KeyError as message:
         return error(message, 404)
     book.read()
+    book.write()            # Updates the 'index.md' file if required.
     actions = [
         A(f'{Tx("Edit")}', href=f"/edit/{bid}"),
         A(f'{Tx("Create")} {Tx("section")}', href=f"/section/{bid}"),
@@ -740,12 +746,14 @@ def post(auth, bid: str, path: str, title: str, content: str, status: str = None
     "Actually edit the item (section or text)."
     if not bid:
         return error("no book id provided", 400)
-    item = get_book(bid)[path]
+    book = get_book(bid)
+    item = book[path]
     item.set_title(title)
     if item.is_text:
         if status is not None:
             item.status = status
     item.write(content=content)
+    book.write()
     return RedirectResponse(f"/book/{bid}/{item.urlpath}", status_code=303)
 
 
@@ -867,9 +875,11 @@ def post(auth, bid: str, path: str):
     "Convert to section containing a text with this text."
     if not bid:
         return error("no book id provided", 400)
-    text = get_book(bid)[path]
+    book = get_book(bid)
+    text = book[path]
     assert text.is_text
     section = text.to_section()
+    book.write()
     assert section.is_section
     return RedirectResponse(f"/book/{bid}/{section.urlpath}", status_code=303)
 
@@ -912,6 +922,7 @@ def post(auth, bid: str, path: str, title: str = None):
         parent = book[path]
         assert parent.is_section
     new = book.create_text(title, parent=parent)
+    book.write()
     if path:
         return RedirectResponse(f"/book/{bid}/{path}", status_code=303)
     else:
@@ -956,6 +967,7 @@ def post(auth, bid: str, path: str, title: str = None):
         parent = book[path]
         assert parent.is_section
     new = book.create_section(title, parent=parent)
+    book.write()
     if path:
         return RedirectResponse(f"/book/{bid}/{path}", status_code=303)
     else:
@@ -1472,7 +1484,7 @@ def get(auth):
 
 @rt("/state")
 def get(auth):
-    "Return JSON for limited state; current books."
+    "Return JSON for limited state."
     books = []
     for name in os.listdir(MDBOOK_DIR):
         dirpath = os.path.join(MDBOOK_DIR, name)
@@ -1491,5 +1503,27 @@ def get(auth):
                 now=utils.timestr(localtime=False, display=False),
                 books=books)
 
+
+@rt("/update")
+def get(auth):
+    "Compare this local site with the update site."
+    if "update" not in config:
+        return error("update with remote site not enabled")
+    for key in ["url", "user", "password"]:
+        if key not in config["update"]:
+            return error(f"missing entry for '{key}' in update config", 500)
+
+    return (
+        Title(Tx("Update")),
+        components.header(title=Tx("Update")),
+        Main(
+            Table(
+                Thead(
+                    Tr(Th(config["update"]["url"], scope="col"),
+                       Th(Tx("This instance")), scope="col"),
+                ),
+            ),
+            cls="container")
+    )
 
 serve()
