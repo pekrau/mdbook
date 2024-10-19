@@ -125,6 +125,8 @@ def get(auth):
                 Td(A(book.title, href=f"/book/{book.id}")),
                 Td(Tx(book.type.capitalize())),
                 Td(Tx(book.status)),
+                Td(Tx(utils.thousands(book.frontmatter["n_characters"])),
+                   style="text-align: right;"),
                 Td(book.modified),
             )
         )
@@ -146,7 +148,7 @@ def get(auth):
     "Page for list of references."
     references = get_references()
     references.read()
-    references.write()          # Updates the 'index.md' file if required.
+    references.write()          # Updates the 'index.md' file, if necessary.
     items = []
     for ref in references.items:
         parts = [
@@ -243,10 +245,11 @@ def get(auth):
         #     parts.append(Small(Br(), *xrefs))
         items.append(P(*parts, id=ref["id"].replace(" ", "_")))
 
+    title = f'{Tx("References")} ({len(references.items)})'
     return (
-        Title(Tx("References")),
+        Title(title),
         components.header(
-            title=Tx("References"),
+            title=title,
             actions=[
                 A(Tx("Add BibTex"), href="/bibtex"),
                 A(f'{Tx("Download")} {Tx("references")} TGZ', href="/references/tgz"),
@@ -537,7 +540,7 @@ def get(auth, bid: str):
     except KeyError as message:
         return error(message, 404)
     book.read()
-    book.write()            # Updates the 'index.md' file if required.
+    book.write()            # Updates the 'index.md' file, if necessary.
     actions = [
         A(f'{Tx("Edit")}', href=f"/edit/{bid}"),
         A(f'{Tx("Create")} {Tx("section")}', href=f"/section/{bid}"),
@@ -1490,13 +1493,15 @@ def get(auth):
         dirpath = os.path.join(MDBOOK_DIR, name)
         if not os.path.isdir(dirpath):
             continue
+        book = Book(dirpath, index_only=True)
         books.append(
             dict(
                 id=name,
                 modified=utils.timestr(
                     filepath=dirpath, localtime=False, display=False
                 ),
-                digest=book.digest,
+                n_characters=book.frontmatter["n_characters"],
+                digest=book.frontmatter["digest"]
             )
         )
     return dict(type="site",
@@ -1511,8 +1516,8 @@ def get(auth):
         return error("update with remote site not enabled")
     for key in ["url", "user", "password"]:
         if key not in config["update"]:
-            return error(f"missing entry for '{key}' in update config", 500)
-
+            return error(f"missing entry for '{key}' in config['update']", 500)
+    # response = requests.get(
     return (
         Title(Tx("Update")),
         components.header(title=Tx("Update")),
