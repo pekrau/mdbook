@@ -1491,21 +1491,16 @@ def get(auth):
 
 def get_state():
     "Return JSON for site state."
-    books = []
+    books = {}
     for name in os.listdir(MDBOOK_DIR):
         dirpath = os.path.join(MDBOOK_DIR, name)
         if not os.path.isdir(dirpath):
             continue
         book = Book(dirpath, index_only=True)
-        books.append(
-            dict(
-                id=name,
-                modified=utils.timestr(
-                    filepath=dirpath, localtime=False, display=False
-                ),
-                n_characters=book.frontmatter["n_characters"],
-                digest=book.frontmatter["digest"]
-            )
+        books[name] = dict(
+            modified=utils.timestr(filepath=dirpath, localtime=False, display=False),
+            n_characters=book.frontmatter["n_characters"],
+            digest=book.frontmatter["digest"]
         )
     return dict(type="site",
                 now=utils.timestr(localtime=False, display=False),
@@ -1526,15 +1521,47 @@ def get(auth):
         return error(f"remote {url} response error: {response.status_code}; {response.content}")
     remote = response.json()
     local = get_state()
-    rows = [Tr(Td(remote["now"]), Td(local["now"]))]
+    rows = [Tr(Th(Tx("Now"), scope="row"), Td(remote["now"]), Td(local["now"]))]
+    local_books = local["books"].copy()
+    for name, rbook in remote["books"].items():
+        lbook = local_books.pop(name, None)
+        if lbook:
+            rows.append(
+                Tr(Th(name, scope="row"),
+                   Td(rbook["modified"],
+                      Br(),
+                      rbook["n_characters"],
+                      Br(),
+                      Tx("Same") if lbook["digest"] == rbook["digest"] else Tx("Different")),
+                   Td(lbook["modified"],
+                      Br(),
+                      lbook["n_characters"]))
+                )
+        else:
+            rows.append(
+                Tr(Th(name, scope="row"),
+                   Td(rbook["modified"],
+                      Br(),
+                      rbook["n_characters"]),
+                   Td("-"))
+                )
+    for name, lbook in local_books.items():
+        rows.append(
+            Tr(Th(name, scope="row"),
+               Td("-"),
+               Td(lbook["modified"],
+                  Br(),
+                  lbook["n_characters"])),
+        )
     return (
         Title(Tx("Update")),
         components.header(title=Tx("Update")),
         Main(
             Table(
                 Thead(
-                    Tr(Th(config["update"]["url"], scope="col"),
-                       Th(Tx("This instance")), scope="col"),
+                    Tr(Th(Tx("Site")),
+                       Th(config["update"]["site"], scope="col"),
+                       Th(Tx("This")), scope="col"),
                 ),
                 Tbody(*rows)
             ),
