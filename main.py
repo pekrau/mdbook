@@ -2,6 +2,7 @@
 
 import io
 import os
+import shutil
 import string
 import sys
 import tarfile
@@ -70,7 +71,7 @@ def get_state_remote(bid=None):
         if key not in config["update"]:
             raise ValueError(f"missing entry for '{key}' in config['update']")
     if bid:
-        url = f'{config["update"]["site"].rstrip("/")}/{bid}/state'
+        url = f'{config["update"]["site"].rstrip("/")}/state/{bid}'
     else:
         url = f'{config["update"]["site"].rstrip("/")}/state'
     headers = dict(apikey=config["update"]["apikey"])
@@ -343,7 +344,7 @@ async def post(auth, tgzfile: UploadFile):
             tf.extract(name, path=os.path.join(MDBOOK_DIR, constants.REFERENCES_DIR))
     except (tarfile.TarError, ValueError) as msg:
         return error(f"error reading TGZ file: {msg}")
-    return RedirectResponse(f"/references", status_code=303)
+    return RedirectResponse("/references", status_code=303)
 
 
 @rt("/reference/{refid:str}")
@@ -552,7 +553,7 @@ async def post(auth, bid: str, tgzfile: UploadFile):
         tf.extractall(path=dirpath)
     except (tarfile.TarError, ValueError) as msg:
         return error(f"error reading TGZ file: {msg}")
-    return RedirectResponse(f"/references", status_code=303)
+    return RedirectResponse("/", status_code=303)
 
 
 @rt("/book/{bid:str}")
@@ -839,6 +840,16 @@ def post(auth, bid: str):
         pass
     books.pop(book.id)
     os.rmdir(book.abspath)
+    return RedirectResponse("/", status_code=303)
+
+
+@rt("/erase/{bid:str}")
+def get(auth, bid: str):
+    "Delete of book, regardless of its state. There is no link to this resouce."
+    if not bid:
+        return error("no book id provided", 400)
+    book = get_book(bid)
+    shutil.rmtree(book.abspath)
     return RedirectResponse("/", status_code=303)
 
 
@@ -1617,7 +1628,7 @@ def get(auth, bid:str):
             state = book.state
         else:
             state = {}
-    rows = []
+    rows = item_diffs(remote["items"], state.get("items", []))
     return (
         Title(f'{Tx("Update")} {bid}'),
         components.header(title=f'{Tx("Update")} {bid}'),
@@ -1625,7 +1636,11 @@ def get(auth, bid:str):
             Table(
                 Thead(
                     Tr(Th(config["update"]["site"], scope="col"),
-                       Th(Tx("Here"), scope="col"),
+                       Th(Tx("Here"), colspan=2, scope="col"),
+                    ),
+                    Tr(Th(Tx("Title"), scope="col"),
+                       Th(Tx("Age"), scope="col"),
+                       Th(Tx("Size"), scope="col"),
                     ),
                 ),
                 Tbody(*rows)
@@ -1633,8 +1648,29 @@ def get(auth, bid:str):
             cls="container")
     )
 
-def diffs(remote, local):
-    "Return list of differences between remote and local state."
+def item_diffs(ritems, litems):
+    "Return list of rows specifying differences between remote and local items."
     result = []
+    for ritem in sorted(ritems, key=lambda i: i["title"]):
+        for pos, litem in enumerate(list(litems)):
+            if litem["title"] == ritem["title"]:
+                if litem["digest"] != ritem["digest"]:
+                    if litem["modified"] < ritem["modified"]:
+                        age = "Older"
+                    elif litem["modified"] > ritem["modified"]:
+                        age = "Younger"
+                    else:
+                        age = "Same"
+                    if litem["n_characters"] < ritem["n_characters"]:
+                        size = "Smaller"
+                    elif litem["n_characters"] > ritem["n_characters"]:
+                        size = "Larger"
+                    else:
+                        size = "Same"
+                    result.append(Tr(Td(ritem["title"]), Td(age), Td(size)))
+                    litems.pop(pos)
+                    break
+    return result
+
 
 serve()

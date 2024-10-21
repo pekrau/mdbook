@@ -441,10 +441,6 @@ class Item:
     def __repr__(self):
         return f"{self.__class__.__name__}('{self.fullname}')"
 
-    def __bool__(self):
-        "Always True; not dependent on len."
-        return True
-
     def read(self):
         "To be implemented by inheriting classes. This is recursive."
         raise NotImplementedError
@@ -475,10 +471,6 @@ class Item:
             result += 1
             parent = parent.parent
         return result
-
-    @property
-    def modified(self):
-        return utils.timestr(filepath=self.abspath)
 
     @property
     def is_text(self):
@@ -659,7 +651,7 @@ class Section(Item):
                 pass
 
     def write(self, content=None):
-        """Write the 'index.md' file, if any content.
+        """Write the 'index.md' file.
         If no Markdown content is provided, then use the current.
         This is *not* recursive.
         """
@@ -691,6 +683,10 @@ class Section(Item):
     def n_characters(self):
         "Approximate number of characters in the items in and below this section."
         return sum([i.n_characters for i in self.items]) + len(self.content)
+
+    @property
+    def modified(self):
+        return utils.timestr(filepath=self.indexpath)
 
     @property
     def status(self):
@@ -772,13 +768,8 @@ class Text(Item):
     def write(self, content=None):
         """Write the text, with current frontmatter and the given Markdown content.
         If no Markdown content is provided, then use the current.
-        Invalidate the cached digest.
         """
         write_markdown(self, self.abspath, content=content)
-        try:
-            del self._digest
-        except NameError:
-            pass
 
     @property
     def all_items(self):
@@ -799,6 +790,10 @@ class Text(Item):
     def n_characters(self):
         "Approximate number of characters in the text."
         return len(self.content)
+
+    @property
+    def modified(self):
+        return utils.timestr(filepath=self.abspath)
 
     @property
     def status(self):
@@ -829,19 +824,13 @@ class Text(Item):
 
     @property
     def digest(self):
-        """Return the hex digest of the contents of the text.
-        Cache the result, which must be invalidated after 'write'.
-        """
-        try:
-            return self._digest
-        except AttributeError:
-            digest = hashlib.md5()
-            frontmatter = self.frontmatter.copy()
-            frontmatter.pop("digest", None) # Necessary!
-            digest.update(json.dumps(frontmatter, sort_keys=True).encode("utf-8"))
-            digest.update(self.content.encode("utf-8"))
-            self._digest = digest.hexdigest()
-            return self._digest
+        "Return the hex digest of the contents of the text."
+        digest = hashlib.md5()
+        frontmatter = self.frontmatter.copy()
+        frontmatter.pop("digest", None) # Necessary!
+        digest.update(json.dumps(frontmatter, sort_keys=True).encode("utf-8"))
+        digest.update(self.content.encode("utf-8"))
+        return digest.hexdigest()
 
     def filename(self, new=None):
         "Return the filename of this item."
