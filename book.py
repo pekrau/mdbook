@@ -46,6 +46,7 @@ def write_markdown(source, filepath):
         if source.content:
             outfile.write(source.content)
 
+
 def update_markdown(target, content):
     """If non-None content, then clean it:
     - Strip each line from the right. (Markdown line breaks not allowed.)
@@ -151,7 +152,7 @@ class Book:
         self.frontmatter["status"] = repr(self.status)
         self.frontmatter["sum_characters"] = self.sum_characters
         self.frontmatter["digest"] = self.digest
-        if (changed or force or (self.frontmatter != original)):
+        if changed or force or (self.frontmatter != original):
             write_markdown(self, self.absfilepath)
 
     def set_items_order(self, container, items_order):
@@ -177,9 +178,13 @@ class Book:
             if item.is_text:
                 result.append(dict(name=item.name, title=item.title))
             elif item.is_section:
-                result.append(dict(name=item.name,
-                                   title=item.title,
-                                   items=self.get_items_order(item)))
+                result.append(
+                    dict(
+                        name=item.name,
+                        title=item.title,
+                        items=self.get_items_order(item),
+                    )
+                )
         return result
 
     @property
@@ -322,7 +327,9 @@ class Book:
             type="book",
             name=self.name,
             title=self.title,
-            modified=utils.timestr(filepath=self.absfilepath, localtime=False, display=False),
+            modified=utils.timestr(
+                filepath=self.absfilepath, localtime=False, display=False
+            ),
             sum_characters=self.sum_characters,
             digest=self.digest,
             items=[i.state for i in self.items],
@@ -680,7 +687,7 @@ class Section(Item):
         changed = update_markdown(self, content)
         original = copy.deepcopy(self.frontmatter)
         self.frontmatter["digest"] = self.digest
-        if (changed or force or (self.frontmatter != original)):
+        if changed or force or (self.frontmatter != original):
             write_markdown(self, self.absfilepath)
 
     @property
@@ -742,7 +749,9 @@ class Section(Item):
             type="section",
             name=self.name,
             title=self.title,
-            modified=utils.timestr(filepath=self.absfilepath, localtime=False, display=False),
+            modified=utils.timestr(
+                filepath=self.absfilepath, localtime=False, display=False
+            ),
             n_characters=self.n_characters,
             digest=self.digest,
             items=[i.state for i in self.items],
@@ -797,7 +806,7 @@ class Text(Item):
         changed = update_markdown(self, content)
         original = copy.deepcopy(self.frontmatter)
         self.frontmatter["digest"] = self.digest
-        if (changed or force or (self.frontmatter != original)):
+        if changed or force or (self.frontmatter != original):
             write_markdown(self, self.abspath)
 
     @property

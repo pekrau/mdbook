@@ -16,13 +16,16 @@ NAV_STYLE_TEMPLATE = "outline-color: {color}; outline-width:8px; outline-style:s
 def metadata(item):
     "Display status, n words and n characters."
     return "; ".join(
-        [Tx(item.type),
-         Tx(repr(item.status)),
-         f'{utils.thousands(item.n_words)} {Tx("words")}',
-         f'{utils.thousands(item.n_characters)} {Tx("characters")}'])
+        [
+            Tx(item.type),
+            Tx(repr(item.status)),
+            f'{utils.thousands(item.n_words)} {Tx("words")}',
+            f'{utils.thousands(item.n_characters)} {Tx("characters")}',
+        ]
+    )
 
 
-def header(book=None, item=None, title=None, actions=None):
+def header(book=None, item=None, title=None, actions=None, state_url=None):
     "The standard page header with navigation bar."
     # The first cell: icon and book title (if any).
     if book:
@@ -62,7 +65,7 @@ def header(book=None, item=None, title=None, actions=None):
                     f"{Tx(repr(book.status))}; ",
                     f'{utils.thousands(book.sum_words)} {Tx("words")}; '
                     f'{utils.thousands(book.sum_characters)} {Tx("characters")}; ',
-                    f'{Tx("language")}: {book.frontmatter.get("language") or "-"}'
+                    f'{Tx("language")}: {book.frontmatter.get("language") or "-"}',
                 )
             )
         )
@@ -91,6 +94,8 @@ def header(book=None, item=None, title=None, actions=None):
         pages.append(A(Tx("Status list"), href=f"/statuslist/{book.name}"))
     pages.append(A(Tx("References"), href="/references"))
     pages.append(A(Tx("Information"), href="/information"))
+    if state_url:
+        pages.append(A(Tx("State"), href=state_url))
     items = [
         Li(Details(Summary(Tx("Pages")), Ul(*[Li(p) for p in pages]), cls="dropdown"))
     ]

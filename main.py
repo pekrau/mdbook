@@ -81,8 +81,14 @@ def get(auth):
         except FileNotFoundError:
             pass
     books.sort(key=lambda b: b.modified, reverse=True)
-    hrows = Tr(Th(Tx("Title")), Th(Tx("Type")), Th(Tx("Status")), Th(Tx("Characters")),
-               Th(Tx("Owner")), Th(Tx("Modified")))
+    hrows = Tr(
+        Th(Tx("Title")),
+        Th(Tx("Type")),
+        Th(Tx("Status")),
+        Th(Tx("Characters")),
+        Th(Tx("Owner")),
+        Th(Tx("Modified")),
+    )
     rows = []
     for book in books:
         rows.append(
@@ -103,10 +109,8 @@ def get(auth):
         actions.append(A(Tx("Update"), href="/update"))
     return (
         Title(Tx("Books")),
-        components.header(title=Tx("Books"), actions=actions),
-        Main(Table(Thead(
-            *hrows),
-            Tbody(*rows)), cls="container"),
+        components.header(title=Tx("Books"), actions=actions, state_url="/state"),
+        Main(Table(Thead(*hrows), Tbody(*rows)), cls="container"),
     )
 
 
@@ -114,7 +118,7 @@ def get(auth):
 def get(auth):
     "Page for list of references."
     references = utils.get_references(refresh=True)
-    references.write()          # Updates the 'index.md' file, if necessary.
+    references.write()  # Updates the 'index.md' file, if necessary.
     items = []
     for ref in references.items:
         parts = [
@@ -221,13 +225,14 @@ def get(auth):
                 A(f'{Tx("Download")} {Tx("references")} TGZ', href="/references/tgz"),
                 A(f'{Tx("Upload")} {Tx("references")} TGZ', href="/references/upload"),
             ],
+            state_url="/state/references",
         ),
         Main(*items, cls="container"),
     )
 
 
 @rt("/references/tgz")
-def get():
+def get(auth):
     "Download a gzipped tar file of all references."
     book = utils.get_references(refresh=True)
     output = book.get_tgzfile()
@@ -278,7 +283,10 @@ async def post(auth, tgzfile: UploadFile):
         for name in names:
             if name == "index.md":
                 continue
-            tf.extract(name, path=os.path.join(os.environ["MDBOOK_DIR"], constants.REFERENCES_DIR))
+            tf.extract(
+                name,
+                path=os.path.join(os.environ["MDBOOK_DIR"], constants.REFERENCES_DIR),
+            )
     except (tarfile.TarError, ValueError) as msg:
         return error(f"error reading TGZ file: {msg}")
     return RedirectResponse("/references", status_code=303)
@@ -393,7 +401,9 @@ def post(auth, data: str):
                 break
         else:
             raise ValueError(f"could not form unique id for {name} {year}")
-        new = dict(id=id, name=name, type=entry["ENTRYTYPE"], authors=authors, year=year)
+        new = dict(
+            id=id, name=name, type=entry["ENTRYTYPE"], authors=authors, year=year
+        )
         for key, value in entry.items():
             if key in ("author", "ID", "ENTRYTYPE"):
                 continue
@@ -509,7 +519,7 @@ def get(auth, bid: str):
         book = utils.get_book(bid, refresh=True)
     except KeyError as message:
         return error(message, 404)
-    book.write()            # Updates the 'index.md' file, if necessary.
+    book.write()  # Updates the 'index.md' file, if necessary.
     actions = [
         A(f'{Tx("Edit")}', href=f"/edit/{bid}"),
         A(f'{Tx("Create")} {Tx("section")}', href=f"/section/{bid}"),
@@ -525,7 +535,7 @@ def get(auth, bid: str):
         content = components.toc(book, book.items, show_arrows=True)
     return (
         Title(book.title),
-        components.header(book=book, actions=actions),
+        components.header(book=book, actions=actions, state_url=f"/state/{bid}"),
         Main(content, cls="container"),
         components.footer(book),
     )
@@ -619,7 +629,9 @@ def get(auth, bid: str):
         Fieldset(
             Legend(Tx("Text")),
             Textarea(
-                NotStr(book.content), name="content", rows="10",
+                NotStr(book.content),
+                name="content",
+                rows="10",
             ),
         )
     )
@@ -721,7 +733,7 @@ def post(auth, bid: str, path: str, title: str, content: str, status: str = None
     book = utils.get_book(bid)
     item = book[path]
     item.title = title
-    item.name = title           # Changes name of directory/file.
+    item.name = title  # Changes name of directory/file.
     if item.is_text:
         if status is not None:
             item.status = status
@@ -1326,7 +1338,11 @@ def get(auth, bid: str):
             book = utils.get_references()
         else:
             return error(message, 404)
-    result = dict(now=utils.timestr(localtime=False, display=False))
+    result = dict(
+        software="mdbook",
+        version=constants.__version__,
+        now=utils.timestr(localtime=False, display=False),
+    )
     result.update(book.state)
     return result
 
@@ -1437,7 +1453,10 @@ def get(auth):
     with tarfile.open(fileobj=output, mode="w:gz") as tgzfile:
         for name in os.listdir(os.environ["MDBOOK_DIR"]):
             tgzfile.add(
-                os.path.join(os.environ["MDBOOK_DIR"], name), arcname=name, recursive=True, filter=utils.tar_filter
+                os.path.join(os.environ["MDBOOK_DIR"], name),
+                arcname=name,
+                recursive=True,
+                filter=utils.tar_filter,
             )
     filename = f"mdbook_{utils.timestr(safe=True)}.tgz"
     return Response(
@@ -1449,10 +1468,12 @@ def get(auth):
 
 @rt("/state")
 def get(auth):
+    "Return JSON for the overall state of this site."
     return get_state()
 
+
 def get_state():
-    "Return JSON for site state."
+    "Return JSON for the overall state of this site."
     books = {}
     for name in os.listdir(os.environ["MDBOOK_DIR"]):
         dirpath = os.path.join(os.environ["MDBOOK_DIR"], name)
@@ -1462,11 +1483,15 @@ def get_state():
         books[name] = dict(
             modified=utils.timestr(filepath=dirpath, localtime=False, display=False),
             sum_characters=book.frontmatter["sum_characters"],
-            digest=book.frontmatter["digest"]
+            digest=book.frontmatter["digest"],
         )
-    return dict(type="site",
-                now=utils.timestr(localtime=False, display=False),
-                books=books)
+    return dict(
+        software="mdbook",
+        version=constants.__version__,
+        now=utils.timestr(localtime=False, display=False),
+        type="site",
+        books=books,
+    )
 
 
 @rt("/update")
@@ -1487,34 +1512,45 @@ def get(auth):
             else:
                 action = A(Tx("Update"), href=f"/update/{bid}", role="button")
             rows.append(
-                Tr(Th(bid, scope="row"),
-                   Td(utils.tolocaltime(rbook["modified"]),
-                      Br(),
-                      f'{utils.thousands(rbook["sum_characters"])} {Tx("characters")}'),
-                   Td(utils.tolocaltime(lbook["modified"]),
-                      Br(),
-                      f'{utils.thousands(lbook["sum_characters"])} {Tx("characters")}'),
-                   Td(action),
+                Tr(
+                    Th(bid, scope="row"),
+                    Td(
+                        utils.tolocaltime(rbook["modified"]),
+                        Br(),
+                        f'{utils.thousands(rbook["sum_characters"])} {Tx("characters")}',
+                    ),
+                    Td(
+                        utils.tolocaltime(lbook["modified"]),
+                        Br(),
+                        f'{utils.thousands(lbook["sum_characters"])} {Tx("characters")}',
+                    ),
+                    Td(action),
                 ),
             )
         else:
             rows.append(
-                Tr(Th(bid, scope="row"),
-                   Td(utils.tolocaltime(rbook["modified"]),
-                      Br(),
-                      f'{utils.thousands(rbook["sum_characters"])} {Tx("characters")}'),
-                   Td("-"),
-                   Td("?"),
-                   )
+                Tr(
+                    Th(bid, scope="row"),
+                    Td(
+                        utils.tolocaltime(rbook["modified"]),
+                        Br(),
+                        f'{utils.thousands(rbook["sum_characters"])} {Tx("characters")}',
+                    ),
+                    Td("-"),
+                    Td("?"),
+                )
             )
     for bid, lbook in books.items():
         rows.append(
-            Tr(Th(bid, scope="row"),
-               Td("-"),
-               Td(utils.tolocaltime(lbook["modified"]),
-                  Br(),
-                  f'{utils.thousands(lbook["sum_characters"])} {Tx("characters")}'),
-               ),
+            Tr(
+                Th(bid, scope="row"),
+                Td("-"),
+                Td(
+                    utils.tolocaltime(lbook["modified"]),
+                    Br(),
+                    f'{utils.thousands(lbook["sum_characters"])} {Tx("characters")}',
+                ),
+            ),
         )
     return (
         Title(Tx("Update")),
@@ -1522,20 +1558,22 @@ def get(auth):
         Main(
             Table(
                 Thead(
-                    Tr(Th(),
-                       Th(os.environ["MDBOOK_UPDATE_SITE"], scope="col"),
-                       Th(Tx("Here"), scope="col"),
-                       Th(scope="col"),
+                    Tr(
+                        Th(),
+                        Th(os.environ["MDBOOK_UPDATE_SITE"], scope="col"),
+                        Th(Tx("Here"), scope="col"),
+                        Th(scope="col"),
                     ),
                 ),
-                Tbody(*rows)
+                Tbody(*rows),
             ),
-            cls="container")
+            cls="container",
+        ),
     )
 
 
 @rt("/update/{bid:str}")
-def get(auth, bid:str):
+def get(auth, bid: str):
     "Compare this local book with the update site book. One of them may not exist."
     if not bid:
         return error("no book id provided", 400)
@@ -1559,18 +1597,22 @@ def get(auth, bid:str):
         Main(
             Table(
                 Thead(
-                    Tr(Th(os.environ["MDBOOK_UPDATE_SITE"], scope="col"),
-                       Th(Tx("Here"), colspan=2, scope="col"),
+                    Tr(
+                        Th(os.environ["MDBOOK_UPDATE_SITE"], scope="col"),
+                        Th(Tx("Here"), colspan=2, scope="col"),
                     ),
-                    Tr(Th(Tx("Title"), scope="col"),
-                       Th(Tx("Age"), scope="col"),
-                       Th(Tx("Size"), scope="col"),
+                    Tr(
+                        Th(Tx("Title"), scope="col"),
+                        Th(Tx("Age"), scope="col"),
+                        Th(Tx("Size"), scope="col"),
                     ),
                 ),
-                Tbody(*rows)
+                Tbody(*rows),
             ),
-            cls="container")
+            cls="container",
+        ),
     )
+
 
 def item_diffs(ritems, litems):
     "Return list of rows specifying differences between remote and local items."

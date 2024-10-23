@@ -25,6 +25,7 @@ _books = {}
 def get_book(bid, refresh=False):
     "Get the book contents, cached."
     from book import Book
+
     global _books
     if not bid:
         raise ValueError("empty 'bid' string")
@@ -46,11 +47,12 @@ def delete_book(book):
     "Delete the book, no questions asked."
     _books.pop(book.name, None)
     shutil.rmtree(book.abspath)
-    
+
 
 def get_references(refresh=False):
     "Get the references book, cached."
     from book import Book
+
     global _references
     try:
         _references
@@ -87,17 +89,20 @@ def cleanup_latex(value):
 def nameify(title):
     "Make name (lowercase letters, digits, ASCII-only) out of a title."
     result = unicodedata.normalize("NFKD", title).encode("ASCII", "ignore")
-    return "".join([c.lower() if c in SAFE_CHARACTERS else "-"
-                    for c in result.decode("utf-8")])
+    return "".join(
+        [c.lower() if c in SAFE_CHARACTERS else "-" for c in result.decode("utf-8")]
+    )
+
 
 def get_digest(c):
     "Return the digest instance having processed frontmatter and content."
     result = hashlib.md5()
     frontmatter = c.frontmatter.copy()
-    frontmatter.pop("digest", None) # Necessary!
+    frontmatter.pop("digest", None)  # Necessary!
     result.update(json.dumps(frontmatter, sort_keys=True).encode("utf-8"))
     result.update(c.content.encode("utf-8"))
     return result
+
 
 def timestr(filepath=None, localtime=True, display=True, safe=False):
     "Return time string for modification date of the given file, or now."
@@ -118,11 +123,13 @@ def timestr(filepath=None, localtime=True, display=True, safe=False):
         result = result.replace(" ", "_").replace(":", "-")
     return result
 
+
 def tolocaltime(utctime):
     "Convert a time string in UTC to local time."
     mytz = datetime.datetime.now(datetime.timezone.utc).astimezone().tzinfo
     lt = datetime.datetime.fromisoformat(utctime).astimezone(mytz)
     return lt.strftime(constants.DATETIME_ISO_FORMAT)
+
 
 def get_state_remote(bid=None):
     "Get the remote site state, optionally for the given bid."
@@ -138,15 +145,20 @@ def get_state_remote(bid=None):
     if response.status_code == 404:
         return None
     elif response.status_code != 200:
-        raise ValueError(f"remote {url} response error: {response.status_code}; {response.content}")
+        raise ValueError(
+            f"remote {url} response error: {response.status_code}; {response.content}"
+        )
     if response.content:
         return response.json()
     else:
         return {}
 
+
 def tar_filter(tarinfo):
     "Filter out valid files for inclusion in gzipped tar files."
-    if tarinfo.isdir() or (tarinfo.isfile() and tarinfo.name.endswith(constants.MARKDOWN_EXT)):
+    if tarinfo.isdir() or (
+        tarinfo.isfile() and tarinfo.name.endswith(constants.MARKDOWN_EXT)
+    ):
         return tarinfo
     else:
         return None
@@ -192,7 +204,5 @@ Tx = Translator(constants.TRANSLATIONS_FILEPATH)
 
 
 if __name__ == "__main__":
-    for s in ["Uvö",
-              "Västerby 5:256",
-              "Är detta en såpass bra rubrik?"]:
+    for s in ["Uvö", "Västerby 5:256", "Är detta en såpass bra rubrik?"]:
         print(s, nameify(s))

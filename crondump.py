@@ -35,8 +35,4 @@ if __name__ == "__main__":
     print(dirpath)
     with open(os.path.join(dirpath, "config.json")) as infile:
         config = json.load(infile)
-    fetch_and_save(
-        config["site"].rstrip("/") + "/tgz",
-        config["apikey"],
-        dirpath
-    )
+    fetch_and_save(config["site"].rstrip("/") + "/tgz", config["apikey"], dirpath)
