@@ -34,11 +34,11 @@ class Creator:
 
     def create(self):
         "Create the DOCX document; return a BytesIO instance containing it."
-        # Key: fullname; value: dict(label, ast_children)
+        # Key: fulltitle; value: dict(label, ast_children)
         self.footnotes = {}
         # Reference ids
         self.referenced = set()
-        # Key: canonical; value: dict(id, fullname, ordinal)
+        # Key: canonical; value: dict(id, fulltitle, ordinal)
         self.indexed = {}
         self.indexed_count = 0
 
@@ -205,7 +205,7 @@ class Creator:
         if self.footnotes_location != constants.FOOTNOTES_EACH_TEXT:
             return
         try:
-            footnotes = self.footnotes[text.fullname]
+            footnotes = self.footnotes[text.fulltitle]
         except KeyError:
             return
         paragraph = self.document.add_heading(Tx("Footnotes"), 6)
@@ -224,7 +224,7 @@ class Creator:
         if self.footnotes_location != constants.FOOTNOTES_EACH_CHAPTER:
             return
         try:
-            footnotes = self.footnotes[item.chapter.fullname]
+            footnotes = self.footnotes[item.chapter.fulltitle]
         except KeyError:
             return
         self.document.add_page_break()
@@ -244,7 +244,7 @@ class Creator:
         self.document.add_page_break()
         self.write_heading(Tx("Footnotes"), 1)
         for item in self.book.items:
-            footnotes = self.footnotes.get(item.fullname, {})
+            footnotes = self.footnotes.get(item.fulltitle, {})
             if not footnotes:
                 continue
             self.write_heading(item.heading, 2)
@@ -540,7 +540,7 @@ class Creator:
             dict(
                 id=f"i{self.indexed_count}",
                 ordinal=self.current_text.ordinal,
-                fullname=self.current_text.fullname,
+                fulltitle=self.current_text.fulltitle,
                 heading=self.current_text.heading,
             )
         )
@@ -556,17 +556,17 @@ class Creator:
         # The label is used only for lookup; number is used for output.
         label = ast["label"]
         if self.footnotes_location == constants.FOOTNOTES_EACH_TEXT:
-            entries = self.footnotes.setdefault(self.current_text.fullname, {})
+            entries = self.footnotes.setdefault(self.current_text.fulltitle, {})
             number = len(entries) + 1
             key = label
         elif self.footnotes_location in (
             constants.FOOTNOTES_EACH_CHAPTER,
             constants.FOOTNOTES_END_OF_BOOK,
         ):
-            fullname = self.current_text.chapter.fullname
-            entries = self.footnotes.setdefault(fullname, {})
+            fulltitle = self.current_text.chapter.fulltitle
+            entries = self.footnotes.setdefault(fulltitle, {})
             number = len(entries) + 1
-            key = f"{fullname}-{label}"
+            key = f"{fulltitle}-{label}"
         entries[key] = dict(label=label, number=number)
         run = self.paragraph.add_run(str(number))
         run.font.superscript = True
@@ -575,15 +575,15 @@ class Creator:
     def render_footnote_def(self, ast):
         label = ast["label"]
         if self.footnotes_location == constants.FOOTNOTES_EACH_TEXT:
-            fullname = self.current_text.fullname
+            fulltitle = self.current_text.fulltitle
             key = label
         elif self.footnotes_location in (
             constants.FOOTNOTES_EACH_CHAPTER,
             constants.FOOTNOTES_END_OF_BOOK,
         ):
-            fullname = self.current_text.chapter.fullname
-            key = f"{fullname}-{label}"
-        self.footnotes[fullname][key]["ast_children"] = ast["children"]
+            fulltitle = self.current_text.chapter.fulltitle
+            key = f"{fulltitle}-{label}"
+        self.footnotes[fulltitle][key]["ast_children"] = ast["children"]
 
     def render_reference(self, ast):
         self.referenced.add(ast["reference"])

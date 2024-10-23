@@ -14,76 +14,81 @@ NAV_STYLE_TEMPLATE = "outline-color: {color}; outline-width:8px; outline-style:s
 
 
 def metadata(item):
-    items = [
-        Tx(item.status),
-        f'{utils.thousands(item.n_words)} {Tx("words")}; '
-        f'{utils.thousands(item.n_characters)} {Tx("characters")}',
-    ]
-    if isinstance(item, Book) and item.frontmatter.get("language"):
-        items.append(item.frontmatter["language"])
-    return "; ".join(items)
+    "Display status, n words and n characters."
+    return Small("; ".join(
+        [Tx(item.type),
+         Tx(repr(item.status)),
+         f'{utils.thousands(item.n_words)} {Tx("words")}',
+         f'{utils.thousands(item.n_characters)} {Tx("characters")}']))
 
 
 def header(book=None, item=None, title=None, actions=None):
     "The standard page header with navigation bar."
-    if book is None:
-        entries = [Ul(Li(A(Img(src="/mdbook.png"), href="/")))]
-    else:
+    # The first cell: icon and book title (if any).
+    if book:
         entries = [
             Ul(
                 Li(A(Img(src="/mdbook.png", width=32, height=32), href="/")),
-                Li(A(book.title, href=f"/book/{book.id}")),
+                Li(A(Strong(book.title), href=f"/book/{book.name}")),
             )
         ]
-    if item is not None:
-        entries.append(
-            Ul(
-                Li(
-                    Strong(item.fullname),
-                    Br(),
-                    Small(metadata(item)),
-                )
-            )
-        )
-        nav_style = NAV_STYLE_TEMPLATE.format(color=item.status.color)
-    elif book is not None:
-        entries.append(
-            Ul(
-                Li(
-                    Small(metadata(book)),
-                )
-            )
-        )
-        nav_style = NAV_STYLE_TEMPLATE.format(color=book.status.color)
-    elif title:
+    else:
+        entries = [Ul(Li(A(Img(src="/mdbook.png"), href="/")))]
+
+    # The second cell: title, or item info, or book info.
+    if title:
         entries.append(Ul(Li(Strong(title))))
         if book is None:
             nav_style = NAV_STYLE_TEMPLATE.format(color="black")
         else:
             nav_style = NAV_STYLE_TEMPLATE.format(color=book.status.color)
-    elif book is not None:
-        entries.append(Ul(Li(f'{Tx("Status")}: {Tx(book.status)}')))
+
+    elif item:
+        entries.append(
+            Ul(
+                Li(
+                    Strong(item.fulltitle),
+                    Br(),
+                    metadata(item),
+                )
+            )
+        )
+        nav_style = NAV_STYLE_TEMPLATE.format(color=item.status.color)
+
+    elif book:
+        entries.append(
+            Ul(
+                Li(
+                    f"{Tx(repr(book.status))}; ",
+                    f'{utils.thousands(book.sum_words)} {Tx("words")}; '
+                    f'{utils.thousands(book.sum_characters)} {Tx("characters")}; ',
+                    f'{Tx("language")}: {book.frontmatter.get("language") or "-"}'
+                )
+            )
+        )
         nav_style = NAV_STYLE_TEMPLATE.format(color=book.status.color)
+
     else:
         nav_style = NAV_STYLE_TEMPLATE.format(color="black")
+
     pages = []
     if item is not None:
         if item.parent:
             if item.parent.level == 0:  # Book.
-                url = f"/book/{book.id}"
+                url = f"/book/{book.name}"
             else:
-                url = f"/book/{book.id}/{item.parent.urlpath}"
+                url = f"/book/{book.name}/{item.parent.path}"
             pages.append(A(NotStr(f"&ShortUpArrow; {item.parent.title}"), href=url))
         if item.prev:
-            url = f"/book/{book.id}/{item.prev.urlpath}"
+            url = f"/book/{book.name}/{item.prev.path}"
             pages.append(A(NotStr(f"&ShortLeftArrow; {item.prev.title}"), href=url))
         if item.next:
-            url = f"/book/{book.id}/{item.next.urlpath}"
+            url = f"/book/{book.name}/{item.next.path}"
             pages.append(A(NotStr(f"&ShortRightArrow; {item.next.title}"), href=url))
     if book is not None:
-        pages.append(A(Tx("Title"), href=f"/title/{book.id}"))
-        pages.append(A(Tx("Index"), href=f"/index/{book.id}"))
-        pages.append(A(Tx("Status list"), href=f"/statuslist/{book.id}"))
+        pages.append(A(Tx("Title"), href=f"/title/{book.name}"))
+        pages.append(A(Tx("Index"), href=f"/index/{book.name}"))
+        pages.append(A(Tx("Status list"), href=f"/statuslist/{book.name}"))
     pages.append(A(Tx("References"), href="/references"))
     pages.append(A(Tx("Information"), href="/information"))
     items = [
@@ -110,9 +115,9 @@ def toc(book, items, show_arrows=False):
         if show_arrows:
             arrows = [
                 NotStr("&nbsp;"),
-                A(NotStr("&ShortUpArrow;"), href=f"/up/{book.id}/{item.urlpath}"),
+                A(NotStr("&ShortUpArrow;"), href=f"/up/{book.name}/{item.path}"),
                 NotStr("&nbsp;"),
-                A(NotStr("&ShortDownArrow;"), href=f"/down/{book.id}/{item.urlpath}"),
+                A(NotStr("&ShortDownArrow;"), href=f"/down/{book.name}/{item.path}"),
             ]
         else:
             arrows = []
@@ -121,10 +126,10 @@ def toc(book, items, show_arrows=False):
                 A(
                     str(item),
                     style=f"color: {item.status.color};",
-                    href=f"/book/{book.id}/{item.urlpath}",
+                    href=f"/book/{book.name}/{item.path}",
                 ),
                 NotStr("&nbsp;&nbsp;&nbsp;"),
-                Small(metadata(item)),
+                metadata(item),
                 *arrows,
             )
         )

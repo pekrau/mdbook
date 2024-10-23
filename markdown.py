@@ -11,6 +11,7 @@ import marko.ext.gfm
 import yaml
 
 import constants
+import utils
 
 
 class Subscript(marko.inline.InlineElement):
@@ -96,7 +97,7 @@ class ReferenceRenderer:
     "Output a link to the reference page and item."
 
     def render_reference(self, element):
-        return f'<strong><a href="/reference/{element.reference}">{element.reference}</a></strong>'
+        return f'<strong><a href="/reference/{utils.nameify(element.reference)}">{element.reference}</a></strong>'
 
 
 html_converter = marko.Markdown()

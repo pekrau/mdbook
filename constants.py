@@ -3,7 +3,7 @@
 import functools
 import os.path
 
-VERSION = (4, 0, 0)
+VERSION = (4, 1, 0)
 __version__ = ".".join([str(n) for n in VERSION])
 
 
@@ -191,11 +191,11 @@ PDF_LIST_INDENT = 30
 PDF_THEMATIC_BREAK_INDENT = 100
 
 PDF_PAGE_NUMBER = "page number"
-PDF_TEXT_FULLNAME = "text full name"
+PDF_TEXT_FULLTITLE = "text fulltitle"
 PDF_TEXT_HEADING = "text heading"
 
 PDF_INDEXED_XREF_DISPLAY = (
     PDF_PAGE_NUMBER,
-    PDF_TEXT_FULLNAME,
+    PDF_TEXT_FULLTITLE,
     PDF_TEXT_HEADING,
 )

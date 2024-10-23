@@ -1,8 +1,8 @@
-"Fetch and save gzipped tar files from the local and web instances."
+"Fetch and save gzipped tar files from an instance."
 
 import os
 import json
-
+import sys
 import requests
 
 import utils
@@ -31,10 +31,12 @@ def fetch_and_save(url, apikey, dirpath):
 
 
 if __name__ == "__main__":
-    config = utils.get_config()
-    for instance in config["instances"]:
-        fetch_and_save(
-            instance["site"].rstrip("/") + "/tgz",
-            instance["apikey"],
-            instance["dumpdir"],
-        )
+    dirpath = sys.argv[1]
+    print(dirpath)
+    with open(os.path.join(dirpath, "config.json")) as infile:
+        config = json.load(infile)
+    fetch_and_save(
+        config["site"].rstrip("/") + "/tgz",
+        config["apikey"],
+        dirpath
+    )
