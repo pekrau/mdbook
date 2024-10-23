@@ -323,7 +323,7 @@ class Book:
             name=self.name,
             title=self.title,
             modified=utils.timestr(filepath=self.absfilepath, localtime=False, display=False),
-            n_characters=self.n_characters,
+            sum_characters=self.sum_characters,
             digest=self.digest,
             items=[i.state for i in self.items],
         )

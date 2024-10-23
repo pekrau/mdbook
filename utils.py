@@ -5,6 +5,7 @@ import datetime
 import hashlib
 import json
 import os
+import shutil
 import string
 import unicodedata
 
@@ -15,6 +16,53 @@ import latex_utf8
 
 
 SAFE_CHARACTERS = set(string.ascii_letters + string.digits)
+
+
+# Book instances cache. Key: bid; value: Book instance.
+_books = {}
+
+
+def get_book(bid, refresh=False):
+    "Get the book contents, cached."
+    from book import Book
+    global _books
+    if not bid:
+        raise ValueError("empty 'bid' string")
+    try:
+        book = _books[bid]
+        if refresh:
+            book.read()
+        return book
+    except KeyError:
+        try:
+            book = Book(os.path.join(os.environ["MDBOOK_DIR"], bid))
+        except FileNotFoundError:
+            raise KeyError(f"no such book '{bid}'")
+        _books[bid] = book
+        return book
+
+
+def delete_book(book):
+    "Delete the book, no questions asked."
+    _books.pop(book.name, None)
+    shutil.rmtree(book.abspath)
+    
+
+def get_references(refresh=False):
+    "Get the references book, cached."
+    from book import Book
+    global _references
+    try:
+        _references
+        if refresh:
+            _references.read()
+        return _references
+    except NameError:
+        dirpath = os.path.join(os.environ["MDBOOK_DIR"], constants.REFERENCES_DIR)
+        if not os.path.exists(dirpath):
+            os.mkdir(dirpath)
+        _references = Book(dirpath)
+        return _references
 
 
 def short_name(name):
@@ -84,14 +132,18 @@ def get_state_remote(bid=None):
         raise ValueError("remote update apikey undefined; missing MDBOOK_UPDATE_APIKEY")
     url = os.environ["MDBOOK_UPDATE_SITE"].rstrip("/")
     if bid:
-        url += "/state"
+        url += "/" + bid
+    url += "/state"
     headers = dict(apikey=os.environ["MDBOOK_UPDATE_APIKEY"])
     response = requests.get(url, headers=headers)
     if response.status_code == 404:
         return None
     elif response.status_code != 200:
         raise ValueError(f"remote {url} response error: {response.status_code}; {response.content}")
-    return response.json()
+    if response.content:
+        return response.json()
+    else:
+        return {}
 
 
 class Translator:

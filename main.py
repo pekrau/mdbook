@@ -2,7 +2,6 @@
 
 import io
 import os
-import shutil
 import string
 import sys
 import tarfile
@@ -56,44 +55,6 @@ app, rt = fast_app(
     before=beforeware,
     hdrs=(Link(rel="stylesheet", href="/mods.css", type="text/css"),),
 )
-
-# Book instances cache. Key: bid; value: Book instance.
-books = {}
-
-
-def get_book(bid, refresh=False):
-    "Get the book contents, cached."
-    global books
-    if not bid:
-        raise ValueError("empty 'bid' string")
-    try:
-        book = books[bid]
-        if refresh:
-            book.read()
-        return book
-    except KeyError:
-        try:
-            book = Book(os.path.join(os.environ["MDBOOK_DIR"], bid))
-        except FileNotFoundError:
-            raise KeyError(f"no such book '{bid}'")
-        books[bid] = book
-        return book
-
-
-def get_references(refresh=False):
-    "Get the references book, cached."
-    global _references
-    try:
-        _references
-        if refresh:
-            _references.read()
-        return _references
-    except NameError:
-        dirpath = os.path.join(os.environ["MDBOOK_DIR"], constants.REFERENCES_DIR)
-        if not os.path.exists(dirpath):
-            os.mkdir(dirpath)
-        _references = Book(dirpath)
-        return _references
 
 
 @rt("/")
@@ -152,7 +113,7 @@ def get(auth):
 @rt("/references")
 def get(auth):
     "Page for list of references."
-    references = get_references(refresh=True)
+    references = utils.get_references(refresh=True)
     references.write()          # Updates the 'index.md' file, if necessary.
     items = []
     for ref in references.items:
@@ -239,7 +200,7 @@ def get(auth):
 
         # XXX link to book text using the reference
         # xrefs = []
-        # texts = get_book().references.get(ref["name"], [])
+        # texts = utils.get_book().references.get(ref["name"], [])
         # for text in sorted(texts, key=lambda t: t.ordinal):
         #     if xrefs:
         #         xrefs.append(Br())
@@ -330,7 +291,7 @@ async def post(auth, tgzfile: UploadFile):
 def get(auth, refid: str):
     "Page for details of a reference."
     try:
-        ref = get_references()[refid.replace("_", " ")]
+        ref = utils.get_references()[refid.replace("_", " ")]
     except KeyError:
         return error("no such reference", 404)
     rows = [
@@ -431,7 +392,7 @@ def post(auth, data: str):
         for char in [""] + list(string.ascii_lowercase):
             name = f"{name} {year}{char}"
             id = utils.nameify(name)
-            if get_references().get(id) is None:
+            if utils.get_references().get(id) is None:
                 break
         else:
             raise ValueError(f"could not form unique id for {name} {year}")
@@ -469,14 +430,14 @@ def post(auth, data: str):
         else:
             new["pages"] = pages.replace("--", "-")
         abstract = new.pop("abstract", None)
-        reference = get_references().create_text(new["name"])
+        reference = utils.get_references().create_text(new["name"])
         for key, value in new.items():
             reference[key] = value
         if abstract:
             reference.write("**Abstract**\n\n" + abstract)
         else:
             reference.write()
-        references = get_references()
+        references = utils.get_references()
         references.read()
         references.items.sort(key=lambda r: r["id"].lower())
         references.write()
@@ -501,8 +462,8 @@ def get(auth):
         Main(
             Form(
                 Fieldset(
-                    Legend(Tx("Identifier")),
-                    Input(type="text", name="bid", required=True, autofocus=True),
+                    Legend(Tx("Title")),
+                    Input(type="text", name="title", required=True, autofocus=True),
                 ),
                 Fieldset(
                     Legend(Tx(f'{Tx("Upload")} TGZ')),
@@ -518,9 +479,9 @@ def get(auth):
 
 
 @rt("/book")
-async def post(auth, bid: str, tgzfile: UploadFile):
+async def post(auth, title: str, tgzfile: UploadFile):
     "Actually create and/or upload book using a gzipped tar file."
-    bid = utils.nameify(bid)
+    bid = utils.nameify(title)
     dirpath = os.path.join(os.environ["MDBOOK_DIR"], bid)
     if os.path.exists(dirpath):
         return error(f"book {bid} already exists", 409)
@@ -536,6 +497,7 @@ async def post(auth, bid: str, tgzfile: UploadFile):
     else:
         os.mkdir(dirpath)
     book = Book(dirpath)
+    book.frontmatter["title"] = title or book.title
     book.frontmatter["owner"] = auth
     book.write()
     return RedirectResponse(f"/book/{book.name}", status_code=303)
@@ -547,8 +509,7 @@ def get(auth, bid: str):
     if not bid:
         return error("no book id provided", 400)
     try:
-        book = get_book(bid, refresh=True)
-        # book = get_book(bid)
+        book = utils.get_book(bid, refresh=True)
     except KeyError as message:
         return error(message, 404)
     book.write()            # Updates the 'index.md' file, if necessary.
@@ -559,9 +520,9 @@ def get(auth, bid: str):
         A(f'{Tx("Download")} DOCX', href=f"/docx/{bid}"),
         A(f'{Tx("Download")} PDF', href=f"/pdf/{bid}"),
         A(f'{Tx("Download")} TGZ', href=f"/tgz/{bid}"),
+        A(f'{Tx("Delete")}', href=f"/delete/{bid}"),
     ]
     if len(book.items) == 0:
-        actions.append(A(f'{Tx("Delete")}', href=f"/delete/{bid}"))
         content = H3(A(Tx("Article"), href=f"/title/{bid}"))
     else:
         content = components.toc(book, book.items, show_arrows=True)
@@ -578,7 +539,7 @@ def get(auth, bid: str, path: str):
     "View the book text or section."
     if not bid:
         return error("no book id provided", 400)
-    book = get_book(bid)
+    book = utils.get_book(bid)
     item = book[path]
     actions = [A(Tx("Edit"), href=f"/edit/{bid}/{path}")]
     if item.is_text:
@@ -614,7 +575,7 @@ def get(auth, bid: str):
     "Page for editing the book data."
     if not bid:
         return error("no book id provided", 400)
-    book = get_book(bid)
+    book = utils.get_book(bid)
     fields = [
         Fieldset(
             Legend(Tx("Title")),
@@ -689,7 +650,7 @@ def post(
     "Actually edit the book data."
     if not bid:
         return error("no book id provided", 400)
-    book = get_book(bid)
+    book = utils.get_book(bid)
     book.frontmatter["title"] = title
     book.frontmatter["subtitle"] = subtitle
     book.frontmatter["authors"] = [a.strip() for a in authors.split("\n")]
@@ -710,7 +671,7 @@ def get(auth, bid: str, path: str):
     "Page for editing the item (section or text)."
     if not bid:
         return error("no book id provided", 400)
-    book = get_book(bid)
+    book = utils.get_book(bid)
     item = book[path]
     title_field = Fieldset(
         Label(Tx("Title")),
@@ -760,7 +721,7 @@ def post(auth, bid: str, path: str, title: str, content: str, status: str = None
     "Actually edit the item (section or text)."
     if not bid:
         return error("no book id provided", 400)
-    book = get_book(bid)
+    book = utils.get_book(bid)
     item = book[path]
     item.title = title
     item.name = title           # Changes name of directory/file.
@@ -777,7 +738,7 @@ def get(auth, bid: str, path: str):
     "Move item up in its sibling list."
     if not bid:
         return error("no book id provided", 400)
-    book = get_book(bid)
+    book = utils.get_book(bid)
     book[path].up()
     book.write()
     return RedirectResponse(f"/book/{bid}", status_code=303)
@@ -788,7 +749,7 @@ def get(auth, bid: str, path: str):
     "Move item down in its sibling list."
     if not bid:
         return error("no book id provided", 400)
-    book = get_book(bid)
+    book = utils.get_book(bid)
     book[path].down()
     book.write()
     return RedirectResponse(f"/book/{bid}", status_code=303)
@@ -796,10 +757,10 @@ def get(auth, bid: str, path: str):
 
 @rt("/delete/{bid:str}")
 def get(auth, bid: str):
-    "Confirm delete of book; must be empty."
+    "Confirm delete of book."
     if not bid:
         return error("no book id provided", 400)
-    book = get_book(bid)
+    book = utils.get_book(bid)
     if len(book.items) != 0:
         return error("cannot delete non-empty book")
     return (
@@ -807,6 +768,7 @@ def get(auth, bid: str):
         components.header(book=book, title=book.title),
         Main(
             H3(Tx("Delete"), "?"),
+            P(Mark(components.metadata(book))),
             Form(Button(Tx("Confirm")), action=f"/delete/{bid}", method="post"),
             cls="container",
         ),
@@ -815,25 +777,13 @@ def get(auth, bid: str):
 
 @rt("/delete/{bid:str}")
 def post(auth, bid: str):
-    "Delete the book; must be empty."
+    "Delete the book."
     if not bid:
         return error("no book id provided", 400)
-    book = get_book(bid)
+    book = utils.get_book(bid)
     if len(book.items) != 0:
         return error("cannot delete non-empty book")
-    os.remove(book.absfilepath)
-    os.rmdir(book.abspath)
-    books.pop(book.name)
-    return RedirectResponse("/", status_code=303)
-
-
-@rt("/erase/{bid:str}")
-def get(auth, bid: str):
-    "Delete of book, regardless of its state. There is no link to this resouce."
-    if not bid:
-        return error("no book id provided", 400)
-    book = get_book(bid)
-    shutil.rmtree(book.abspath)
+    utils.delete_book(book)
     return RedirectResponse("/", status_code=303)
 
 
@@ -842,7 +792,7 @@ def get(auth, bid: str, path: str):
     "Confirm delete of the text or section; section must be empty."
     if not bid:
         return error("no book id provided", 400)
-    book = get_book(bid)
+    book = utils.get_book(bid)
     item = book[path]
     if item.is_section and len(item.items) != 0:
         return error("cannot delete non-empty section")
@@ -862,7 +812,7 @@ def post(auth, bid: str, path: str):
     "Delete the text or section; section must be empty."
     if not bid:
         return error("no book id provided", 400)
-    book = get_book(bid)
+    book = utils.get_book(bid)
     item = book[path]
     try:
         book.delete(item)
@@ -876,7 +826,7 @@ def get(auth, bid: str, path: str):
     "Convert to section containing a text with this text."
     if not bid:
         return error("no book id provided", 400)
-    book = get_book(bid)
+    book = utils.get_book(bid)
     text = book[path]
     assert text.is_text
     return (
@@ -897,7 +847,7 @@ def post(auth, bid: str, path: str):
     "Convert to section containing a text with this text."
     if not bid:
         return error("no book id provided", 400)
-    book = get_book(bid)
+    book = utils.get_book(bid)
     text = book[path]
     assert text.is_text
     section = text.to_section()
@@ -911,7 +861,7 @@ def get(auth, bid: str, path: str):
     "Create a new text in the section."
     if not bid:
         return error("no book id provided", 400)
-    book = get_book(bid)
+    book = utils.get_book(bid)
     assert path == "" or book[path].is_section
     title = f'{Tx("Create")} {Tx("text")}'
     return (
@@ -937,7 +887,7 @@ def post(auth, bid: str, path: str, title: str = None):
     "Create a new text in the section."
     if not bid:
         return error("no book id provided", 400)
-    book = get_book(bid)
+    book = utils.get_book(bid)
     if path == "":
         parent = None
     else:
@@ -953,7 +903,7 @@ def get(auth, bid: str, path: str):
     "Create a new section in the section."
     if not bid:
         return error("no book id provided", 400)
-    book = get_book(bid)
+    book = utils.get_book(bid)
     assert path == "" or book[path].is_section
     title = f'{Tx("Create")} {Tx("section")}'
     return (
@@ -979,7 +929,7 @@ def post(auth, bid: str, path: str, title: str = None):
     "Create a new section in the section."
     if not bid:
         return error("no book id provided", 400)
-    book = get_book(bid)
+    book = utils.get_book(bid)
     if path == "":
         parent = None
     else:
@@ -995,7 +945,7 @@ def get(auth, bid: str):
     "Title page."
     if not bid:
         return error("no book id provided", 400)
-    book = get_book(bid)
+    book = utils.get_book(bid)
     segments = [H1(book.title)]
     if book.subtitle:
         segments.append(H2(book.subtitle))
@@ -1023,17 +973,15 @@ def get(auth, bid: str):
     "Page listing the indexed terms."
     if not bid:
         return error("no book id provided", 400)
-    book = get_book(bid)
+    book = utils.get_book(bid)
     items = []
     for key, texts in sorted(book.indexed.items(), key=lambda tu: tu[0].lower()):
-        links = []
+        refs = []
         for text in sorted(texts, key=lambda t: t.ordinal):
-            if links:
-                links.append(NotStr(",&nbsp; "))
-            links.append(
-                A(text.fulltitle, cls="secondary", href=f"/book/{bid}/{text.path}")
+            refs.append(
+                Li(A(text.fulltitle, cls="secondary", href=f"/book/{bid}/{text.path}"))
             )
-        items.append(Li(key, Br(), Small(*links)))
+        items.append(Li(key, Small(Ul(*refs))))
     return (
         Title(Tx("Index")),
         components.header(book=book, title=Tx("Index")),
@@ -1046,7 +994,7 @@ def get(auth, bid: str):
     "Page listing each status and texts in it."
     if not bid:
         return error("no book id provided", 400)
-    book = get_book(bid)
+    book = utils.get_book(bid)
     rows = [Tr(Th(Tx("Status"), Th(Tx("Texts"))))]
     for status in constants.STATUSES:
         texts = []
@@ -1081,7 +1029,7 @@ def get(auth, bid: str, path: str):
 
 def get_docx(bid, path=None):
     "Get the parameters for downloading the DOCX file."
-    book = get_book(bid)
+    book = utils.get_book(bid)
     if path:
         item = book[path]
     else:
@@ -1195,7 +1143,7 @@ def post(
     "Actually download the DOCX file of the book."
     if not bid:
         return error("no book id provided", 400)
-    book = get_book(bid)
+    book = utils.get_book(bid)
     if path:
         path = urllib.parse.unquote(path)
         item = book[path]
@@ -1212,7 +1160,7 @@ def post(
         filename = book.title + ".docx"
     else:
         filename = item.title + ".docx"
-    creator = docx_creator.Creator(book, get_references(), item=item)
+    creator = docx_creator.Creator(book, utils.get_references(), item=item)
     output = creator.create()
     return Response(
         content=output.getvalue(),
@@ -1226,7 +1174,7 @@ def pdf(auth, bid: str):
     "Get the parameters for downloading PDF file of the whole book."
     if not bid:
         return error("no book id provided", 400)
-    book = get_book(bid)
+    book = utils.get_book(bid)
     settings = book.frontmatter.setdefault("pdf", {})
     title_page_metadata = settings.get("title_page_metadata", True)
     page_break_level = settings.get("page_break_level", 1)
@@ -1335,7 +1283,7 @@ def post(
     "Actually download the PDF file of the book."
     if not bid:
         return error("no book id provided", 400)
-    book = get_book(bid)
+    book = utils.get_book(bid)
     settings = book.frontmatter.setdefault("pdf", {})
     settings["title_page_metadata"] = title_page_metadata
     settings["page_break_level"] = page_break_level
@@ -1345,7 +1293,7 @@ def post(
     settings["indexed_xref"] = indexed_xref
     book.write()
     filename = book.title + ".pdf"
-    creator = pdf_creator.Creator(book, get_references())
+    creator = pdf_creator.Creator(book, utils.get_references())
     output = creator.create()
     return Response(
         content=output.getvalue(),
@@ -1359,7 +1307,7 @@ def get(auth, bid: str):
     "Download a gzipped tar file of the book."
     if not bid:
         return error("no book id provided", 400)
-    book = get_book(bid)
+    book = utils.get_book(bid)
     filename = f"mdbook_{book.name}_{utils.timestr(safe=True)}.tgz"
     output = book.get_archive()
     return Response(
@@ -1375,10 +1323,10 @@ def get(auth, bid: str):
     if not bid:
         return error("no book id provided", 400)
     try:
-        book = get_book(bid, refresh=True)
+        book = utils.get_book(bid, refresh=True)
     except KeyError as message:
         if bid == constants.REFERENCES_DIR:
-            book = get_references()
+            book = utils.get_references()
         else:
             return error(message, 404)
     result = dict(now=utils.timestr(localtime=False, display=False))
@@ -1516,7 +1464,7 @@ def get_state():
         book = Book(dirpath, index_only=True)
         books[name] = dict(
             modified=utils.timestr(filepath=dirpath, localtime=False, display=False),
-            n_characters=book.frontmatter["n_characters"],
+            sum_characters=book.frontmatter["sum_characters"],
             digest=book.frontmatter["digest"]
         )
     return dict(type="site",
@@ -1545,10 +1493,10 @@ def get(auth):
                 Tr(Th(bid, scope="row"),
                    Td(utils.tolocaltime(rbook["modified"]),
                       Br(),
-                      f'{utils.thousands(rbook["n_characters"])} {Tx("characters")}'),
+                      f'{utils.thousands(rbook["sum_characters"])} {Tx("characters")}'),
                    Td(utils.tolocaltime(lbook["modified"]),
                       Br(),
-                      f'{utils.thousands(lbook["n_characters"])} {Tx("characters")}'),
+                      f'{utils.thousands(lbook["sum_characters"])} {Tx("characters")}'),
                    Td(action),
                 ),
             )
@@ -1557,7 +1505,7 @@ def get(auth):
                 Tr(Th(bid, scope="row"),
                    Td(utils.tolocaltime(rbook["modified"]),
                       Br(),
-                      f'{utils.thousands(rbook["n_characters"])} {Tx("characters")}'),
+                      f'{utils.thousands(rbook["sum_characters"])} {Tx("characters")}'),
                    Td("-"),
                    Td("?"),
                    )
@@ -1568,7 +1516,7 @@ def get(auth):
                Td("-"),
                Td(utils.tolocaltime(lbook["modified"]),
                   Br(),
-                  f'{utils.thousands(lbook["n_characters"])} {Tx("characters")}'),
+                  f'{utils.thousands(lbook["sum_characters"])} {Tx("characters")}'),
                ),
         )
     return (
@@ -1599,11 +1547,11 @@ def get(auth, bid:str):
     except ValueError as message:
         return error(message, 500)
     try:
-        book = get_book(bid, refresh=True)
+        book = utils.get_book(bid, refresh=True)
         state = book.state
     except KeyError:
         if bid == constants.REFERENCES_DIR:
-            book = get_references(refresh=True)
+            book = utils.get_references(refresh=True)
             state = book.state
         else:
             state = {}

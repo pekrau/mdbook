@@ -15,11 +15,11 @@ NAV_STYLE_TEMPLATE = "outline-color: {color}; outline-width:8px; outline-style:s
 
 def metadata(item):
     "Display status, n words and n characters."
-    return Small("; ".join(
+    return "; ".join(
         [Tx(item.type),
          Tx(repr(item.status)),
          f'{utils.thousands(item.n_words)} {Tx("words")}',
-         f'{utils.thousands(item.n_characters)} {Tx("characters")}']))
+         f'{utils.thousands(item.n_characters)} {Tx("characters")}'])
 
 
 def header(book=None, item=None, title=None, actions=None):
@@ -49,7 +49,7 @@ def header(book=None, item=None, title=None, actions=None):
                 Li(
                     Strong(item.fulltitle),
                     Br(),
-                    metadata(item),
+                    Small(metadata(item)),
                 )
             )
         )
@@ -129,7 +129,7 @@ def toc(book, items, show_arrows=False):
                     href=f"/book/{book.name}/{item.path}",
                 ),
                 NotStr("&nbsp;&nbsp;&nbsp;"),
-                metadata(item),
+                Small(metadata(item)),
                 *arrows,
             )
         )
