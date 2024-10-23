@@ -145,6 +145,13 @@ def get_state_remote(bid=None):
     else:
         return {}
 
+def tar_filter(tarinfo):
+    "Filter out valid files for inclusion in gzipped tar files."
+    if tarinfo.isdir() or (tarinfo.isfile() and tarinfo.name.endswith(constants.MARKDOWN_EXT)):
+        return tarinfo
+    else:
+        return None
+
 
 class Translator:
     "Simple translation of words and phrases from one language to another."

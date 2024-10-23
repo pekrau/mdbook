@@ -229,11 +229,8 @@ def get(auth):
 @rt("/references/tgz")
 def get():
     "Download a gzipped tar file of all references."
-    output = io.BytesIO()
-    with tarfile.open(fileobj=output, mode="w:gz") as archivefile:
-        dirpath = os.path.join(os.environ["MDBOOK_DIR"], constants.REFERENCES_DIR)
-        for name in os.listdir(dirpath):
-            archivefile.add(os.path.join(dirpath, name), arcname=name)
+    book = utils.get_references(refresh=True)
+    output = book.get_tgzfile()
     filename = f"mdbook_references_{utils.timestr(safe=True)}.tgz"
     return Response(
         content=output.getvalue(),
@@ -1307,9 +1304,9 @@ def get(auth, bid: str):
     "Download a gzipped tar file of the book."
     if not bid:
         return error("no book id provided", 400)
-    book = utils.get_book(bid)
+    book = utils.get_book(bid, refresh=True)
     filename = f"mdbook_{book.name}_{utils.timestr(safe=True)}.tgz"
-    output = book.get_archive()
+    output = book.get_tgzfile()
     return Response(
         content=output.getvalue(),
         media_type=constants.GZIP_MIMETYPE,
@@ -1437,10 +1434,10 @@ def get(sess):
 def get(auth):
     "Download a gzipped tar file of all books."
     output = io.BytesIO()
-    with tarfile.open(fileobj=output, mode="w:gz") as archivefile:
+    with tarfile.open(fileobj=output, mode="w:gz") as tgzfile:
         for name in os.listdir(os.environ["MDBOOK_DIR"]):
-            archivefile.add(
-                os.path.join(os.environ["MDBOOK_DIR"], name), arcname=name, recursive=True
+            tgzfile.add(
+                os.path.join(os.environ["MDBOOK_DIR"], name), arcname=name, recursive=True, filter=utils.tar_filter
             )
     filename = f"mdbook_{utils.timestr(safe=True)}.tgz"
     return Response(

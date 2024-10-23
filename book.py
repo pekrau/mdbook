@@ -418,15 +418,15 @@ class Book:
         item.parent.items.remove(item)
         self.write()
 
-    def get_archive(self):
+    def get_tgzfile(self):
         """Write all files for this book to a gzipped tar file.
         Return the BytesIO instance containing the tgz file.
         """
         output = io.BytesIO()
-        with tarfile.open(fileobj=output, mode="w:gz") as archivefile:
-            archivefile.add(self.absfilepath, arcname="index.md")
+        with tarfile.open(fileobj=output, mode="w:gz") as tgzfile:
+            tgzfile.add(self.absfilepath, arcname="index.md")
             for item in self.items:
-                archivefile.add(item.abspath, arcname=item.filename(), recursive=True)
+                tgzfile.add(item.abspath, arcname=item.filename(), recursive=True)
         return output
 
     def check_integrity(self):
