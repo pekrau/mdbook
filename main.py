@@ -1523,7 +1523,7 @@ def get(auth):
             Table(
                 Thead(
                     Tr(Th(),
-                       Th(os.environ["MBOOK_UPDATE_SITE"], scope="col"),
+                       Th(os.environ["MDBOOK_UPDATE_SITE"], scope="col"),
                        Th(Tx("Here"), scope="col"),
                        Th(scope="col"),
                     ),
@@ -1559,7 +1559,7 @@ def get(auth, bid:str):
         Main(
             Table(
                 Thead(
-                    Tr(Th(os.environ["MBOOK_UPDATE_SITE"], scope="col"),
+                    Tr(Th(os.environ["MDBOOK_UPDATE_SITE"], scope="col"),
                        Th(Tx("Here"), colspan=2, scope="col"),
                     ),
                     Tr(Th(Tx("Title"), scope="col"),

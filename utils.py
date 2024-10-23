@@ -130,10 +130,9 @@ def get_state_remote(bid=None):
         raise ValueError("remote update site undefined; missing MDBOOK_UPDATE_SITE")
     if "MDBOOK_UPDATE_APIKEY" not in os.environ:
         raise ValueError("remote update apikey undefined; missing MDBOOK_UPDATE_APIKEY")
-    url = os.environ["MDBOOK_UPDATE_SITE"].rstrip("/")
+    url = os.path.join(os.environ["MDBOOK_UPDATE_SITE"].rstrip("/"), "state")
     if bid:
         url += "/" + bid
-    url += "/state"
     headers = dict(apikey=os.environ["MDBOOK_UPDATE_APIKEY"])
     response = requests.get(url, headers=headers)
     if response.status_code == 404:
