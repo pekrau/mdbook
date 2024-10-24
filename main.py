@@ -1619,13 +1619,16 @@ def get(auth, bid: str):
             state = book.state
         else:
             state = {}
-    rows = item_diffs(remote["items"], state.get("items", []))
+    rurl = f'{os.environ["MDBOOK_UPDATE_SITE"]}/book/{bid}'
+    lurl = f"/book/{bid}"
+    rows = item_diffs(remote["items"], rurl, state.get("items", []), lurl)
     rows.append(Tr(
+        Td(),
         Td(Form(
             Button(f'{Tx("Update")} {os.environ["MDBOOK_UPDATE_SITE"]}'),
             action=f"/push/{bid}",
             method="post"),
-           colspan=2),
+           colspan=1),
         Td(Form(
             Button(f'{Tx("Update")} {Tx("here")}'),
             action=f"/pull/{bid}",
@@ -1633,7 +1636,6 @@ def get(auth, bid: str):
            colspan=3)
     )
                 )
-    remote_url = f'{os.environ["MDBOOK_UPDATE_SITE"]}/{bid}'
     return (
         Title(f'{Tx("Update")} {bid}'),
         components.header(title=f'{Tx("Update")} {bid}'),
@@ -1641,15 +1643,16 @@ def get(auth, bid: str):
             Table(
                 Thead(
                     Tr(
-                        Th(A(remote_url, href=remote_url), colspan=2, scope="col"),
-                        Th(A(bid, href=f"/book/{bid}"), colspan=3, scope="col"),
+                        Th(),
+                        Th(A(rurl, href=rurl), colspan=1, scope="col"),
+                        Th(A(bid, href=lurl), colspan=3, scope="col"),
                     ),
                     Tr(
                         Th(Tx("Title"), scope="col"),
-                        Th(Tx("Exists"), scope="col"),
+                        Th(),
                         Th(Tx("Age"), scope="col"),
                         Th(Tx("Size"), scope="col"),
-                        Th(Tx("Exists"), scope="col"),
+                        Th(),
                     ),
                 ),
                 Tbody(*rows),
@@ -1659,33 +1662,40 @@ def get(auth, bid: str):
     )
 
 
-def item_diffs(ritems, litems, level=0):
+def item_diffs(ritems, rurl, litems, lurl):
     "Return list of rows specifying differences between remote and local items."
     result = []
     for ritem in ritems:
+        riurl = f'{rurl}/{ritem["name"]}'
         for pos, litem in enumerate(list(litems)):
             if litem["title"] != ritem["title"]:
                 continue
-            row = row_diff(ritem, litem, level)
+            liurl = f'{lurl}/{litem["name"]}'
+            row = row_diff(ritem, riurl, litem, liurl)
             if row:
                 result.append(row)
             litems.pop(pos)
             try:
-                result.extend(item_diffs(ritem["items"], litem["items"], level+1))
+                result.extend(item_diffs(ritem["items"], 
+                                         riurl,
+                                         litem["items"],
+                                         liurl))
             except KeyError as message:
-                print(message)
+                pass
             break
         else:
-            result.append(row_diff(ritem, None, level))
+            result.append(row_diff(ritem, riurl, None, None))
     for litem in litems:
-        result.append(row_diff(None, litem, level))
+        result.append(row_diff(None, None, litem, liurl))
     return result
 
-def row_diff(ritem, litem, level):
+def row_diff(ritem, riurl, litem, liurl):
     if ritem is None:
-        return Tr(Td(litem["title"]), Td(Tx("No")), Td("-"), Td("-"), Td(Tx("Yes")))
+        return Tr(Td(Strong(litem["title"])), Td("-"), Td("-"), Td("-"),
+                  Td(A(liurl, href=liurl)))
     elif litem is None:
-        return Tr(Td(ritem["title"]), Td(Tx("Yes")), Td("-"), Td("-"), Td(Tx("No")))
+        return Tr(Td(Strong(ritem["title"])),
+                  Td(A(riurl, href=riurl)), Td("-"), Td("-"), Td("-"))
     if litem["digest"] == ritem["digest"]:
         return None
     if litem["modified"] < ritem["modified"]:
@@ -1700,8 +1710,9 @@ def row_diff(ritem, litem, level):
         size = "Larger"
     else:
         size = "Same"
-    return Tr(Td(ritem["title"]), Td(), Td(Tx(age)), Td(Tx(size)), Td())
-    
+    return Tr(Td(Strong(ritem["title"])),
+              Td(A(riurl, href=riurl)), Td(Tx(age)), Td(Tx(size)), Td(A(liurl, href=liurl)))
+
 
 @rt("/pull/{bid:str}")
 def post(auth, bid: str):
