@@ -12,7 +12,7 @@ def fetch_and_save(url, apikey, dirpath):
     "Fetch the gzipped tar file and save to local disk."
 
     print(f"fetching mdbook.tgz from {url}")
-    response = requests.get(url, headers=dict(apikey=apikey), stream=True)
+    response = requests.get(url, headers=dict(apikey=apikey))
 
     if response.status_code != 200:
         raise ValueError(f"invalid status code for response: {response.status_code}")
@@ -26,7 +26,7 @@ def fetch_and_save(url, apikey, dirpath):
 
     filepath = os.path.join(dirpath, parts[1])
     with open(filepath, "wb") as outfile:
-        outfile.write(response.raw.read())
+        outfile.write(response.content)
     print(f"wrote mdbook.tgz to {filepath}")
 
 

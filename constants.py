@@ -3,14 +3,14 @@
 import functools
 import os.path
 
-VERSION = (4, 1, 4)
+VERSION = (5, 0, 0)
 __version__ = ".".join([str(n) for n in VERSION])
 
 
 LANGUAGE_CODES = ("sv-SE", "en-GB", "en-US")
 
 MARKDOWN_EXT = ".md"
-REFERENCES_DIR = "references"
+REFERENCES = "references"
 SOURCE_DIRPATH = os.path.dirname(__file__)
 FONT_DIRPATH = os.path.join(SOURCE_DIRPATH, "freefont")
 TRANSLATIONS_FILEPATH = os.path.join(SOURCE_DIRPATH, "translations.csv")

@@ -197,10 +197,6 @@ class Book:
         "Return the absolute file path of the 'index.md' file."
         return os.path.join(self.abspath, "index.md")
 
-    # @property
-    # def is_text(self):
-    #     return False
-
     @property
     def title(self):
         return self.frontmatter.get("title") or self.name
@@ -426,15 +422,15 @@ class Book:
         self.write()
 
     def get_tgzfile(self):
-        """Write all files for this book to a gzipped tar file.
+        """Write all files for the items in this book to a gzipped tar file.
         Return the BytesIO instance containing the tgz file.
         """
-        output = io.BytesIO()
-        with tarfile.open(fileobj=output, mode="w:gz") as tgzfile:
+        result = io.BytesIO()
+        with tarfile.open(fileobj=result, mode="w:gz") as tgzfile:
             tgzfile.add(self.absfilepath, arcname="index.md")
             for item in self.items:
                 tgzfile.add(item.abspath, arcname=item.filename(), recursive=True)
-        return output
+        return result
 
     def check_integrity(self):
         assert os.path.exists(self.absfilepath)

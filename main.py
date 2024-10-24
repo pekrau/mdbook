@@ -1,10 +1,11 @@
 "Web view and edit of Markdown books."
 
 import io
+from http import HTTPStatus
 import os
+import shutil
 import string
 import sys
-import tarfile
 import urllib
 
 import fasthtml
@@ -12,6 +13,7 @@ from fasthtml.common import *
 import bibtexparser
 import marko
 import psutil
+import requests
 import yaml
 
 import components
@@ -24,11 +26,11 @@ from utils import Tx
 from book import Book
 
 
-def error(message, status_code=409):
-    return Response(content=str(message), status_code=409)
+def error(message, status_code):
+    return Response(content=str(message), status_code=status_code)
 
 
-login_redir = RedirectResponse("/login", status_code=303)
+login_redir = RedirectResponse("/login", status_code=HTTPStatus.SEE_OTHER)
 
 
 def before(req, sess):
@@ -37,7 +39,7 @@ def before(req, sess):
         if req.headers["apikey"] == os.environ["MDBOOK_APIKEY"]:
             auth = req.scope["auth"] = os.environ["MDBOOK_USER"]
         else:
-            return error("invalid apikey", 403)
+            return error("invalid apikey", HTTPStatus.FORBIDDEN)
     else:
         auth = req.scope["auth"] = sess.get("auth", None)
     if not auth:
@@ -64,14 +66,15 @@ def get(auth):
     # Check that site is properly configured.
     for envvar in ["MDBOOK_DIR", "MDBOOK_USER", "MDBOOK_PASSWORD"]:
         if os.environ.get(envvar) is None:
-            return error(f"environment variable {envvar} has not been defined", 500)
+            return error(f"environment variable {envvar} has not been defined",
+                         HTTPStatus.INTERNAL_SERVER_ERROR)
 
     books = []
     for bid in os.listdir(os.environ["MDBOOK_DIR"]):
         dirpath = os.path.join(os.environ["MDBOOK_DIR"], bid)
         if not os.path.isdir(dirpath):
             continue
-        if bid == constants.REFERENCES_DIR:
+        if bid == constants.REFERENCES:
             continue
         try:
             book = Book(dirpath, index_only=True)
@@ -107,6 +110,7 @@ def get(auth):
     ]
     if "MDBOOK_UPDATE_SITE" in os.environ:
         actions.append(A(Tx("Update"), href="/update"))
+
     return (
         Title(Tx("Books")),
         components.header(title=Tx("Books"), actions=actions, state_url="/state"),
@@ -216,15 +220,19 @@ def get(auth):
         items.append(P(*parts, id=ref["name"]))
 
     title = f'{Tx("References")} ({len(references.items)})'
+    actions = [
+        A(Tx("Add BibTex"), href="/bibtex"),
+        A(f'{Tx("Download")} {Tx("references")} TGZ', href="/references/tgz"),
+        A(f'{Tx("Upload")} {Tx("references")} TGZ', href="/references/upload"),
+    ]
+    if "MDBOOK_UPDATE_SITE" in os.environ:
+        actions.append(A(Tx("Update"), href="/update/references"))
+
     return (
         Title(title),
         components.header(
             title=title,
-            actions=[
-                A(Tx("Add BibTex"), href="/bibtex"),
-                A(f'{Tx("Download")} {Tx("references")} TGZ', href="/references/tgz"),
-                A(f'{Tx("Upload")} {Tx("references")} TGZ', href="/references/upload"),
-            ],
+            actions=actions,
             state_url="/state/references",
         ),
         Main(*items, cls="container"),
@@ -237,6 +245,7 @@ def get(auth):
     book = utils.get_references(refresh=True)
     output = book.get_tgzfile()
     filename = f"mdbook_references_{utils.timestr(safe=True)}.tgz"
+
     return Response(
         content=output.getvalue(),
         media_type=constants.GZIP_MIMETYPE,
@@ -271,25 +280,15 @@ async def post(auth, tgzfile: UploadFile):
     "Actually add or replace references by contents of the uploaded file."
     content = await tgzfile.read()
     if not content:
-        return error("empty TGZ file", 400)
+        return error("empty TGZ file", HTTPStatus.BAD_REQUEST)
     try:
-        tf = tarfile.open(fileobj=io.BytesIO(content), mode="r:gz")
-        names = tf.getnames()
-        for name in names:
-            if not name.endswith(".md") or os.path.basename(name) != name:
-                return error(
-                    "TGZ file must contain only *.md files; no directories", 400
-                )
-        for name in names:
-            if name == "index.md":
-                continue
-            tf.extract(
-                name,
-                path=os.path.join(os.environ["MDBOOK_DIR"], constants.REFERENCES_DIR),
-            )
-    except (tarfile.TarError, ValueError) as msg:
-        return error(f"error reading TGZ file: {msg}")
-    return RedirectResponse("/references", status_code=303)
+        utils.unpack_tgzfile(os.path.join(os.environ["MDBOOK_DIR"], constants.REFERENCES),
+                             content,
+                             references=True)
+    except ValueError as message:
+        return error(f"error reading TGZ file: {message}", HTTPStatus.BAD_REQUEST)
+
+    return RedirectResponse("/references", status_code=HTTPStatus.SEE_OTHER)
 
 
 @rt("/reference/{refid:str}")
@@ -298,7 +297,7 @@ def get(auth, refid: str):
     try:
         ref = utils.get_references()[refid.replace("_", " ")]
     except KeyError:
-        return error("no such reference", 404)
+        return error("no such reference", HTTPStatus.NOT_FOUND)
     rows = [
         Tr(
             Td(Tx("Reference")),
@@ -348,6 +347,7 @@ def get(auth, refid: str):
         rows.append(Tr(Td("DOI"), Td(A(ref["doi"], href=url))))
     if ref.get("url"):
         rows.append(Tr(Td("Url"), Td(A(ref["url"], href=ref["url"]))))
+
     return (
         Title(refid),
         Script(src="/clipboard.min.js"),
@@ -449,6 +449,7 @@ def post(auth, data: str):
         references.items.sort(key=lambda r: r["id"].lower())
         references.write()
         result.append(reference)
+
     return (
         Title("Added reference(s)"),
         components.header(title="Added reference(s)"),
@@ -488,37 +489,42 @@ def get(auth):
 @rt("/book")
 async def post(auth, title: str, tgzfile: UploadFile):
     "Actually create and/or upload book using a gzipped tar file."
+    if not title:
+        return error("book title may not be empty", HTTPStatus.BAD_REQUEST)
+    if title.startswith("_"):
+        return error("book title may not start with an underscore '_'", HTTPStatus.BAD_REQUEST)
     bid = utils.nameify(title)
+    if not bid:
+        return error("book bid may not be empty", HTTPStatus.BAD_REQUEST)
     dirpath = os.path.join(os.environ["MDBOOK_DIR"], bid)
     if os.path.exists(dirpath):
-        return error(f"book {bid} already exists", 409)
+        return error(f"book {bid} already exists", HTTPStatus.CONFLICT)
     content = await tgzfile.read()
     if content:
         try:
-            tf = tarfile.open(fileobj=io.BytesIO(content), mode="r:gz")
-            if "index.md" not in tf.getnames():
-                raise ValueError("no 'index.md' file in TGZ file; not from mdbook?")
-            tf.extractall(path=dirpath)
-        except (tarfile.TarError, ValueError) as msg:
-            return error(f"error reading TGZ file: {msg}")
+            utils.unpack_tgzfile(dirpath, content)
+        except ValueError as message:
+            return error(f"error reading TGZ file: {message}", HTTPStatus.BAD_REQUEST)
+    # Just create the directory; no content.
     else:
         os.mkdir(dirpath)
     book = Book(dirpath)
     book.frontmatter["title"] = title or book.title
     book.frontmatter["owner"] = auth
     book.write()
-    return RedirectResponse(f"/book/{book.name}", status_code=303)
+
+    return RedirectResponse(f"/book/{book.name}", status_code=HTTPStatus.SEE_OTHER)
 
 
 @rt("/book/{bid:str}")
 def get(auth, bid: str):
     "Book page; list of sections and texts."
     if not bid:
-        return error("no book id provided", 400)
+        return error("no book name provided", HTTPStatus.BAD_REQUEST)
     try:
         book = utils.get_book(bid, refresh=True)
     except KeyError as message:
-        return error(message, 404)
+        return error(message, HTTPStatus.NOT_FOUND)
     book.write()  # Updates the 'index.md' file, if necessary.
     actions = [
         A(f'{Tx("Edit")}', href=f"/edit/{bid}"),
@@ -527,12 +533,14 @@ def get(auth, bid: str):
         A(f'{Tx("Download")} DOCX', href=f"/docx/{bid}"),
         A(f'{Tx("Download")} PDF', href=f"/pdf/{bid}"),
         A(f'{Tx("Download")} TGZ', href=f"/tgz/{bid}"),
+        A(f'{Tx("Update")}', href=f"/update/{bid}"),
         A(f'{Tx("Delete")}', href=f"/delete/{bid}"),
     ]
     if len(book.items) == 0:
         content = H3(A(Tx("Article"), href=f"/title/{bid}"))
     else:
         content = components.toc(book, book.items, show_arrows=True)
+
     return (
         Title(book.title),
         components.header(book=book, actions=actions, state_url=f"/state/{bid}"),
@@ -545,7 +553,7 @@ def get(auth, bid: str):
 def get(auth, bid: str, path: str):
     "View the book text or section."
     if not bid:
-        return error("no book id provided", 400)
+        return error("no book id provided", HTTPStatus.BAD_REQUEST)
     book = utils.get_book(bid)
     item = book[path]
     actions = [A(Tx("Edit"), href=f"/edit/{bid}/{path}")]
@@ -564,6 +572,7 @@ def get(auth, bid: str, path: str):
         if len(item.items) == 0:
             actions.append(A(f'{Tx("Delete")}', href=f"/delete/{bid}/{path}"))
         segments = [components.toc(book, item.items)]
+
     return (
         Title(item.title),
         components.header(book=book, item=item, actions=actions),
@@ -581,7 +590,7 @@ def get(auth, bid: str, path: str):
 def get(auth, bid: str):
     "Page for editing the book data."
     if not bid:
-        return error("no book id provided", 400)
+        return error("no book id provided", HTTPStatus.BAD_REQUEST)
     book = utils.get_book(bid)
     fields = [
         Fieldset(
@@ -635,6 +644,7 @@ def get(auth, bid: str):
             ),
         )
     )
+
     return (
         Title(f'{Tx("Edit")} {book.title}'),
         components.header(book=book, title=f'{Tx("Edit")} {book.title}'),
@@ -658,7 +668,7 @@ def post(
 ):
     "Actually edit the book data."
     if not bid:
-        return error("no book id provided", 400)
+        return error("no book id provided", HTTPStatus.BAD_REQUEST)
     book = utils.get_book(bid)
     book.frontmatter["title"] = title
     book.frontmatter["subtitle"] = subtitle
@@ -672,14 +682,15 @@ def post(
     else:
         book.frontmatter.pop("language", None)
     book.write(content=content, force=True)
-    return RedirectResponse(f"/title/{bid}", status_code=303)
+
+    return RedirectResponse(f"/title/{bid}", status_code=HTTPStatus.SEE_OTHER)
 
 
 @rt("/edit/{bid:str}/{path:path}")
 def get(auth, bid: str, path: str):
     "Page for editing the item (section or text)."
     if not bid:
-        return error("no book id provided", 400)
+        return error("no book id provided", HTTPStatus.BAD_REQUEST)
     book = utils.get_book(bid)
     item = book[path]
     title_field = Fieldset(
@@ -715,6 +726,7 @@ def get(auth, bid: str, path: str):
         )
     )
     fields.append(Button("Save"))
+
     return (
         Title(f'{Tx("Edit")} {item.fulltitle}'),
         components.header(book=book, title=f'{Tx("Edit")} {item.fulltitle}'),
@@ -729,7 +741,7 @@ def get(auth, bid: str, path: str):
 def post(auth, bid: str, path: str, title: str, content: str, status: str = None):
     "Actually edit the item (section or text)."
     if not bid:
-        return error("no book id provided", 400)
+        return error("no book id provided", HTTPStatus.BAD_REQUEST)
     book = utils.get_book(bid)
     item = book[path]
     item.title = title
@@ -739,39 +751,43 @@ def post(auth, bid: str, path: str, title: str, content: str, status: str = None
             item.status = status
     item.write(content=content)
     book.write()
-    return RedirectResponse(f"/book/{bid}/{item.path}", status_code=303)
+
+    return RedirectResponse(f"/book/{bid}/{item.path}", status_code=HTTPStatus.SEE_OTHER)
 
 
 @rt("/up/{bid:str}/{path:path}")
 def get(auth, bid: str, path: str):
     "Move item up in its sibling list."
     if not bid:
-        return error("no book id provided", 400)
+        return error("no book id provided", HTTPStatus.BAD_REQUEST)
     book = utils.get_book(bid)
     book[path].up()
     book.write()
-    return RedirectResponse(f"/book/{bid}", status_code=303)
+
+    return RedirectResponse(f"/book/{bid}", status_code=HTTPStatus.SEE_OTHER)
 
 
 @rt("/down/{bid:str}/{path:path}")
 def get(auth, bid: str, path: str):
     "Move item down in its sibling list."
     if not bid:
-        return error("no book id provided", 400)
+        return error("no book id provided", HTTPStatus.BAD_REQUEST)
     book = utils.get_book(bid)
     book[path].down()
     book.write()
-    return RedirectResponse(f"/book/{bid}", status_code=303)
+
+    return RedirectResponse(f"/book/{bid}", status_code=HTTPStatus.SEE_OTHER)
 
 
 @rt("/delete/{bid:str}")
 def get(auth, bid: str):
     "Confirm delete of book."
     if not bid:
-        return error("no book id provided", 400)
+        return error("no book id provided", HTTPStatus.BAD_REQUEST)
     book = utils.get_book(bid)
     if len(book.items) != 0:
-        return error("cannot delete non-empty book")
+        return error("cannot delete non-empty book", HTTPStatus.CONFLICT)
+
     return (
         Title(book.title),
         components.header(book=book, title=book.title),
@@ -788,23 +804,25 @@ def get(auth, bid: str):
 def post(auth, bid: str):
     "Delete the book."
     if not bid:
-        return error("no book id provided", 400)
+        return error("no book id provided", HTTPStatus.BAD_REQUEST)
     book = utils.get_book(bid)
     if len(book.items) != 0:
-        return error("cannot delete non-empty book")
+        return error("cannot delete non-empty book", HTTPStatus.CONFLICT)
     utils.delete_book(book)
-    return RedirectResponse("/", status_code=303)
+
+    return RedirectResponse("/", status_code=HTTPStatus.SEE_OTHER)
 
 
 @rt("/delete/{bid:str}/{path:path}")
 def get(auth, bid: str, path: str):
     "Confirm delete of the text or section; section must be empty."
     if not bid:
-        return error("no book id provided", 400)
+        return error("no book id provided", HTTPStatus.BAD_REQUEST)
     book = utils.get_book(bid)
     item = book[path]
     if item.is_section and len(item.items) != 0:
-        return error("cannot delete non-empty section")
+        return error("cannot delete non-empty section", HTTPStatus.CONFLICT)
+
     return (
         Title(item.title),
         components.header(book=book, item=item, title=item.title),
@@ -820,24 +838,26 @@ def get(auth, bid: str, path: str):
 def post(auth, bid: str, path: str):
     "Delete the text or section; section must be empty."
     if not bid:
-        return error("no book id provided", 400)
+        return error("no book id provided", HTTPStatus.BAD_REQUEST)
     book = utils.get_book(bid)
     item = book[path]
     try:
         book.delete(item)
     except ValueError as message:
-        return error(message)
-    return RedirectResponse(f"/book/{bid}", status_code=303)
+        return error(message, HTTPStatus.CONFLICT)
+
+    return RedirectResponse(f"/book/{bid}", status_code=HTTPStatus.SEE_OTHER)
 
 
 @rt("/to_section/{bid:str}/{path:path}")
 def get(auth, bid: str, path: str):
     "Convert to section containing a text with this text."
     if not bid:
-        return error("no book id provided", 400)
+        return error("no book id provided", HTTPStatus.BAD_REQUEST)
     book = utils.get_book(bid)
     text = book[path]
     assert text.is_text
+
     return (
         Title(Tx("Convert to section")),
         components.header(book=book, title=Tx("Convert to section")),
@@ -855,24 +875,26 @@ def get(auth, bid: str, path: str):
 def post(auth, bid: str, path: str):
     "Convert to section containing a text with this text."
     if not bid:
-        return error("no book id provided", 400)
+        return error("no book id provided", HTTPStatus.BAD_REQUEST)
     book = utils.get_book(bid)
     text = book[path]
     assert text.is_text
     section = text.to_section()
     book.write()
     assert section.is_section
-    return RedirectResponse(f"/book/{bid}/{section.path}", status_code=303)
+
+    return RedirectResponse(f"/book/{bid}/{section.path}", status_code=HTTPStatus.SEE_OTHER)
 
 
 @rt("/text/{bid:str}/{path:path}")
 def get(auth, bid: str, path: str):
     "Create a new text in the section."
     if not bid:
-        return error("no book id provided", 400)
+        return error("no book id provided", HTTPStatus.BAD_REQUEST)
     book = utils.get_book(bid)
     assert path == "" or book[path].is_section
     title = f'{Tx("Create")} {Tx("text")}'
+
     return (
         Title(title),
         components.header(book=book, title=title),
@@ -895,7 +917,7 @@ def get(auth, bid: str, path: str):
 def post(auth, bid: str, path: str, title: str = None):
     "Create a new text in the section."
     if not bid:
-        return error("no book id provided", 400)
+        return error("no book id provided", HTTPStatus.BAD_REQUEST)
     book = utils.get_book(bid)
     if path == "":
         parent = None
@@ -904,17 +926,19 @@ def post(auth, bid: str, path: str, title: str = None):
         assert parent.is_section
     new = book.create_text(title, parent=parent)
     book.write()
-    return RedirectResponse(f"/edit/{bid}/{new.path}", status_code=303)
+
+    return RedirectResponse(f"/edit/{bid}/{new.path}", status_code=HTTPStatus.SEE_OTHER)
 
 
 @rt("/section/{bid:str}/{path:path}")
 def get(auth, bid: str, path: str):
     "Create a new section in the section."
     if not bid:
-        return error("no book id provided", 400)
+        return error("no book id provided", HTTPStatus.BAD_REQUEST)
     book = utils.get_book(bid)
     assert path == "" or book[path].is_section
     title = f'{Tx("Create")} {Tx("section")}'
+
     return (
         Title(title),
         components.header(book=book, title=title),
@@ -937,7 +961,7 @@ def get(auth, bid: str, path: str):
 def post(auth, bid: str, path: str, title: str = None):
     "Create a new section in the section."
     if not bid:
-        return error("no book id provided", 400)
+        return error("no book id provided", HTTPStatus.BAD_REQUEST)
     book = utils.get_book(bid)
     if path == "":
         parent = None
@@ -946,14 +970,15 @@ def post(auth, bid: str, path: str, title: str = None):
         assert parent.is_section
     new = book.create_section(title, parent=parent)
     book.write()
-    return RedirectResponse(f"/edit/{bid}/{new.path}", status_code=303)
+
+    return RedirectResponse(f"/edit/{bid}/{new.path}", status_code=HTTPStatus.SEE_OTHER)
 
 
 @rt("/title/{bid:str}")
 def get(auth, bid: str):
     "Title page."
     if not bid:
-        return error("no book id provided", 400)
+        return error("no book id provided", HTTPStatus.BAD_REQUEST)
     book = utils.get_book(bid)
     segments = [H1(book.title)]
     if book.subtitle:
@@ -961,6 +986,7 @@ def get(auth, bid: str):
     for author in book.authors:
         segments.append(H3(author))
     segments.append(NotStr(book.html))
+
     return (
         Title(Tx("Title")),
         components.header(
@@ -981,7 +1007,7 @@ def get(auth, bid: str):
 def get(auth, bid: str):
     "Page listing the indexed terms."
     if not bid:
-        return error("no book id provided", 400)
+        return error("no book id provided", HTTPStatus.BAD_REQUEST)
     book = utils.get_book(bid)
     items = []
     for key, texts in sorted(book.indexed.items(), key=lambda tu: tu[0].lower()):
@@ -991,6 +1017,7 @@ def get(auth, bid: str):
                 Li(A(text.fulltitle, cls="secondary", href=f"/book/{bid}/{text.path}"))
             )
         items.append(Li(key, Small(Ul(*refs))))
+
     return (
         Title(Tx("Index")),
         components.header(book=book, title=Tx("Index")),
@@ -1002,7 +1029,7 @@ def get(auth, bid: str):
 def get(auth, bid: str):
     "Page listing each status and texts in it."
     if not bid:
-        return error("no book id provided", 400)
+        return error("no book id provided", HTTPStatus.BAD_REQUEST)
     book = utils.get_book(bid)
     rows = [Tr(Th(Tx("Status"), Th(Tx("Texts"))))]
     for status in constants.STATUSES:
@@ -1013,6 +1040,7 @@ def get(auth, bid: str):
                     texts.append(Br())
                 texts.append(A(t.heading, href=f"/book/{bid}/{t.path}"))
         rows.append(Tr(Td(Tx(str(status)), valign="top"), Td(*texts)))
+
     return (
         Title(Tx("Status list")),
         components.header(book=book, title=Tx("Status list")),
@@ -1024,7 +1052,7 @@ def get(auth, bid: str):
 def get(auth, bid: str):
     "Download the DOCX for the whole book."
     if not bid:
-        return error("no book id provided", 400)
+        return error("no book id provided", HTTPStatus.BAD_REQUEST)
     return get_docx(bid)
 
 
@@ -1032,7 +1060,7 @@ def get(auth, bid: str):
 def get(auth, bid: str, path: str):
     "Download the DOCX for a section or text in the book."
     if not bid:
-        return error("no book id provided", 400)
+        return error("no book id provided", HTTPStatus.BAD_REQUEST)
     return get_docx(bid, path)
 
 
@@ -1131,6 +1159,7 @@ def get_docx(bid, path=None):
         title = book.title
     else:
         title = path
+
     return (
         Title(f'{Tx("Download")} DOCX:  {title}'),
         components.header(book=book, title=f'{Tx("Download")} DOCX: {title}'),
@@ -1151,7 +1180,7 @@ def post(
 ):
     "Actually download the DOCX file of the book."
     if not bid:
-        return error("no book id provided", 400)
+        return error("no book id provided", HTTPStatus.BAD_REQUEST)
     book = utils.get_book(bid)
     if path:
         path = urllib.parse.unquote(path)
@@ -1171,6 +1200,7 @@ def post(
         filename = item.title + ".docx"
     creator = docx_creator.Creator(book, utils.get_references(), item=item)
     output = creator.create()
+
     return Response(
         content=output.getvalue(),
         media_type=constants.DOCX_MIMETYPE,
@@ -1182,7 +1212,7 @@ def post(
 def pdf(auth, bid: str):
     "Get the parameters for downloading PDF file of the whole book."
     if not bid:
-        return error("no book id provided", 400)
+        return error("no book id provided", HTTPStatus.BAD_REQUEST)
     book = utils.get_book(bid)
     settings = book.frontmatter.setdefault("pdf", {})
     title_page_metadata = settings.get("title_page_metadata", True)
@@ -1291,7 +1321,7 @@ def post(
 ):
     "Actually download the PDF file of the book."
     if not bid:
-        return error("no book id provided", 400)
+        return error("no book id provided", HTTPStatus.BAD_REQUEST)
     book = utils.get_book(bid)
     settings = book.frontmatter.setdefault("pdf", {})
     settings["title_page_metadata"] = title_page_metadata
@@ -1304,6 +1334,7 @@ def post(
     filename = book.title + ".pdf"
     creator = pdf_creator.Creator(book, utils.get_references())
     output = creator.create()
+
     return Response(
         content=output.getvalue(),
         media_type=constants.PDF_MIMETYPE,
@@ -1315,10 +1346,11 @@ def post(
 def get(auth, bid: str):
     "Download a gzipped tar file of the book."
     if not bid:
-        return error("no book id provided", 400)
+        return error("no book id provided", HTTPStatus.BAD_REQUEST)
     book = utils.get_book(bid, refresh=True)
     filename = f"mdbook_{book.name}_{utils.timestr(safe=True)}.tgz"
     output = book.get_tgzfile()
+
     return Response(
         content=output.getvalue(),
         media_type=constants.GZIP_MIMETYPE,
@@ -1330,20 +1362,21 @@ def get(auth, bid: str):
 def get(auth, bid: str):
     "Return JSON for complete state of this book."
     if not bid:
-        return error("no book id provided", 400)
+        return error("no book id provided", HTTPStatus.BAD_REQUEST)
     try:
         book = utils.get_book(bid, refresh=True)
     except KeyError as message:
-        if bid == constants.REFERENCES_DIR:
+        if bid == constants.REFERENCES:
             book = utils.get_references()
         else:
-            return error(message, 404)
+            return error(message, HTTPStatus.NOT_FOUND)
     result = dict(
         software="mdbook",
         version=constants.__version__,
         now=utils.timestr(localtime=False, display=False),
     )
     result.update(book.state)
+
     return result
 
 
@@ -1435,9 +1468,10 @@ def post(user: str, password: str, sess):
     if not user or not password:
         return login_redir
     if user != os.environ["MDBOOK_USER"] or password != os.environ["MDBOOK_PASSWORD"]:
-        return error("invalid credentials", 403)
+        return error("invalid credentials", HTTPStatus.FORBIDDEN)
     sess["auth"] = user
-    return RedirectResponse("/", status_code=303)
+
+    return RedirectResponse("/", status_code=HTTPStatus.SEE_OTHER)
 
 
 @rt("/logout")
@@ -1449,18 +1483,9 @@ def get(sess):
 @rt("/tgz")
 def get(auth):
     "Download a gzipped tar file of all books."
-    output = io.BytesIO()
-    with tarfile.open(fileobj=output, mode="w:gz") as tgzfile:
-        for name in os.listdir(os.environ["MDBOOK_DIR"]):
-            tgzfile.add(
-                os.path.join(os.environ["MDBOOK_DIR"], name),
-                arcname=name,
-                recursive=True,
-                filter=utils.tar_filter,
-            )
     filename = f"mdbook_{utils.timestr(safe=True)}.tgz"
     return Response(
-        content=output.getvalue(),
+        content=utils.get_tgzfile(os.environ["MDBOOK_DIR"]).getvalue(),
         media_type=constants.GZIP_MIMETYPE,
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
@@ -1481,10 +1506,12 @@ def get_state():
             continue
         book = Book(dirpath, index_only=True)
         books[name] = dict(
+            title=book.title,
             modified=utils.timestr(filepath=dirpath, localtime=False, display=False),
             sum_characters=book.frontmatter["sum_characters"],
             digest=book.frontmatter["digest"],
         )
+
     return dict(
         software="mdbook",
         version=constants.__version__,
@@ -1500,20 +1527,21 @@ def get(auth):
     try:
         remote = utils.get_state_remote()
     except ValueError as message:
-        return error(message, 500)
+        return error(message, HTTPStatus.INTERNAL_SERVER_ERROR)
     state = get_state()
     rows = []
     books = state["books"].copy()
     for bid, rbook in remote["books"].items():
-        lbook = books.pop(bid, None)
+        lbook = books.pop(bid, {})
+        title = lbook.get("title") or rbook.get("title")
         if lbook:
             if lbook["digest"] == rbook["digest"]:
                 action = Tx("Identical")
             else:
-                action = A(Tx("Update"), href=f"/update/{bid}", role="button")
+                action = A(Tx("Differences"), href=f"/update/{bid}")
             rows.append(
                 Tr(
-                    Th(bid, scope="row"),
+                    Th(Strong(title), Br(), bid, scope="row"),
                     Td(
                         utils.tolocaltime(rbook["modified"]),
                         Br(),
@@ -1530,7 +1558,7 @@ def get(auth):
         else:
             rows.append(
                 Tr(
-                    Th(bid, scope="row"),
+                    Th(Strong(title), Br(), bid, scope="row"),
                     Td(
                         utils.tolocaltime(rbook["modified"]),
                         Br(),
@@ -1552,6 +1580,7 @@ def get(auth):
                 ),
             ),
         )
+
     return (
         Title(Tx("Update")),
         components.header(title=Tx("Update")),
@@ -1559,7 +1588,7 @@ def get(auth):
             Table(
                 Thead(
                     Tr(
-                        Th(),
+                        Th(Tx("Book")),
                         Th(os.environ["MDBOOK_UPDATE_SITE"], scope="col"),
                         Th(Tx("Here"), scope="col"),
                         Th(scope="col"),
@@ -1576,21 +1605,35 @@ def get(auth):
 def get(auth, bid: str):
     "Compare this local book with the update site book. One of them may not exist."
     if not bid:
-        return error("no book id provided", 400)
+        return error("no book id provided", HTTPStatus.BAD_REQUEST)
     try:
         remote = utils.get_state_remote(bid)
     except ValueError as message:
-        return error(message, 500)
+        return error(message, HTTPStatus.INTERNAL_SERVER_ERROR)
     try:
         book = utils.get_book(bid, refresh=True)
         state = book.state
     except KeyError:
-        if bid == constants.REFERENCES_DIR:
+        if bid == constants.REFERENCES:
             book = utils.get_references(refresh=True)
             state = book.state
         else:
             state = {}
     rows = item_diffs(remote["items"], state.get("items", []))
+    rows.append(Tr(
+        Td(Form(
+            Button(f'{Tx("Update")} {os.environ["MDBOOK_UPDATE_SITE"]}'),
+            action=f"/push/{bid}",
+            method="post"),
+           colspan=2),
+        Td(Form(
+            Button(f'{Tx("Update")} {Tx("here")}'),
+            action=f"/pull/{bid}",
+            method="post"),
+           colspan=3)
+    )
+                )
+    remote_url = f'{os.environ["MDBOOK_UPDATE_SITE"]}/{bid}'
     return (
         Title(f'{Tx("Update")} {bid}'),
         components.header(title=f'{Tx("Update")} {bid}'),
@@ -1598,13 +1641,15 @@ def get(auth, bid: str):
             Table(
                 Thead(
                     Tr(
-                        Th(os.environ["MDBOOK_UPDATE_SITE"], scope="col"),
-                        Th(Tx("Here"), colspan=2, scope="col"),
+                        Th(A(remote_url, href=remote_url), colspan=2, scope="col"),
+                        Th(A(bid, href=f"/book/{bid}"), colspan=3, scope="col"),
                     ),
                     Tr(
                         Th(Tx("Title"), scope="col"),
+                        Th(Tx("Exists"), scope="col"),
                         Th(Tx("Age"), scope="col"),
                         Th(Tx("Size"), scope="col"),
+                        Th(Tx("Exists"), scope="col"),
                     ),
                 ),
                 Tbody(*rows),
@@ -1614,29 +1659,134 @@ def get(auth, bid: str):
     )
 
 
-def item_diffs(ritems, litems):
+def item_diffs(ritems, litems, level=0):
     "Return list of rows specifying differences between remote and local items."
     result = []
-    for ritem in sorted(ritems, key=lambda i: i["title"]):
+    for ritem in ritems:
         for pos, litem in enumerate(list(litems)):
-            if litem["title"] == ritem["title"]:
-                if litem["digest"] != ritem["digest"]:
-                    if litem["modified"] < ritem["modified"]:
-                        age = "Older"
-                    elif litem["modified"] > ritem["modified"]:
-                        age = "Younger"
-                    else:
-                        age = "Same"
-                    if litem["n_characters"] < ritem["n_characters"]:
-                        size = "Smaller"
-                    elif litem["n_characters"] > ritem["n_characters"]:
-                        size = "Larger"
-                    else:
-                        size = "Same"
-                    result.append(Tr(Td(ritem["title"]), Td(age), Td(size)))
-                    litems.pop(pos)
-                    break
+            if litem["title"] != ritem["title"]:
+                continue
+            row = row_diff(ritem, litem, level)
+            if row:
+                result.append(row)
+            litems.pop(pos)
+            try:
+                result.extend(item_diffs(ritem["items"], litem["items"], level+1))
+            except KeyError as message:
+                print(message)
+            break
+        else:
+            result.append(row_diff(ritem, None, level))
+    for litem in litems:
+        result.append(row_diff(None, litem, level))
     return result
+
+def row_diff(ritem, litem, level):
+    if ritem is None:
+        return Tr(Td(litem["title"]), Td(Tx("No")), Td("-"), Td("-"), Td(Tx("Yes")))
+    elif litem is None:
+        return Tr(Td(ritem["title"]), Td(Tx("Yes")), Td("-"), Td("-"), Td(Tx("No")))
+    if litem["digest"] == ritem["digest"]:
+        return None
+    if litem["modified"] < ritem["modified"]:
+        age = "Older"
+    elif litem["modified"] > ritem["modified"]:
+        age = "Newer"
+    else:
+        age = "Same"
+    if litem["n_characters"] < ritem["n_characters"]:
+        size = "Smaller"
+    elif litem["n_characters"] > ritem["n_characters"]:
+        size = "Larger"
+    else:
+        size = "Same"
+    return Tr(Td(ritem["title"]), Td(), Td(Tx(age)), Td(Tx(size)), Td())
+    
+
+@rt("/pull/{bid:str}")
+def post(auth, bid: str):
+    "Update book at this site by downloading it from the remote site."
+    if not bid:
+        return error("no book id provided", HTTPStatus.BAD_REQUEST)
+    url = os.path.join(os.environ["MDBOOK_UPDATE_SITE"].rstrip("/"))
+    if bid == constants.REFERENCES:
+        url += "/references/tgz"
+        dirpath = os.path.join(os.environ["MDBOOK_DIR"], constants.REFERENCES)
+    else:
+        url += f"/tgz/{bid}"
+        dirpath = os.path.join(os.environ["MDBOOK_DIR"], bid)
+    headers = dict(apikey=os.environ["MDBOOK_UPDATE_APIKEY"])
+    response = requests.get(url, headers=headers)
+    if response.status_code != HTTPStatus.OK:
+        return error(f"remote error: {response.message}", HTTPStatus.BAD_REQUEST)
+    if response.headers["Content-Type"] != constants.GZIP_MIMETYPE:
+        return error("invalid file type from remote", HTTPStatus.BAD_REQUEST)
+    content = response.content
+    if not content:
+        return error("empty TGZ file from remote", HTTPStatus.BAD_REQUEST)
+    # Temporarily save old contents.
+    old_dirpath = os.path.join(os.environ["MDBOOK_DIR"], "_old")
+    os.rename(dirpath, old_dirpath)
+    try:
+        utils.unpack_tgzfile(dirpath, content, references=bid==constants.REFERENCES)
+        # Remove old contents after successful unpacking of new.
+        shutil.rmtree(old_dirpath)
+    except ValueError as message:
+        # Reinstate old contents.
+        os.rename(old_dirpath, dirpath)
+        return error(f"error reading TGZ file from remote: {message}", HTTPStatus.BAD_REQUEST)
+    if bid == constants.REFERENCES:
+        return RedirectResponse("/references", status_code=HTTPStatus.SEE_OTHER)
+    else:
+        return RedirectResponse(f"/book/{bid}", status_code=HTTPStatus.SEE_OTHER)
+
+@rt("/push/{bid:str}")
+def post(auth, bid: str):
+    "Update book at the remote site by uploading it from this site."
+    if not bid:
+        return error("no book id provided", HTTPStatus.BAD_REQUEST)
+    url = f'{os.path.join(os.environ["MDBOOK_UPDATE_SITE"].rstrip("/"))}/receive/{bid}'
+    dirpath = os.path.join(os.environ["MDBOOK_DIR"], bid)
+    tgzfile = utils.get_tgzfile(dirpath)
+    tgzfile.seek(0)
+    headers = dict(apikey=os.environ["MDBOOK_UPDATE_APIKEY"])
+    response = requests.post(url,
+                             headers=headers,
+                             files=dict(tgzfile=("tgzfile",
+                                                 tgzfile,
+                                                 constants.GZIP_MIMETYPE)))
+    if response.status_code != HTTPStatus.OK:
+        error(f"remote did not accept push: {response.message}", HTTPStatus.BAD_REQUEST)
+    print(response.content)
+    return RedirectResponse("/", status_code=HTTPStatus.SEE_OTHER)
+
+
+@rt("/receive/{bid:str}")
+async def post(auth, bid: str, tgzfile: UploadFile=None):
+    "Update book at this site by another site uploading it."
+    if not bid:
+        return error("book bid may not be empty", HTTPStatus.BAD_REQUEST)
+    if bid.startswith("_"):
+        return error("book bid may not start with an underscore '_'", HTTPStatus.BAD_REQUEST)
+    if not content:
+        return error("no content in TGZ file", HTTPStatus.BAD_REQUEST)
+    dirpath = os.path.join(os.environ["MDBOOK_DIR"], bid)
+    if os.path.exists(dirpath):
+        # Temporarily save old contents.
+        old_dirpath = os.path.join(os.environ["MDBOOK_DIR"], "_old")
+        os.rename(dirpath, old_dirpath)
+    else:
+        old_dirpath = None
+    content = await tgzfile.read()
+    try:
+        utils.unpack_tgzfile(dirpath, content)
+        if old_dirpath:
+            shutil.rmtree(old_dirpath)
+    except ValueError as message:
+        if old_dirpath:
+            os.rename(old_dirpath, dirpath)
+        return error(f"error reading TGZ file: {message}", HTTPStatus.BAD_REQUEST)
+    return "success"
 
 
 serve()

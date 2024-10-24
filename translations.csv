@@ -89,6 +89,17 @@ password,lösenord
 memory usage,minnesanvändning
 identifier,identifierare
 modified,modifierad
+differences,skillnader
 here,här
 identical,identiska
 state,tillstånd
+age,ålder
+newer,nyare
+older,äldre
+same,samma
+size,storlek
+larger,större
+smaller,mindre
+exists,existerar
+yes,ja
+no,nej

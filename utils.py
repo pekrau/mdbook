@@ -3,10 +3,12 @@
 import csv
 import datetime
 import hashlib
+import io
 import json
 import os
 import shutil
 import string
+import tarfile
 import unicodedata
 
 import requests
@@ -60,7 +62,7 @@ def get_references(refresh=False):
             _references.read()
         return _references
     except NameError:
-        dirpath = os.path.join(os.environ["MDBOOK_DIR"], constants.REFERENCES_DIR)
+        dirpath = os.path.join(os.environ["MDBOOK_DIR"], constants.REFERENCES)
         if not os.path.exists(dirpath):
             os.mkdir(dirpath)
         _references = Book(dirpath)
@@ -154,15 +156,43 @@ def get_state_remote(bid=None):
         return {}
 
 
-def tar_filter(tarinfo):
-    "Filter out valid files for inclusion in gzipped tar files."
-    if tarinfo.isdir() or (
-        tarinfo.isfile() and tarinfo.name.endswith(constants.MARKDOWN_EXT)
-    ):
-        return tarinfo
-    else:
-        return None
+def get_tgzfile(dirpath):
+    """Return an io.BytesIO object containing the gzipped tar file
+    contents of the given directory.
+    """
+    result = io.BytesIO()
+    with tarfile.open(fileobj=result, mode="w:gz") as tgzfile:
+        for name in os.listdir(dirpath):
+            tgzfile.add(
+                os.path.join(dirpath, name),
+                arcname=name,
+                recursive=True
+            )
+    return result
 
+
+def unpack_tgzfile(dirpath, content, references=False):
+    """Unpack the contents of a TGZ file into the given directory.
+    Raise ValueError if any problem.
+    """
+    try:
+        tf = tarfile.open(fileobj=io.BytesIO(content), mode="r:gz")
+        if "index.md" not in tf.getnames():
+            raise ValueError("no 'index.md' file in TGZ file; not from mdbook?")
+        if references:
+            # No subdirectories or non-Markdown files are allowed in references.
+            for name in tf.getnames():
+                if not name.endswith(".md"):
+                    raise ValueError("reference TGZ file must contain only *.md files")
+                if os.path.basename(name) != name:
+                    raise ValueError("reference TGZ file must contain no directories")
+            filter = lambda tf: tf if tf.name != "index.md" else None
+        else:
+            filter = None
+        tf.extractall(path=dirpath, filter=filter)
+    except tarfile.TarError as message:
+        raise ValueError(str(message))
+    
 
 class Translator:
     "Simple translation of words and phrases from one language to another."
