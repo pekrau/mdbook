@@ -159,16 +159,13 @@ def get_state_remote(bid=None):
         url += "/" + bid
     headers = dict(apikey=os.environ["MDBOOK_UPDATE_APIKEY"])
     response = requests.get(url, headers=headers)
-    if response.status_code == 404:
-        return None
+    if response.status_code == 404 or not response.content:
+        return {}
     elif response.status_code != 200:
         raise ValueError(
             f"remote {url} response error: {response.status_code}; {response.content}"
         )
-    if response.content:
-        return response.json()
-    else:
-        return {}
+    return response.json()
 
 
 def get_tgzfile(dirpath):

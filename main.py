@@ -99,9 +99,9 @@ def get(auth):
         rows.append(
             Tr(
                 Td(A(book.title, href=f"/book/{book.bid}")),
-                Td(Tx(book.frontmatter["type"].capitalize())),
-                Td(Tx(book.frontmatter["status"].capitalize())),
-                Td(Tx(utils.thousands(book.frontmatter["sum_characters"]))),
+                Td(Tx(book.frontmatter.get("type", constants.BOOK).capitalize())),
+                Td(Tx(book.frontmatter.get("status", repr(constants.STARTED)).capitalize())),
+                Td(Tx(utils.thousands(book.frontmatter.get("sum_characters", 0)))),
                 Td(book.frontmatter["owner"]),
                 Td(book.modified),
             )
@@ -1682,7 +1682,7 @@ def get(auth):
         title = lbook.get("title") or rbook.get("title")
         if lbook:
             if lbook["digest"] == rbook["digest"]:
-                action = Tx("Identical")
+                action = Small(Tx("Identical"))
             else:
                 action = A(Tx("Differences"), href=f"/differences/{bid}")
             rows.append(
@@ -1723,7 +1723,7 @@ def get(auth):
     for bid, lbook in books.items():
         rows.append(
             Tr(
-                Th(bid, scope="row"),
+                Th(Strong(lbook.get("title") or rbook.get("title")), scope="row"),
                 Td("-"),
                 Td(
                     A(bid, href=f"/book/{bid}"),
@@ -1732,6 +1732,7 @@ def get(auth):
                     Br(),
                     f'{utils.thousands(lbook["sum_characters"])} {Tx("characters")}',
                 ),
+                Td(A(Tx("Differences"), href=f"/differences/{bid}")),
             ),
         )
 
@@ -1766,52 +1767,61 @@ def get(auth, bid: str):
         return error(message, HTTPStatus.INTERNAL_SERVER_ERROR)
     try:
         book = utils.get_book(bid, refresh=True)
-        state = book.state
+        here = book.state
     except KeyError:
         if bid == constants.REFERENCES:
             book = utils.get_references(refresh=True)
-            state = book.state
+            here = book.state
         else:
-            state = {}
-    rurl = f'{os.environ["MDBOOK_UPDATE_SITE"]}/book/{bid}'
+            here = {}
+    rurl = f'{os.environ["MDBOOK_UPDATE_SITE"].rstrip("/")}/book/{bid}'
     lurl = f"/book/{bid}"
-    rows = item_diffs(remote["items"], rurl, state.get("items", []), lurl)
 
+    update_remote = Form(
+        Button(f'{Tx("Update")} {os.environ["MDBOOK_UPDATE_SITE"]}'),
+        action=f"/push/{bid}",
+        method="post",
+    )
+    update_here = Form(
+        Button(f'{Tx("Update")} {Tx("here")}'),
+        action=f"/pull/{bid}",
+        method="post",
+    )
+
+    rows = items_diffs(remote.get("items", []), rurl, here.get("items", []), lurl)
+    # The book 'index.md' files may differ, if they exist.
+    if remote and here:
+        row = item_diff(remote,
+                        f'{os.environ["MDBOOK_UPDATE_SITE"].rstrip("/")}/title/{bid}',
+                        here,
+                        f"/title/{bid}")
+        if row:
+            rows.insert(0, row)
     if not rows:
+        if not remote:
+            segments = (H4(f'{Tx("Not present in")} {os.environ["MDBOOK_UPDATE_SITE"]}'),
+                        update_remote)
+        elif not here:
+            segments = (H4(Tx("Not present here")),
+                        update_here)
+        else:
+            segments =  (H4(Tx("Identical")),
+                         Div(
+                             Div(Strong(A(rurl, href=rurl))),
+                             Div(Strong(A(bid, href=lurl))),
+                             cls="grid"
+                         ))
         return (
             Title(f'{Tx("Differences")} {bid}'),
             components.header(title=f'{Tx("Differences")} {bid}'),
-            Main(
-                Table(
-                    Tr(
-                        Td(Strong(A(rurl, href=rurl))),
-                        Td(Strong(A(bid, href=lurl))),
-                        Td(Strong(Tx("Identical"))),
-                    ),
-                ),
-                cls="container",
-            ),
+            Main(*segments, cls="container")
         )
 
     rows.append(
         Tr(
             Td(),
-            Td(
-                Form(
-                    Button(f'{Tx("Update")} {os.environ["MDBOOK_UPDATE_SITE"]}'),
-                    action=f"/push/{bid}",
-                    method="post",
-                ),
-                colspan=1,
-            ),
-            Td(
-                Form(
-                    Button(f'{Tx("Update")} {Tx("here")}'),
-                    action=f"/pull/{bid}",
-                    method="post",
-                ),
-                colspan=3,
-            ),
+            Td(update_remote),
+            Td(update_here, colspan=3)
         )
     )
     return (
@@ -1823,15 +1833,15 @@ def get(auth, bid: str):
                     Tr(
                         Th(),
                         Th(A(rurl, href=rurl), colspan=1, scope="col"),
-                        Th(A(bid, href=lurl), colspan=3, scope="col"),
+                        Th(A(bid, href=lurl), colspan=3, scope="col")
                     ),
                     Tr(
                         Th(Tx("Title"), scope="col"),
                         Th(),
                         Th(Tx("Age"), scope="col"),
                         Th(Tx("Size"), scope="col"),
-                        Th(),
-                    ),
+                        Th()
+                    )
                 ),
                 Tbody(*rows),
             ),
@@ -1840,7 +1850,7 @@ def get(auth, bid: str):
     )
 
 
-def item_diffs(ritems, rurl, litems, lurl):
+def items_diffs(ritems, rurl, litems, lurl):
     "Return list of rows specifying differences between remote and local items."
     result = []
     for ritem in ritems:
@@ -1849,23 +1859,24 @@ def item_diffs(ritems, rurl, litems, lurl):
             if litem["title"] != ritem["title"]:
                 continue
             liurl = f'{lurl}/{litem["name"]}'
-            row = row_diff(ritem, riurl, litem, liurl)
+            row = item_diff(ritem, riurl, litem, liurl)
             if row:
                 result.append(row)
             litems.pop(pos)
             try:
-                result.extend(item_diffs(ritem["items"], riurl, litem["items"], liurl))
+                result.extend(items_diffs(ritem["items"], riurl, litem["items"], liurl))
             except KeyError as message:
                 pass
             break
         else:
-            result.append(row_diff(ritem, riurl, None, None))
+            result.append(item_diff(ritem, riurl, None, None))
     for litem in litems:
-        result.append(row_diff(None, None, litem, liurl))
+        result.append(item_diff(None, None, litem, liurl))
     return result
 
 
-def row_diff(ritem, riurl, litem, liurl):
+def item_diff(ritem, riurl, litem, liurl):
+    "Return row specifying differences between the items."
     if ritem is None:
         return Tr(
             Td(Strong(litem["title"])),
@@ -1910,7 +1921,7 @@ def post(auth, bid: str):
     "Update book at this site by downloading it from the remote site."
     if not bid:
         return error("no book id provided", HTTPStatus.BAD_REQUEST)
-    url = os.path.join(os.environ["MDBOOK_UPDATE_SITE"].rstrip("/"))
+    url = os.environ["MDBOOK_UPDATE_SITE"].rstrip("/")
     if bid == constants.REFERENCES:
         url += "/references/tgz"
         dirpath = os.path.join(os.environ["MDBOOK_DIR"], constants.REFERENCES)
@@ -1962,7 +1973,6 @@ def post(auth, bid: str):
     )
     if response.status_code != HTTPStatus.OK:
         error(f"remote did not accept push: {response.content}", HTTPStatus.BAD_REQUEST)
-    print(response.content)
     return RedirectResponse("/", status_code=HTTPStatus.SEE_OTHER)
 
 
