@@ -3,7 +3,7 @@
 import functools
 import os.path
 
-VERSION = (5, 3, 0)
+VERSION = (5, 4, 0)
 __version__ = ".".join([str(n) for n in VERSION])
 
 
@@ -174,6 +174,7 @@ FOOTNOTES_LOCATIONS = (
     FOOTNOTES_END_OF_BOOK,
 )
 
+MAX_DISPLAY_AUTHORS = 4
 REFERENCE_LINKS = dict(
     doi=("DOI", "https://doi.org/{value}"),
     pmid=("PubMed", "https://pubmed.ncbi.nlm.nih.gov/{value}"),

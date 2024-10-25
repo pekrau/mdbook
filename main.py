@@ -111,7 +111,7 @@ def get(auth):
         A(f'{Tx("Download")} TGZ', href="/tgz"),
     ]
     if "MDBOOK_UPDATE_SITE" in os.environ:
-        actions.append(A(Tx("Update"), href="/update"))
+        actions.append(A(Tx("Differences"), href="/differences"))
 
     return (
         Title(Tx("Books")),
@@ -144,8 +144,8 @@ def get(auth):
         ]
         if ref.get("authors"):
             authors = [utils.short_name(a) for a in ref["authors"]]
-            if len(authors) > 5:
-                authors = authors[:5] + ["..."]
+            if len(authors) > constants.MAX_DISPLAY_AUTHORS:
+                authors = authors[:constants.MAX_DISPLAY_AUTHORS] + ["..."]
             parts.append(", ".join(authors))
         parts.append(Br())
         parts.append(utils.full_title(ref))
@@ -227,7 +227,7 @@ def get(auth):
         A(f'{Tx("Upload")} {Tx("references")} TGZ', href="/references/upload"),
     ]
     if "MDBOOK_UPDATE_SITE" in os.environ:
-        actions.append(A(Tx("Update"), href="/update/references"))
+        actions.append(A(Tx("Differences"), href="/differences/references"))
 
     return (
         Title(title),
@@ -368,6 +368,7 @@ def get(auth, refid: str):
             ],
         ),
         Main(Table(*rows), Div(NotStr(ref.html)), cls="container"),
+        components.footer(ref),
     )
 
 
@@ -660,9 +661,10 @@ def get(auth, bid: str):
         A(f'{Tx("Download")} DOCX', href=f"/docx/{bid}"),
         A(f'{Tx("Download")} PDF', href=f"/pdf/{bid}"),
         A(f'{Tx("Download")} TGZ', href=f"/tgz/{bid}"),
-        A(f'{Tx("Update")}', href=f"/update/{bid}"),
-        A(f'{Tx("Delete")}', href=f"/delete/{bid}"),
     ]
+    if "MDBOOK_UPDATE_SITE" in os.environ:
+        actions.append(A(f'{Tx("Differences")}', href=f"/differences/{bid}"))
+    actions.append(A(f'{Tx("Delete")}', href=f"/delete/{bid}"))
     if len(book.items) == 0:
         content = H3(A(Tx("Article"), href=f"/title/{bid}"))
     else:
@@ -1664,7 +1666,7 @@ def get_state():
     )
 
 
-@rt("/update")
+@rt("/differences")
 def get(auth):
     "Compare this local site with the update site."
     try:
@@ -1675,22 +1677,27 @@ def get(auth):
     rows = []
     books = state["books"].copy()
     for bid, rbook in remote["books"].items():
+        rurl = f'{os.environ["MDBOOK_UPDATE_SITE"].rstrip("/")}/book/{bid}'
         lbook = books.pop(bid, {})
         title = lbook.get("title") or rbook.get("title")
         if lbook:
             if lbook["digest"] == rbook["digest"]:
                 action = Tx("Identical")
             else:
-                action = A(Tx("Differences"), href=f"/update/{bid}")
+                action = A(Tx("Differences"), href=f"/differences/{bid}")
             rows.append(
                 Tr(
-                    Th(Strong(title), Br(), bid, scope="row"),
+                    Th(Strong(title), scope="row"),
                     Td(
+                        A(rurl, href=rurl),
+                        Br(),
                         utils.tolocaltime(rbook["modified"]),
                         Br(),
                         f'{utils.thousands(rbook["sum_characters"])} {Tx("characters")}',
                     ),
                     Td(
+                        A(bid, href=f"/book/{bid}"),
+                        Br(),
                         utils.tolocaltime(lbook["modified"]),
                         Br(),
                         f'{utils.thousands(lbook["sum_characters"])} {Tx("characters")}',
@@ -1701,8 +1708,10 @@ def get(auth):
         else:
             rows.append(
                 Tr(
-                    Th(Strong(title), Br(), bid, scope="row"),
+                    Th(Strong(title), scope="row"),
                     Td(
+                        A(rurl, href=rurl),
+                        Br(),
                         utils.tolocaltime(rbook["modified"]),
                         Br(),
                         f'{utils.thousands(rbook["sum_characters"])} {Tx("characters")}',
@@ -1717,6 +1726,8 @@ def get(auth):
                 Th(bid, scope="row"),
                 Td("-"),
                 Td(
+                    A(bid, href=f"/book/{bid}"),
+                    Br(),
                     utils.tolocaltime(lbook["modified"]),
                     Br(),
                     f'{utils.thousands(lbook["sum_characters"])} {Tx("characters")}',
@@ -1725,8 +1736,8 @@ def get(auth):
         )
 
     return (
-        Title(Tx("Update")),
-        components.header(title=Tx("Update")),
+        Title(Tx("Differences")),
+        components.header(title=Tx("Differences")),
         Main(
             Table(
                 Thead(
@@ -1744,7 +1755,7 @@ def get(auth):
     )
 
 
-@rt("/update/{bid:str}")
+@rt("/differences/{bid:str}")
 def get(auth, bid: str):
     "Compare this local book with the update site book. One of them may not exist."
     if not bid:
@@ -1765,6 +1776,23 @@ def get(auth, bid: str):
     rurl = f'{os.environ["MDBOOK_UPDATE_SITE"]}/book/{bid}'
     lurl = f"/book/{bid}"
     rows = item_diffs(remote["items"], rurl, state.get("items", []), lurl)
+
+    if not rows:
+        return (
+            Title(f'{Tx("Differences")} {bid}'),
+            components.header(title=f'{Tx("Differences")} {bid}'),
+            Main(
+                Table(
+                    Tr(
+                        Td(Strong(A(rurl, href=rurl))),
+                        Td(Strong(A(bid, href=lurl))),
+                        Td(Strong(Tx("Identical"))),
+                    ),
+                ),
+                cls="container",
+            ),
+        )
+
     rows.append(
         Tr(
             Td(),
@@ -1787,8 +1815,8 @@ def get(auth, bid: str):
         )
     )
     return (
-        Title(f'{Tx("Update")} {bid}'),
-        components.header(title=f'{Tx("Update")} {bid}'),
+        Title(f'{Tx("Differences")} {bid}'),
+        components.header(title=f'{Tx("Differences")} {bid}'),
         Main(
             Table(
                 Thead(
