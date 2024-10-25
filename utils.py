@@ -163,11 +163,7 @@ def get_tgzfile(dirpath):
     result = io.BytesIO()
     with tarfile.open(fileobj=result, mode="w:gz") as tgzfile:
         for name in os.listdir(dirpath):
-            tgzfile.add(
-                os.path.join(dirpath, name),
-                arcname=name,
-                recursive=True
-            )
+            tgzfile.add(os.path.join(dirpath, name), arcname=name, recursive=True)
     return result
 
 
@@ -192,7 +188,7 @@ def unpack_tgzfile(dirpath, content, references=False):
         tf.extractall(path=dirpath, filter=filter)
     except tarfile.TarError as message:
         raise ValueError(str(message))
-    
+
 
 class Translator:
     "Simple translation of words and phrases from one language to another."

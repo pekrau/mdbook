@@ -66,8 +66,10 @@ def get(auth):
     # Check that site is properly configured.
     for envvar in ["MDBOOK_DIR", "MDBOOK_USER", "MDBOOK_PASSWORD"]:
         if os.environ.get(envvar) is None:
-            return error(f"environment variable {envvar} has not been defined",
-                         HTTPStatus.INTERNAL_SERVER_ERROR)
+            return error(
+                f"environment variable {envvar} has not been defined",
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+            )
 
     books = []
     for bid in os.listdir(os.environ["MDBOOK_DIR"]):
@@ -282,9 +284,11 @@ async def post(auth, tgzfile: UploadFile):
     if not content:
         return error("empty TGZ file", HTTPStatus.BAD_REQUEST)
     try:
-        utils.unpack_tgzfile(os.path.join(os.environ["MDBOOK_DIR"], constants.REFERENCES),
-                             content,
-                             references=True)
+        utils.unpack_tgzfile(
+            os.path.join(os.environ["MDBOOK_DIR"], constants.REFERENCES),
+            content,
+            references=True,
+        )
     except ValueError as message:
         return error(f"error reading TGZ file: {message}", HTTPStatus.BAD_REQUEST)
 
@@ -492,7 +496,9 @@ async def post(auth, title: str, tgzfile: UploadFile):
     if not title:
         return error("book title may not be empty", HTTPStatus.BAD_REQUEST)
     if title.startswith("_"):
-        return error("book title may not start with an underscore '_'", HTTPStatus.BAD_REQUEST)
+        return error(
+            "book title may not start with an underscore '_'", HTTPStatus.BAD_REQUEST
+        )
     bid = utils.nameify(title)
     if not bid:
         return error("book bid may not be empty", HTTPStatus.BAD_REQUEST)
@@ -752,7 +758,9 @@ def post(auth, bid: str, path: str, title: str, content: str, status: str = None
     item.write(content=content)
     book.write()
 
-    return RedirectResponse(f"/book/{bid}/{item.path}", status_code=HTTPStatus.SEE_OTHER)
+    return RedirectResponse(
+        f"/book/{bid}/{item.path}", status_code=HTTPStatus.SEE_OTHER
+    )
 
 
 @rt("/up/{bid:str}/{path:path}")
@@ -883,7 +891,9 @@ def post(auth, bid: str, path: str):
     book.write()
     assert section.is_section
 
-    return RedirectResponse(f"/book/{bid}/{section.path}", status_code=HTTPStatus.SEE_OTHER)
+    return RedirectResponse(
+        f"/book/{bid}/{section.path}", status_code=HTTPStatus.SEE_OTHER
+    )
 
 
 @rt("/text/{bid:str}/{path:path}")
@@ -1622,20 +1632,27 @@ def get(auth, bid: str):
     rurl = f'{os.environ["MDBOOK_UPDATE_SITE"]}/book/{bid}'
     lurl = f"/book/{bid}"
     rows = item_diffs(remote["items"], rurl, state.get("items", []), lurl)
-    rows.append(Tr(
-        Td(),
-        Td(Form(
-            Button(f'{Tx("Update")} {os.environ["MDBOOK_UPDATE_SITE"]}'),
-            action=f"/push/{bid}",
-            method="post"),
-           colspan=1),
-        Td(Form(
-            Button(f'{Tx("Update")} {Tx("here")}'),
-            action=f"/pull/{bid}",
-            method="post"),
-           colspan=3)
+    rows.append(
+        Tr(
+            Td(),
+            Td(
+                Form(
+                    Button(f'{Tx("Update")} {os.environ["MDBOOK_UPDATE_SITE"]}'),
+                    action=f"/push/{bid}",
+                    method="post",
+                ),
+                colspan=1,
+            ),
+            Td(
+                Form(
+                    Button(f'{Tx("Update")} {Tx("here")}'),
+                    action=f"/pull/{bid}",
+                    method="post",
+                ),
+                colspan=3,
+            ),
+        )
     )
-                )
     return (
         Title(f'{Tx("Update")} {bid}'),
         components.header(title=f'{Tx("Update")} {bid}'),
@@ -1676,10 +1693,7 @@ def item_diffs(ritems, rurl, litems, lurl):
                 result.append(row)
             litems.pop(pos)
             try:
-                result.extend(item_diffs(ritem["items"], 
-                                         riurl,
-                                         litem["items"],
-                                         liurl))
+                result.extend(item_diffs(ritem["items"], riurl, litem["items"], liurl))
             except KeyError as message:
                 pass
             break
@@ -1689,13 +1703,24 @@ def item_diffs(ritems, rurl, litems, lurl):
         result.append(row_diff(None, None, litem, liurl))
     return result
 
+
 def row_diff(ritem, riurl, litem, liurl):
     if ritem is None:
-        return Tr(Td(Strong(litem["title"])), Td("-"), Td("-"), Td("-"),
-                  Td(A(liurl, href=liurl)))
+        return Tr(
+            Td(Strong(litem["title"])),
+            Td("-"),
+            Td("-"),
+            Td("-"),
+            Td(A(liurl, href=liurl)),
+        )
     elif litem is None:
-        return Tr(Td(Strong(ritem["title"])),
-                  Td(A(riurl, href=riurl)), Td("-"), Td("-"), Td("-"))
+        return Tr(
+            Td(Strong(ritem["title"])),
+            Td(A(riurl, href=riurl)),
+            Td("-"),
+            Td("-"),
+            Td("-"),
+        )
     if litem["digest"] == ritem["digest"]:
         return None
     if litem["modified"] < ritem["modified"]:
@@ -1710,8 +1735,13 @@ def row_diff(ritem, riurl, litem, liurl):
         size = "Larger"
     else:
         size = "Same"
-    return Tr(Td(Strong(ritem["title"])),
-              Td(A(riurl, href=riurl)), Td(Tx(age)), Td(Tx(size)), Td(A(liurl, href=liurl)))
+    return Tr(
+        Td(Strong(ritem["title"])),
+        Td(A(riurl, href=riurl)),
+        Td(Tx(age)),
+        Td(Tx(size)),
+        Td(A(liurl, href=liurl)),
+    )
 
 
 @rt("/pull/{bid:str}")
@@ -1739,17 +1769,20 @@ def post(auth, bid: str):
     old_dirpath = os.path.join(os.environ["MDBOOK_DIR"], "_old")
     os.rename(dirpath, old_dirpath)
     try:
-        utils.unpack_tgzfile(dirpath, content, references=bid==constants.REFERENCES)
+        utils.unpack_tgzfile(dirpath, content, references=bid == constants.REFERENCES)
         # Remove old contents after successful unpacking of new.
         shutil.rmtree(old_dirpath)
     except ValueError as message:
         # Reinstate old contents.
         os.rename(old_dirpath, dirpath)
-        return error(f"error reading TGZ file from remote: {message}", HTTPStatus.BAD_REQUEST)
+        return error(
+            f"error reading TGZ file from remote: {message}", HTTPStatus.BAD_REQUEST
+        )
     if bid == constants.REFERENCES:
         return RedirectResponse("/references", status_code=HTTPStatus.SEE_OTHER)
     else:
         return RedirectResponse(f"/book/{bid}", status_code=HTTPStatus.SEE_OTHER)
+
 
 @rt("/push/{bid:str}")
 def post(auth, bid: str):
@@ -1761,24 +1794,27 @@ def post(auth, bid: str):
     tgzfile = utils.get_tgzfile(dirpath)
     tgzfile.seek(0)
     headers = dict(apikey=os.environ["MDBOOK_UPDATE_APIKEY"])
-    response = requests.post(url,
-                             headers=headers,
-                             files=dict(tgzfile=("tgzfile",
-                                                 tgzfile,
-                                                 constants.GZIP_MIMETYPE)))
+    response = requests.post(
+        url,
+        headers=headers,
+        files=dict(tgzfile=("tgzfile", tgzfile, constants.GZIP_MIMETYPE)),
+    )
     if response.status_code != HTTPStatus.OK:
-        error(f"remote did not accept push: {response.message}", HTTPStatus.BAD_REQUEST)
+        error(f"remote did not accept push: {response.content}", HTTPStatus.BAD_REQUEST)
     print(response.content)
     return RedirectResponse("/", status_code=HTTPStatus.SEE_OTHER)
 
 
 @rt("/receive/{bid:str}")
-async def post(auth, bid: str, tgzfile: UploadFile=None):
+async def post(auth, bid: str, tgzfile: UploadFile = None):
     "Update book at this site by another site uploading it."
     if not bid:
         return error("book bid may not be empty", HTTPStatus.BAD_REQUEST)
     if bid.startswith("_"):
-        return error("book bid may not start with an underscore '_'", HTTPStatus.BAD_REQUEST)
+        return error(
+            "book bid may not start with an underscore '_'", HTTPStatus.BAD_REQUEST
+        )
+    content = await tgzfile.read()
     if not content:
         return error("no content in TGZ file", HTTPStatus.BAD_REQUEST)
     dirpath = os.path.join(os.environ["MDBOOK_DIR"], bid)
@@ -1788,7 +1824,6 @@ async def post(auth, bid: str, tgzfile: UploadFile=None):
         os.rename(dirpath, old_dirpath)
     else:
         old_dirpath = None
-    content = await tgzfile.read()
     try:
         utils.unpack_tgzfile(dirpath, content)
         if old_dirpath:
