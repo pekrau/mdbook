@@ -288,10 +288,7 @@ class Creator:
 
     def write_reference_article(self, paragraph, reference):
         paragraph.add_run(f"({reference['year']}) ")
-        try:
-            paragraph.add_run(reference["title"].strip(".") + ". ")
-        except KeyError:
-            pass
+        paragraph.add_run(utils.full_title(reference))
         try:
             run = paragraph.add_run(f"{reference['journal']} ")
             run.font.italic = True
@@ -313,7 +310,7 @@ class Creator:
 
     def write_reference_book(self, paragraph, reference):
         paragraph.add_run(f"({reference['year']}). ")
-        run = paragraph.add_run(reference["title"].strip(".") + ". ")
+        run = paragraph.add_run(utils.full_title(reference))
         run.font.italic = True
         try:
             paragraph.add_run(f"{reference['publisher']}. ")
@@ -322,12 +319,10 @@ class Creator:
 
     def write_reference_link(self, paragraph, reference):
         paragraph.add_run(f"({reference['year']}). ")
+        title = utils.full_title(reference)
+        paragraph.add_run(title)
         try:
-            paragraph.add_run(reference["title"].strip(".") + ". ")
-        except KeyError:
-            pass
-        try:
-            add_hyperlink(paragraph, reference["url"], reference["title"])
+            add_hyperlink(paragraph, reference["url"], title)
         except KeyError:
             pass
         try:

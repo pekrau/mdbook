@@ -119,6 +119,7 @@ class Book:
                 item = Text(self, self, os.path.splitext(name)[0])
                 if not item.frontmatter.get("exclude"):
                     self.items.append(item)
+            # Ignore other files.
             else:
                 pass
 
@@ -188,8 +189,8 @@ class Book:
         return result
 
     @property
-    def name(self):
-        "The name of the book instance is not stored in its 'index.md'."
+    def bid(self):
+        "The identifier of the book instance is not stored in its 'index.md'."
         return os.path.basename(self.abspath)
 
     @property
@@ -199,7 +200,7 @@ class Book:
 
     @property
     def title(self):
-        return self.frontmatter.get("title") or self.name
+        return self.frontmatter.get("title") or self.bid
 
     @title.setter
     def title(self, title):
@@ -321,7 +322,7 @@ class Book:
         "Return a dictionary of the current state of the book."
         return dict(
             type="book",
-            name=self.name,
+            bid=self.bid,
             title=self.title,
             modified=utils.timestr(
                 filepath=self.absfilepath, localtime=False, display=False
@@ -461,6 +462,25 @@ class Item:
 
     def __repr__(self):
         return f"{self.__class__.__name__}('{self.path}')"
+
+    def __getitem__(self, key):
+        return self.frontmatter[key]
+
+    def __setitem__(self, key, value):
+        self.frontmatter[key] = value
+
+    def get(self, key, default=None):
+        try:
+            return self[key]
+        except KeyError:
+            return default
+
+    def set(self, key, value):
+        "Set the item in the frontmatter, or delete it."
+        if value:
+            self.frontmatter[key] = value
+        else:
+            self.frontmatter.pop(key, None)
 
     def read(self):
         "To be implemented by inheriting classes. Recursive."
@@ -652,10 +672,6 @@ class Section(Item):
         self.items = []
         super().__init__(book, parent, name)
 
-    @property
-    def type(self):
-        return "section"
-
     def read(self):
         """Read all items in the subdirectory, and the 'index.md' file, if any.
         This is recursive; all sections and texts below this are also read.
@@ -685,6 +701,10 @@ class Section(Item):
         self.frontmatter["digest"] = self.digest
         if changed or force or (self.frontmatter != original):
             write_markdown(self, self.absfilepath)
+
+    @property
+    def type(self):
+        return "section"
 
     @property
     def all_items(self):
@@ -775,22 +795,6 @@ class Section(Item):
 class Text(Item):
     "Markdown file."
 
-    def __getitem__(self, key):
-        return self.frontmatter[key]
-
-    def __setitem__(self, key, value):
-        self.frontmatter[key] = value
-
-    @property
-    def type(self):
-        return "text"
-
-    def get(self, key, default=None):
-        try:
-            return self[key]
-        except KeyError:
-            return default
-
     def read(self):
         "Read the frontmatter (if any) and content from the Markdown file."
         read_markdown(self, self.abspath)
@@ -804,6 +808,10 @@ class Text(Item):
         self.frontmatter["digest"] = self.digest
         if changed or force or (self.frontmatter != original):
             write_markdown(self, self.abspath)
+
+    @property
+    def type(self):
+        return "text"
 
     @property
     def all_items(self):

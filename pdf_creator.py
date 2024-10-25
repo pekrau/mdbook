@@ -333,10 +333,7 @@ class Creator:
     def write_reference_article(self, reference):
         "Write data for reference of type 'article'."
         self.state.write(f" ({reference['year']})")
-        try:
-            self.state.write(" " + reference["title"].strip(".") + ".")
-        except KeyError:
-            pass
+        self.state.write(" " + utils.full_title(reference))
         journal = reference.get("journal")
         if journal:
             self.state.set(style="I")
@@ -360,7 +357,7 @@ class Creator:
         "Write data for reference of type 'book'."
         self.state.write(f" ({reference['year']}).")
         self.state.set(style="I")
-        self.state.write(" " + reference["title"].strip(".") + ". ")
+        self.state.write(" " + utils.full_title(reference))
         self.state.reset()
         try:
             self.state.write(f" {reference['publisher']}.")
@@ -370,15 +367,13 @@ class Creator:
     def write_reference_link(self, reference):
         "Write data for reference of type 'link'."
         self.state.write(f" ({reference['year']}).")
-        try:
-            self.state.write(" " + reference["title"].strip(".") + ". ")
-        except KeyError:
-            pass
+        title = utils.full_title(reference)
+        self.state.write(" " + title)
         try:
             self.state.set(style="U", text_color=constants.PDF_HREF_COLOR)
             self.pdf.cell(
                 h=self.state.line_height * self.state.font_size,
-                text=reference["title"],
+                text=title,
                 link=reference["url"],
             )
             self.state.reset()

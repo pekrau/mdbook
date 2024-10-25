@@ -32,7 +32,7 @@ def header(book=None, item=None, title=None, actions=None, state_url=None):
         entries = [
             Ul(
                 Li(A(Img(src="/mdbook.png", width=32, height=32), href="/")),
-                Li(A(Strong(book.title), href=f"/book/{book.name}")),
+                Li(A(Strong(book.title), href=f"/book/{book.bid}")),
             )
         ]
     else:
@@ -78,20 +78,20 @@ def header(book=None, item=None, title=None, actions=None, state_url=None):
     if item is not None:
         if item.parent:
             if item.parent.level == 0:  # Book.
-                url = f"/book/{book.name}"
+                url = f"/book/{book.bid}"
             else:
-                url = f"/book/{book.name}/{item.parent.path}"
+                url = f"/book/{book.bid}/{item.parent.path}"
             pages.append(A(NotStr(f"&ShortUpArrow; {item.parent.title}"), href=url))
         if item.prev:
-            url = f"/book/{book.name}/{item.prev.path}"
+            url = f"/book/{book.bid}/{item.prev.path}"
             pages.append(A(NotStr(f"&ShortLeftArrow; {item.prev.title}"), href=url))
         if item.next:
-            url = f"/book/{book.name}/{item.next.path}"
+            url = f"/book/{book.bid}/{item.next.path}"
             pages.append(A(NotStr(f"&ShortRightArrow; {item.next.title}"), href=url))
     if book is not None:
-        pages.append(A(Tx("Title"), href=f"/title/{book.name}"))
-        pages.append(A(Tx("Index"), href=f"/index/{book.name}"))
-        pages.append(A(Tx("Status list"), href=f"/statuslist/{book.name}"))
+        pages.append(A(Tx("Title"), href=f"/title/{book.bid}"))
+        pages.append(A(Tx("Index"), href=f"/index/{book.bid}"))
+        pages.append(A(Tx("Status list"), href=f"/statuslist/{book.bid}"))
     pages.append(A(Tx("References"), href="/references"))
     pages.append(A(Tx("Information"), href="/information"))
     if state_url:
@@ -120,9 +120,9 @@ def toc(book, items, show_arrows=False):
         if show_arrows:
             arrows = [
                 NotStr("&nbsp;"),
-                A(NotStr("&ShortUpArrow;"), href=f"/up/{book.name}/{item.path}"),
+                A(NotStr("&ShortUpArrow;"), href=f"/up/{book.bid}/{item.path}"),
                 NotStr("&nbsp;"),
-                A(NotStr("&ShortDownArrow;"), href=f"/down/{book.name}/{item.path}"),
+                A(NotStr("&ShortDownArrow;"), href=f"/down/{book.bid}/{item.path}"),
             ]
         else:
             arrows = []
@@ -131,7 +131,7 @@ def toc(book, items, show_arrows=False):
                 A(
                     str(item),
                     style=f"color: {item.status.color};",
-                    href=f"/book/{book.name}/{item.path}",
+                    href=f"/book/{book.bid}/{item.path}",
                 ),
                 NotStr("&nbsp;&nbsp;&nbsp;"),
                 Small(metadata(item)),

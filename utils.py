@@ -79,6 +79,16 @@ def short_name(name):
     return ", ".join(parts)
 
 
+def full_title(reference):
+    "Return the full title for the reference."
+    title = reference.get("title")
+    if not title:
+        title = "[no title]"
+    if reference.get("subtitle"):
+        title += ": " + reference["subtitle"]
+    return title.rstrip(".") + "."
+
+
 def thousands(i):
     return f"{i:,}".replace(",", ".")
 
@@ -86,6 +96,11 @@ def thousands(i):
 def cleanup_latex(value):
     "Convert LaTeX characters to UTF-8, remove newlines and normalize blanks."
     return latex_utf8.from_latex_to_utf8(" ".join(value.split()))
+
+
+def cleanup_whitespaces(value):
+    "Replace all whitespaces with blanks."
+    return " ".join([s for s in value.split()])
 
 
 def nameify(title):
@@ -232,3 +247,5 @@ Tx = Translator(constants.TRANSLATIONS_FILEPATH)
 if __name__ == "__main__":
     for s in ["Uvö", "Västerby 5:256", "Är detta en såpass bra rubrik?"]:
         print(s, nameify(s))
+    for s in ["newline\nin this", "many    whitespaces", "bla\n  blopp  bloppity"]:
+        print(s, cleanup_whitespaces(s))

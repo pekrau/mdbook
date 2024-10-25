@@ -98,7 +98,7 @@ def get(auth):
     for book in books:
         rows.append(
             Tr(
-                Td(A(book.title, href=f"/book/{book.name}")),
+                Td(A(book.title, href=f"/book/{book.bid}")),
                 Td(Tx(book.frontmatter["type"].capitalize())),
                 Td(Tx(book.frontmatter["status"].capitalize())),
                 Td(Tx(utils.thousands(book.frontmatter["sum_characters"]))),
@@ -147,12 +147,11 @@ def get(auth):
             if len(authors) > 5:
                 authors = authors[:5] + ["..."]
             parts.append(", ".join(authors))
-        if ref.get("title"):
-            parts.append(Br())
-            parts.append(ref["title"])
+        parts.append(Br())
+        parts.append(utils.full_title(ref))
 
         links = []
-        if ref.get("type") == "article":
+        if ref["type"] == "article":
             parts.append(Br())
             parts.append(I(ref["journal"]))
             if ref.get("volume"):
@@ -165,7 +164,7 @@ def get(auth):
                 parts.append(f' ({ref["year"]})')
             if ref.get("edition_published"):
                 parts.append(f' [{ref["edition_published"]}]')
-        elif ref.get("type") == "book":
+        elif ref["type"] == "book":
             parts.append(Br())
             if ref.get("publisher"):
                 parts.append(f'{ref["publisher"]}')
@@ -299,7 +298,7 @@ async def post(auth, tgzfile: UploadFile):
 def get(auth, refid: str):
     "Page for details of a reference."
     try:
-        ref = utils.get_references()[refid.replace("_", " ")]
+        ref = utils.get_references()[refid]
     except KeyError:
         return error("no such reference", HTTPStatus.NOT_FOUND)
     rows = [
@@ -320,18 +319,17 @@ def get(auth, refid: str):
         Tr(Td(Tx("Authors")), Td("; ".join(ref.get("authors") or []))),
     ]
     for key in [
-        "year",
         "title",
         "subtitle",
-        "type",
+        "year",
         "edition_published",
-        "language",
         "date",
-        "keywords",
         "journal",
         "volume",
         "number",
         "pages",
+        "language",
+        "keywords",
         "publisher",
         "source",
     ]:
@@ -352,12 +350,13 @@ def get(auth, refid: str):
     if ref.get("url"):
         rows.append(Tr(Td("Url"), Td(A(ref["url"], href=ref["url"]))))
 
+    title = f'{ref["name"]} ({Tx(ref["type"])})'
     return (
-        Title(refid),
+        Title(title),
         Script(src="/clipboard.min.js"),
         Script("new ClipboardJS('.to_clipboard');"),
         components.header(
-            title=ref["name"],
+            title=title,
             actions=[
                 A(
                     Tx("Clipboard"),
@@ -365,18 +364,140 @@ def get(auth, refid: str):
                     cls="to_clipboard",
                     data_clipboard_text=f'[@{ref["name"]}]',
                 ),
+                A(Tx("Edit"), href=f"/reference/{refid}/edit"),
             ],
         ),
         Main(Table(*rows), Div(NotStr(ref.html)), cls="container"),
     )
 
 
+@rt("/reference/{refid:str}/edit")
+def get(auth, refid: str):
+    "Page for editing a reference."
+    try:
+        ref = utils.get_references()[refid]
+    except KeyError:
+        return error("no such reference", HTTPStatus.NOT_FOUND)
+    fields = [Fieldset(Legend(Tx("Authors")),
+                       Textarea("\n".join(ref.get("authors") or []),
+                                name="authors", required=True)),
+              Fieldset(Legend(Tx("Title")),
+                       Input(name="title", value=ref.get("title") or "", required=True))]
+    if ref["type"] == constants.BOOK:
+        fields.append(Fieldset(Legend(Tx("Subtitle")),
+                               Input(name="subtitle", value=ref.get("subtitle") or "")))
+    fields.append(Fieldset(Legend(Tx("Year")),
+                           Input(name="year", value=ref.get("year") or "", required=True)))
+    # An article may have been reprinted.
+    fields.append(Fieldset(Legend(Tx("Edition published")),
+                           Input(name="edition_published", value=ref.get("edition_published") or "")))
+    fields.append(Fieldset(Legend(Tx("Date")),
+                           Input(name="date", value=ref.get("date") or "")))
+    if ref["type"] == constants.ARTICLE:
+        fields.append(Fieldset(Legend(Tx("Journal")),
+                               Input(name="journal", value=ref.get("journal") or "")))
+        fields.append(Fieldset(Legend(Tx("Volume")),
+                               Input(name="volume", value=ref.get("volume") or "")))
+        fields.append(Fieldset(Legend(Tx("Number")),
+                               Input(name="number", value=ref.get("number") or "")))
+        fields.append(Fieldset(Legend(Tx("Pages")),
+                               Input(name="pages", value=ref.get("pages") or "")))
+        fields.append(Fieldset(Legend(Tx("ISSN")),
+                               Input(name="issn", value=ref.get("issn") or "")))
+    fields.append(Fieldset(Legend(Tx("Language")),
+                           Input(name="language", value=ref.get("language") or "")))
+    fields.append(Fieldset(Legend(Tx("Keywords")),
+                           Input(name="keywords", value=ref.get("keywords") or "")))
+    fields.append(Fieldset(Legend(Tx("Publisher")),
+                           Input(name="publisher", value=ref.get("publisher") or "")))
+    fields.append(Fieldset(Legend(Tx("Source")),
+                           Input(name="source", value=ref.get("source") or "")))
+    if ref["type"] == constants.BOOK:
+        fields.append(Fieldset(Legend(Tx("ISBN")),
+                               Input(name="isbn", value=ref.get("isbn") or "")))
+    if ref["type"] == constants.ARTICLE:
+        fields.append(Fieldset(Legend(Tx("PubMed")),
+                               Input(name="pmid", value=ref.get("pmid") or "")))
+    fields.append(Fieldset(Legend(Tx("DOI")),
+                           Input(name="doi", value=ref.get("doi") or "")))
+    fields.append(Fieldset(Legend(Tx("URL")),
+                           Input(name="url", value=ref.get("url") or "")))
+    fields.append(Fieldset(Legend(Tx("Notes")),
+                       Textarea(ref.content or "", name="notes", rows=10, autofocus=True)))
+
+    title = f'{Tx("Edit reference")} ({Tx(ref["type"])})'
+    return (
+        Title(title),
+        components.header(title=title),
+        Main(
+            Form(*fields,
+                Button(Tx("Save")),
+                action=f"/reference/{refid}/edit",
+                method="post",
+            ),
+            cls="container",
+        ),
+    )
+
+
+@rt("/reference/{refid:str}/edit")
+def post(auth,
+         refid: str,
+         authors: str,
+         title: str,
+         year: str,
+         edition_published: str,
+         date: str,
+         language: str,
+         keywords: str,
+         publisher: str,
+         source: str,
+         doi: str,
+         url: str,
+         notes: str,
+         subtitle: str="",
+         journal: str="",
+         volume: str="",
+         number: str="",
+         pages: str="",
+         issn: str="",
+         isbn: str="",
+         pmid: str="",
+         ):
+    "Actually edit the reference."
+    try:
+        ref = utils.get_references()[refid]
+    except KeyError:
+        return error("no such reference", HTTPStatus.NOT_FOUND)
+    ref["authors"] = [s for s in authors.split("\n") if s]
+    ref["title"] = utils.cleanup_whitespaces(title) # Even if empty string.
+    ref.set("subtitle", utils.cleanup_whitespaces(subtitle))
+    ref.set("year", year.strip())
+    ref.set("edition_published", edition_published.strip())
+    ref.set("date", date.strip())
+    ref.set("journal", utils.cleanup_whitespaces(journal))
+    ref.set("volume", volume.strip())
+    ref.set("number", number.strip())
+    ref.set("pages", pages.strip())
+    ref.set("language", language.strip())
+    ref.set("keywords", utils.cleanup_whitespaces(keywords))
+    ref.set("publisher", publisher.strip())
+    ref.set("source", source.strip())
+    ref.set("issn", issn.strip())
+    ref.set("isbn", isbn.strip())
+    ref.set("pmid", pmid.strip())
+    ref.set("doi", doi.strip())
+    ref.set("url", url.strip())
+    ref.write(content=notes)
+    return RedirectResponse(f"/reference/{refid}", status_code=HTTPStatus.SEE_OTHER)
+
+
 @rt("/bibtex")
 def get(auth):
     "Page for adding reference(s) using BibTex data."
     return (
-        Title("Add reference"),
-        components.header(title="Add reference"),
+        Title(Tx("Add reference")),
+        components.header(title=Tx("Add reference")),
         Main(
             Form(
                 Fieldset(Legend(Tx("Bibtex data")), Textarea(name="data", rows="20")),
@@ -397,16 +518,16 @@ def post(auth, data: str):
         authors = utils.cleanup_latex(entry["author"])
         authors = [a.strip() for a in authors.split(" and ")]
         year = entry["year"].strip()
-        name = authors[0].split(",")[0].strip()
+        orig_name = authors[0].split(",")[0].strip()
         for char in [""] + list(string.ascii_lowercase):
-            name = f"{name} {year}{char}"
+            name = f"{orig_name} {year}{char}"
             id = utils.nameify(name)
             if utils.get_references().get(id) is None:
                 break
         else:
             raise ValueError(f"could not form unique id for {name} {year}")
         new = dict(
-            id=id, name=name, type=entry["ENTRYTYPE"], authors=authors, year=year
+            id=id, name=name, type=entry.get("ENTRYTYPE") or constants.ARTICLE, authors=authors, year=year
         )
         for key, value in entry.items():
             if key in ("author", "ID", "ENTRYTYPE"):
@@ -445,11 +566,11 @@ def post(auth, data: str):
         for key, value in new.items():
             reference[key] = value
         if abstract:
-            reference.write("**Abstract**\n\n" + abstract)
+            reference.write(content="**Abstract**\n\n" + abstract)
         else:
             reference.write()
-        references = utils.get_references()
-        references.read()
+        # Re-sort all references.
+        references = utils.get_references(refresh=True)
         references.items.sort(key=lambda r: r["id"].lower())
         references.write()
         result.append(reference)
@@ -475,7 +596,7 @@ def get(auth):
             Form(
                 Fieldset(
                     Legend(Tx("Title")),
-                    Input(type="text", name="title", required=True, autofocus=True),
+                    Input(name="title", required=True, autofocus=True),
                 ),
                 Fieldset(
                     Legend(Tx(f'{Tx("Upload")} TGZ')),
@@ -519,14 +640,14 @@ async def post(auth, title: str, tgzfile: UploadFile):
     book.frontmatter["owner"] = auth
     book.write()
 
-    return RedirectResponse(f"/book/{book.name}", status_code=HTTPStatus.SEE_OTHER)
+    return RedirectResponse(f"/book/{book.bid}", status_code=HTTPStatus.SEE_OTHER)
 
 
 @rt("/book/{bid:str}")
 def get(auth, bid: str):
     "Book page; list of sections and texts."
     if not bid:
-        return error("no book name provided", HTTPStatus.BAD_REQUEST)
+        return error("no book identifier provided", HTTPStatus.BAD_REQUEST)
     try:
         book = utils.get_book(bid, refresh=True)
     except KeyError as message:
@@ -1510,12 +1631,12 @@ def get(auth):
 def get_state():
     "Return JSON for the overall state of this site."
     books = {}
-    for name in os.listdir(os.environ["MDBOOK_DIR"]):
-        dirpath = os.path.join(os.environ["MDBOOK_DIR"], name)
+    for bid in os.listdir(os.environ["MDBOOK_DIR"]):
+        dirpath = os.path.join(os.environ["MDBOOK_DIR"], bid)
         if not os.path.isdir(dirpath):
             continue
         book = Book(dirpath, index_only=True)
-        books[name] = dict(
+        books[bid] = dict(
             title=book.title,
             modified=utils.timestr(filepath=dirpath, localtime=False, display=False),
             sum_characters=book.frontmatter["sum_characters"],
