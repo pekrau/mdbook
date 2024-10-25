@@ -1493,7 +1493,7 @@ def get(auth, bid: str):
     if not bid:
         return error("no book id provided", HTTPStatus.BAD_REQUEST)
     book = utils.get_book(bid, refresh=True)
-    filename = f"mdbook_{book.name}_{utils.timestr(safe=True)}.tgz"
+    filename = f"mdbook_{book.bid}_{utils.timestr(safe=True)}.tgz"
     output = book.get_tgzfile()
 
     return Response(
@@ -1931,7 +1931,7 @@ def post(auth, bid: str):
     headers = dict(apikey=os.environ["MDBOOK_UPDATE_APIKEY"])
     response = requests.get(url, headers=headers)
     if response.status_code != HTTPStatus.OK:
-        return error(f"remote error: {response.message}", HTTPStatus.BAD_REQUEST)
+        return error(f"remote error: {response.content}", HTTPStatus.BAD_REQUEST)
     if response.headers["Content-Type"] != constants.GZIP_MIMETYPE:
         return error("invalid file type from remote", HTTPStatus.BAD_REQUEST)
     content = response.content
