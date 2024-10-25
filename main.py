@@ -599,7 +599,7 @@ def get(auth):
                     Input(name="title", required=True, autofocus=True),
                 ),
                 Fieldset(
-                    Legend(Tx(f'{Tx("Upload")} TGZ')),
+                    Legend(Tx(f'{Tx("Upload")} TGZ ({Tx("optional")})')),
                     Input(type="file", name="tgzfile"),
                 ),
                 Button(Tx("Create or upload")),
@@ -645,7 +645,7 @@ async def post(auth, title: str, tgzfile: UploadFile):
 
 @rt("/book/{bid:str}")
 def get(auth, bid: str):
-    "Book page; list of sections and texts."
+    "Book page; contents list of sections and texts."
     if not bid:
         return error("no book identifier provided", HTTPStatus.BAD_REQUEST)
     try:
@@ -678,7 +678,7 @@ def get(auth, bid: str):
 
 @rt("/book/{bid:str}/{path:path}")
 def get(auth, bid: str, path: str):
-    "View the book text or section."
+    "View of book text or section contents."
     if not bid:
         return error("no book id provided", HTTPStatus.BAD_REQUEST)
     book = utils.get_book(bid)
@@ -931,7 +931,7 @@ def get(auth, bid: str):
 
 @rt("/delete/{bid:str}")
 def post(auth, bid: str):
-    "Delete the book."
+    "Actually delete the book."
     if not bid:
         return error("no book id provided", HTTPStatus.BAD_REQUEST)
     book = utils.get_book(bid)
@@ -1023,13 +1023,19 @@ def get(auth, bid: str, path: str):
     if not bid:
         return error("no book id provided", HTTPStatus.BAD_REQUEST)
     book = utils.get_book(bid)
-    assert path == "" or book[path].is_section
+    if path:
+        parent = book[path]
+        assert parent.is_section
+        parent = parent.fulltitle
+    else:
+        parent = Tx("Book")
     title = f'{Tx("Create")} {Tx("text")}'
 
     return (
         Title(title),
         components.header(book=book, title=title),
         Main(
+            P(f'{Tx("Create in")}: {parent}'),
             Form(
                 Fieldset(
                     Label(Tx("Title")),
@@ -1067,13 +1073,19 @@ def get(auth, bid: str, path: str):
     if not bid:
         return error("no book id provided", HTTPStatus.BAD_REQUEST)
     book = utils.get_book(bid)
-    assert path == "" or book[path].is_section
+    if path:
+        parent = book[path]
+        assert parent.is_section
+        parent = parent.fulltitle
+    else:
+        parent = Tx("Book")
     title = f'{Tx("Create")} {Tx("section")}'
 
     return (
         Title(title),
         components.header(book=book, title=title),
         Main(
+            P(f'{Tx("Create in")}: {parent}'),
             Form(
                 Fieldset(
                     Label(Tx("Title")),
