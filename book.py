@@ -636,6 +636,10 @@ class Item:
         """
         raise NotImplementedError
 
+    @property
+    def language(self):
+        return self.book.language
+
     def filename(self, newname=None):
         """Return the filename of this item.
         Note: this is not the path, just the base name of the file or directory.

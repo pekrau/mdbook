@@ -13,18 +13,6 @@ from utils import Tx
 NAV_STYLE_TEMPLATE = "outline-color: {color}; outline-width:8px; outline-style:solid; padding:0px 10px; border-radius:5px;"
 
 
-def metadata(item):
-    "Display status, n words and n characters."
-    return "; ".join(
-        [
-            Tx(item.type),
-            Tx(repr(item.status)),
-            f'{utils.thousands(item.n_words)} {Tx("words")}',
-            f'{utils.thousands(item.n_characters)} {Tx("characters")}',
-        ]
-    )
-
-
 def header(book=None, item=None, title=None, actions=None, state_url=None):
     "The standard page header with navigation bar."
     # The first cell: icon and book title (if any).
@@ -49,32 +37,19 @@ def header(book=None, item=None, title=None, actions=None, state_url=None):
     elif item:
         entries.append(
             Ul(
-                Li(
-                    Strong(item.fulltitle),
-                    Br(),
-                    Small(metadata(item)),
-                )
+                Li(Strong(item.fulltitle))
             )
         )
         nav_style = NAV_STYLE_TEMPLATE.format(color=item.status.color)
 
     elif book:
-        entries.append(
-            Ul(
-                Li(
-                    f"{Tx(repr(book.status))}; ",
-                    f'{utils.thousands(book.sum_words)} {Tx("words")}; '
-                    f'{utils.thousands(book.sum_characters)} {Tx("characters")}; ',
-                    f'{Tx("language")}: {book.frontmatter.get("language") or "-"}',
-                )
-            )
-        )
+        entries.append(Ul(Li(Tx("Contents"))))
         nav_style = NAV_STYLE_TEMPLATE.format(color=book.status.color)
 
     else:
         nav_style = NAV_STYLE_TEMPLATE.format(color="black")
 
-    pages = []
+    pages = [A(Tx("References"), href="/references")]
     if item is not None:
         if item.parent:
             if item.parent.level == 0:  # Book.
@@ -89,13 +64,13 @@ def header(book=None, item=None, title=None, actions=None, state_url=None):
             url = f"/book/{book.bid}/{item.next.path}"
             pages.append(A(NotStr(f"&ShortRightArrow; {item.next.title}"), href=url))
     if book is not None:
-        pages.append(A(Tx("Title"), href=f"/title/{book.bid}"))
         pages.append(A(Tx("Index"), href=f"/index/{book.bid}"))
+        pages.append(A(Tx("Information"), href=f"/information/{book.bid}"))
         pages.append(A(Tx("Status list"), href=f"/statuslist/{book.bid}"))
-    pages.append(A(Tx("References"), href="/references"))
-    pages.append(A(Tx("Information"), href="/information"))
     if state_url:
         pages.append(A(Tx("State"), href=state_url))
+    if not book and not item:
+        pages.append(A(Tx("System"), href="/system"))
     items = [
         Li(Details(Summary(Tx("Pages")), Ul(*[Li(p) for p in pages]), cls="dropdown"))
     ]
@@ -134,7 +109,10 @@ def toc(book, items, show_arrows=False):
                     href=f"/book/{book.bid}/{item.path}",
                 ),
                 NotStr("&nbsp;&nbsp;&nbsp;"),
-                Small(metadata(item)),
+                Small(Tx(item.type),
+                      Tx(repr(item.status)),
+                      f'{utils.thousands(item.n_words)} {Tx("words")}',
+                      f'{utils.thousands(item.n_characters)} {Tx("characters")}'),
                 *arrows,
             )
         )
@@ -145,5 +123,13 @@ def toc(book, items, show_arrows=False):
 
 def footer(item):
     return Footer(
-        Hr(), Small(f'{Tx("Modified")}: ', Time(item.modified)), cls="container"
+        Hr(),
+        Div(
+            Div(Tx(item.status)),
+            Div(f'{Tx("Modified")}: ', item.modified),
+            Div(f'{utils.thousands(item.n_words)} {Tx("words")}; ',
+                f'{utils.thousands(item.n_characters)} {Tx("characters")}'),
+            cls="grid"
+        ),
+        cls="container",
     )

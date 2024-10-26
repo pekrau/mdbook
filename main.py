@@ -665,16 +665,22 @@ def get(auth, bid: str):
     if "MDBOOK_UPDATE_SITE" in os.environ:
         actions.append(A(f'{Tx("Differences")}', href=f"/differences/{bid}"))
     actions.append(A(f'{Tx("Delete")}', href=f"/delete/{bid}"))
+    segments = []
     if len(book.items) == 0:
-        content = H3(A(Tx("Article"), href=f"/title/{bid}"))
+        segments.append(H3(book.title))
+        if book.subtitle:
+            segments.append(H4(book.subtitle))
+        for author in book.authors:
+            segments.append(H5(author))
     else:
-        content = components.toc(book, book.items, show_arrows=True)
+        segments.append(components.toc(book, book.items, show_arrows=True))
 
     return (
         Title(book.title),
         components.header(book=book, actions=actions, state_url=f"/state/{bid}"),
-        Main(content, cls="container"),
+        Main(*segments, NotStr(book.html), cls="container"),
         components.footer(book),
+
     )
 
 
@@ -812,7 +818,7 @@ def post(
         book.frontmatter.pop("language", None)
     book.write(content=content, force=True)
 
-    return RedirectResponse(f"/title/{bid}", status_code=HTTPStatus.SEE_OTHER)
+    return RedirectResponse(f"/book/{bid}", status_code=HTTPStatus.SEE_OTHER)
 
 
 @rt("/edit/{bid:str}/{path:path}")
@@ -924,7 +930,6 @@ def get(auth, bid: str):
         components.header(book=book, title=book.title),
         Main(
             H3(Tx("Delete"), "?"),
-            P(Mark(components.metadata(book))),
             Form(Button(Tx("Confirm")), action=f"/delete/{bid}", method="post"),
             cls="container",
         ),
@@ -1119,24 +1124,28 @@ def post(auth, bid: str, path: str, title: str = None):
     return RedirectResponse(f"/edit/{bid}/{new.path}", status_code=HTTPStatus.SEE_OTHER)
 
 
-@rt("/title/{bid:str}")
+@rt("/information/{bid:str}")
 def get(auth, bid: str):
-    "Title page."
+    "Book information page."
     if not bid:
         return error("no book id provided", HTTPStatus.BAD_REQUEST)
     book = utils.get_book(bid)
-    segments = [H1(book.title)]
+    segments = [H3(book.title)]
     if book.subtitle:
-        segments.append(H2(book.subtitle))
+        segments.append(H4(book.subtitle))
     for author in book.authors:
-        segments.append(H3(author))
-    segments.append(NotStr(book.html))
+        segments.append(H5(author))
+    segments.append(P(f'{Tx("Type")}: {Tx(book.type.capitalize())}'))
+    segments.append(P(f'{Tx("Status")}: {Tx(book.status)}'))
+    segments.append(P(f'{Tx("Words")}: {utils.thousands(book.sum_words)}'))
+    segments.append(P(f'{Tx("Characters")}: {utils.thousands(book.sum_characters)}'))
+    segments.append(P(f'{Tx("Language")}: {book.frontmatter.get("language") or "-"}'))
 
     return (
-        Title(Tx("Title")),
+        Title(Tx("Information")),
         components.header(
             book=book,
-            title=Tx("Title"),
+            title=Tx("Information"),
             actions=[
                 A(f'{Tx("Edit")}', href=f"/edit/{bid}"),
                 A(f'{Tx("Download")} DOCX', href=f"/docx/{bid}"),
@@ -1525,12 +1534,12 @@ def get(auth, bid: str):
     return result
 
 
-@rt("/information")
+@rt("/system")
 def get(auth):
-    "Various metadata."
+    "System information."
     return (
-        Title(Tx("Information")),
-        components.header(title=Tx("Information")),
+        Title(Tx("System")),
+        components.header(title=Tx("System")),
         Main(
             Table(
                 Tr(Td(Tx("User")), Td(auth, " ", A("logout", href="/logout"))),
@@ -1792,9 +1801,9 @@ def get(auth, bid: str):
     # The book 'index.md' files may differ, if they exist.
     if remote and here:
         row = item_diff(remote,
-                        f'{os.environ["MDBOOK_UPDATE_SITE"].rstrip("/")}/title/{bid}',
+                        f'{os.environ["MDBOOK_UPDATE_SITE"].rstrip("/")}/book/{bid}',
                         here,
-                        f"/title/{bid}")
+                        f"/book/{bid}")
         if row:
             rows.insert(0, row)
     if not rows:

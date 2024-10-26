@@ -67,8 +67,6 @@ none,ingen
 Add BibTex,Lägg till BibTex
 add reference,lägg till referens
 edit reference,redigera referens
-number of files,antal filer
-metadata on title page,metadata på titelsidan
 status list,statuslista
 section,sektion
 text,text
@@ -108,3 +106,6 @@ smaller,mindre
 link,länk
 not present in,finns inte i
 not present here,finns inte här
+information,information
+system,system
+contents,innehåll
