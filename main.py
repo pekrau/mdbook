@@ -102,7 +102,7 @@ def get(auth):
                 Td(Tx(book.frontmatter.get("type", constants.BOOK).capitalize())),
                 Td(Tx(book.frontmatter.get("status", repr(constants.STARTED)).capitalize())),
                 Td(Tx(utils.thousands(book.frontmatter.get("sum_characters", 0)))),
-                Td(book.frontmatter["owner"]),
+                Td(book.owner),
                 Td(book.modified),
             )
         )
@@ -1137,6 +1137,8 @@ def get(auth, bid: str):
         segments.append(H5(author))
     segments.append(P(f'{Tx("Type")}: {Tx(book.type.capitalize())}'))
     segments.append(P(f'{Tx("Status")}: {Tx(book.status)}'))
+    segments.append(P(f'{Tx("Owner")}: {Tx(book.owner)}'))
+    segments.append(P(f'{Tx("Modified")}: {book.modified}'))
     segments.append(P(f'{Tx("Words")}: {utils.thousands(book.sum_words)}'))
     segments.append(P(f'{Tx("Characters")}: {utils.thousands(book.sum_characters)}'))
     segments.append(P(f'{Tx("Language")}: {book.frontmatter.get("language") or "-"}'))

@@ -220,6 +220,10 @@ class Book:
         return utils.timestr(filepath=self.absfilepath)
 
     @property
+    def owner(self):
+        return self.frontmatter.get("owner")
+
+    @property
     def status(self):
         "Return the lowest status for the sub-items, or from 'index.md' if no items."
         if self.items:
@@ -312,10 +316,10 @@ class Book:
         return self.frontmatter.get("pdf") or {}
 
     def allow_read(self, auth):
-        return self.frontmatter["owner"] == auth
+        return self.owner == auth
 
     def allow_write(self, auth):
-        return self.frontmatter["owner"] == auth
+        return self.owner == auth
 
     @property
     def state(self):

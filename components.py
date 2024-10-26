@@ -109,9 +109,9 @@ def toc(book, items, show_arrows=False):
                     href=f"/book/{book.bid}/{item.path}",
                 ),
                 NotStr("&nbsp;&nbsp;&nbsp;"),
-                Small(Tx(item.type),
-                      Tx(repr(item.status)),
-                      f'{utils.thousands(item.n_words)} {Tx("words")}',
+                Small(f'{Tx(item.type)}; ',
+                      f'{Tx(repr(item.status))}; ',
+                      f'{utils.thousands(item.n_words)} {Tx("words")}; ',
                       f'{utils.thousands(item.n_characters)} {Tx("characters")}'),
                 *arrows,
             )
@@ -126,7 +126,7 @@ def footer(item):
         Hr(),
         Div(
             Div(Tx(item.status)),
-            Div(f'{Tx("Modified")}: ', item.modified),
+            Div(item.modified),
             Div(f'{utils.thousands(item.n_words)} {Tx("words")}; ',
                 f'{utils.thousands(item.n_characters)} {Tx("characters")}'),
             cls="grid"
