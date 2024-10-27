@@ -3,7 +3,7 @@
 import functools
 import os.path
 
-VERSION = (5, 5, 2)
+VERSION = (5, 6, 0)
 __version__ = ".".join([str(n) for n in VERSION])
 
 
@@ -93,6 +93,8 @@ REFERENCE_MAX_AUTHORS = 5
 ARTICLE = "article"
 BOOK = "book"
 LINK = "link"
+REFERENCE_TYPES = (ARTICLE, BOOK, LINK)
+REFERENCE_COLOR = "royalblue"
 
 BOLD = "bold"
 ITALIC = "italic"

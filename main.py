@@ -122,7 +122,7 @@ def get(auth):
 
 @rt("/references")
 def get(auth):
-    "Page for list of references."
+    "List of references."
     references = utils.get_references(refresh=True)
     references.write()  # Updates the 'index.md' file, if necessary.
     items = []
@@ -137,7 +137,7 @@ def get(auth):
             ),
             NotStr("&nbsp;"),
             A(
-                Strong(ref["name"], style="color: royalblue;"),
+                Strong(ref["name"], style=f"color: {constants.REFERENCE_COLOR};"),
                 href=f'/reference/{ref["id"]}',
             ),
             NotStr("&nbsp;&nbsp;"),
@@ -153,7 +153,8 @@ def get(auth):
         links = []
         if ref["type"] == "article":
             parts.append(Br())
-            parts.append(I(ref["journal"]))
+            if ref.get("journal"):
+                parts.append(I(ref["journal"]))
             if ref.get("volume"):
                 parts.append(f' {ref["volume"]}')
             if ref.get("number"):
@@ -221,11 +222,11 @@ def get(auth):
         items.append(P(*parts, id=ref["name"]))
 
     title = f'{Tx("References")} ({len(references.items)})'
-    actions = [
-        A(Tx("Add BibTex"), href="/reference/bibtex"),
-        A(f'{Tx("Download")} {Tx("references")} TGZ', href="/references/tgz"),
-        A(f'{Tx("Upload")} {Tx("references")} TGZ', href="/references/upload"),
-    ]
+    actions = [A(Tx(f'{Tx("Add reference")}: {Tx(type)}'), href=f"/reference/add/{type}")
+               for type in constants.REFERENCE_TYPES]
+    actions.append(A(f'{Tx("Add reference")}: BibTex', href="/reference/add/bibtex"))
+    actions.append(A(f'{Tx("Download")} {Tx("references")} TGZ', href="/references/tgz"))
+    actions.append(A(f'{Tx("Upload")} {Tx("references")} TGZ', href="/references/upload"))
     if "MDBOOK_UPDATE_SITE" in os.environ:
         actions.append(A(Tx("Differences"), href="/differences/references"))
 
@@ -294,17 +295,17 @@ async def post(auth, tgzfile: UploadFile):
     return RedirectResponse("/references", status_code=HTTPStatus.SEE_OTHER)
 
 
-@rt("/reference/bibtex")
-def get(auth):
-    "Page for adding reference(s) using BibTex data."
+@rt("/reference/add/{type:str}")
+def get(auth, type: str):
+    "Add a reference from scratch."
+    title = f'{Tx("Add reference")}: {Tx(type)}'
     return (
-        Title(Tx("Add reference")),
-        components.header(title=Tx("Add reference")),
+        Title(title),
+        components.header(title=title),
         Main(
-            Form(
-                Fieldset(Legend(Tx("Bibtex data")), Textarea(name="data", rows="20")),
-                Button("Add"),
-                action="/reference/bibtex",
+            Form(*components.get_reference_fields(type=type),
+                Button(Tx("Continue")),
+                action=f"/reference",
                 method="post",
             ),
             cls="container",
@@ -312,24 +313,123 @@ def get(auth):
     )
 
 
-@rt("/reference/bibtex")
+@rt("/reference")
+def post(auth,
+         type: str,
+         authors: str,
+         title: str,
+         year: str,
+         date: str,
+         url: str,
+         publisher: str,
+         language: str,
+         keywords: str,
+         notes: str,
+         edition_published: str="",
+         subtitle: str="",
+         journal: str="",
+         volume: str="",
+         number: str="",
+         pages: str="",
+         issn: str="",
+         isbn: str="",
+         pmid: str="",
+         doi: str="",
+         ):
+    "Actually add a reference from scratch."
+    authors = [s.strip() for s in authors.split("\n") if s.strip()]
+    if not authors:
+        return error("no author(s) provided", HTTPStatus.BAD_REQUEST)
+    year = year.strip()
+    if not year:
+        return error("no year provided", HTTPStatus.BAD_REQUEST)
+    type = type.strip()
+    if type not in constants.REFERENCE_TYPES:
+        return error(f"invalid reference type '{type}'", HTTPStatus.BAD_REQUEST)
+    author = authors[0].split(",")[0].strip()
+    for char in [""] + list(string.ascii_lowercase):
+        name = f"{author} {year}{char}"
+        refid = utils.nameify(name)
+        if utils.get_references().get(id) is None:
+            break
+    else:
+        raise ValueError(f"could not form unique id for {name} {year}")
+    ref = utils.get_references().create_text(name)
+    # Don't bother selecting keys to add according to type...
+    ref.set("type", type)
+    ref.set("authors", authors)
+    ref.set("title", utils.cleanup_whitespaces(title))
+    ref.set("year", year.strip())
+    ref.set("id", refid)
+    ref.set("name", name)
+    ref.set("subtitle", utils.cleanup_whitespaces(subtitle))
+    ref.set("edition_published", edition_published.strip())
+    ref.set("date", date.strip())
+    ref.set("journal", utils.cleanup_whitespaces(journal))
+    ref.set("volume", volume.strip())
+    ref.set("number", number.strip())
+    ref.set("pages", pages.strip())
+    ref.set("language", language.strip())
+    ref.set("publisher", publisher.strip())
+    ref.set("keywords", [s.strip() for s in keywords.split(";") if s.strip()]),
+    ref.set("issn", issn.strip())
+    ref.set("isbn", isbn.strip())
+    ref.set("pmid", pmid.strip())
+    ref.set("doi", doi.strip())
+    ref.set("url", url.strip())
+    ref.write(content=notes)
+    # Re-sort all references.
+    references = utils.get_references(refresh=True)
+    references.items.sort(key=lambda r: r["id"])
+    references.write()
+
+    return RedirectResponse(f"/reference/{refid}", status_code=HTTPStatus.SEE_OTHER)
+
+
+@rt("/reference/add/bibtex")
+def get(auth):
+    "Add reference(s) from BibTex data."
+    title = f'{Tx("Add reference")}: BibTex'
+    return (
+        Title(title),
+        components.header(title=title),
+        Main(
+            Form(
+                Fieldset(Legend(Tx("BibTex data")), Textarea(name="data", rows="20")),
+                Button("Add"),
+                action="/reference/add/bibtex",
+                method="post",
+            ),
+            cls="container",
+        ),
+    )
+
+
+@rt("/reference/add/bibtex")
 def post(auth, data: str):
     "Actually add reference(s) using BibTex data."
     result = []
     for entry in bibtexparser.loads(data).entries:
         authors = utils.cleanup_latex(entry["author"])
         authors = [a.strip() for a in authors.split(" and ")]
+        if not authors:
+            continue
         year = entry["year"].strip()
-        orig_name = authors[0].split(",")[0].strip()
+        if not year:
+            continue
         for char in [""] + list(string.ascii_lowercase):
-            name = f"{orig_name} {year}{char}"
+            name = authors[0].split(",")[0].strip() + char
             id = utils.nameify(name)
             if utils.get_references().get(id) is None:
                 break
         else:
             raise ValueError(f"could not form unique id for {name} {year}")
         new = dict(
-            id=id, name=name, type=entry.get("ENTRYTYPE") or constants.ARTICLE, authors=authors, year=year
+            id=id,
+            name=name,
+            type=entry.get("ENTRYTYPE") or constants.ARTICLE,
+            authors=authors,
+            year=year
         )
         for key, value in entry.items():
             if key in ("author", "ID", "ENTRYTYPE"):
@@ -373,7 +473,7 @@ def post(auth, data: str):
             reference.write()
         # Re-sort all references.
         references = utils.get_references(refresh=True)
-        references.items.sort(key=lambda r: r["id"].lower())
+        references.items.sort(key=lambda r: r["id"])
         references.write()
         result.append(reference)
 
@@ -389,11 +489,11 @@ def post(auth, data: str):
 
 @rt("/reference/{refid:str}")
 def get(auth, refid: str):
-    "Page for details of a reference."
+    "Display a reference."
     try:
         ref = utils.get_references()[refid]
     except KeyError:
-        return error("no such reference", HTTPStatus.NOT_FOUND)
+        return error(f"no such reference '{refid}'", HTTPStatus.NOT_FOUND)
     rows = [
         Tr(
             Td(Tx("Reference")),
@@ -423,7 +523,6 @@ def get(auth, refid: str):
         "pages",
         "language",
         "publisher",
-        "source",
     ]:
         value = ref.get(key)
         if value:
@@ -458,7 +557,8 @@ def get(auth, refid: str):
                     cls="to_clipboard",
                     data_clipboard_text=f'[@{ref["name"]}]',
                 ),
-                A(Tx("Edit"), href=f"/reference/{refid}/edit"),
+                A(Tx("Edit"), href=f"/reference/edit/{refid}"),
+                A(Tx("Delete"), href=f"/reference/delete/{refid}"),
             ],
         ),
         Main(Table(*rows), Div(NotStr(ref.html)), cls="container"),
@@ -466,69 +566,22 @@ def get(auth, refid: str):
     )
 
 
-@rt("/reference/{refid:str}/edit")
+@rt("/reference/edit/{refid:str}")
 def get(auth, refid: str):
-    "Page for editing a reference."
+    "Edit a reference."
     try:
         ref = utils.get_references()[refid]
     except KeyError:
-        return error("no such reference", HTTPStatus.NOT_FOUND)
-    fields = [Fieldset(Legend(Tx("Authors")),
-                       Textarea("\n".join(ref.get("authors") or []),
-                                name="authors", required=True)),
-              Fieldset(Legend(Tx("Title")),
-                       Input(name="title", value=ref.get("title") or "", required=True))]
-    if ref["type"] == constants.BOOK:
-        fields.append(Fieldset(Legend(Tx("Subtitle")),
-                               Input(name="subtitle", value=ref.get("subtitle") or "")))
-    fields.append(Fieldset(Legend(Tx("Year")),
-                           Input(name="year", value=ref.get("year") or "", required=True)))
-    # An article may have been reprinted.
-    fields.append(Fieldset(Legend(Tx("Edition published")),
-                           Input(name="edition_published", value=ref.get("edition_published") or "")))
-    fields.append(Fieldset(Legend(Tx("Date")),
-                           Input(name="date", value=ref.get("date") or "")))
-    if ref["type"] == constants.ARTICLE:
-        fields.append(Fieldset(Legend(Tx("Journal")),
-                               Input(name="journal", value=ref.get("journal") or "")))
-        fields.append(Fieldset(Legend(Tx("Volume")),
-                               Input(name="volume", value=ref.get("volume") or "")))
-        fields.append(Fieldset(Legend(Tx("Number")),
-                               Input(name="number", value=ref.get("number") or "")))
-        fields.append(Fieldset(Legend(Tx("Pages")),
-                               Input(name="pages", value=ref.get("pages") or "")))
-        fields.append(Fieldset(Legend(Tx("ISSN")),
-                               Input(name="issn", value=ref.get("issn") or "")))
-    fields.append(Fieldset(Legend(Tx("Language")),
-                           Input(name="language", value=ref.get("language") or "")))
-    fields.append(Fieldset(Legend(Tx("Publisher")),
-                           Input(name="publisher", value=ref.get("publisher") or "")))
-    fields.append(Fieldset(Legend(Tx("Source")),
-                           Input(name="source", value=ref.get("source") or "")))
-    fields.append(Fieldset(Legend(Tx("Keywords")),
-                           Input(name="keywords",
-                                 value="; ".join(ref.get("keywords") or []))))
-    if ref["type"] == constants.BOOK:
-        fields.append(Fieldset(Legend(Tx("ISBN")),
-                               Input(name="isbn", value=ref.get("isbn") or "")))
-    if ref["type"] == constants.ARTICLE:
-        fields.append(Fieldset(Legend(Tx("PubMed")),
-                               Input(name="pmid", value=ref.get("pmid") or "")))
-    fields.append(Fieldset(Legend(Tx("DOI")),
-                           Input(name="doi", value=ref.get("doi") or "")))
-    fields.append(Fieldset(Legend(Tx("URL")),
-                           Input(name="url", value=ref.get("url") or "")))
-    fields.append(Fieldset(Legend(Tx("Notes")),
-                       Textarea(ref.content or "", name="notes", rows=10, autofocus=True)))
+        return error(f"no such reference '{refid}'", HTTPStatus.NOT_FOUND)
 
     title = f'{Tx("Edit reference")} ({Tx(ref["type"])})'
     return (
         Title(title),
         components.header(title=title),
         Main(
-            Form(*fields,
+            Form(*components.get_reference_fields(ref=ref, type=ref["type"]),
                 Button(Tx("Save")),
-                action=f"/reference/{refid}/edit",
+                action=f"/reference/edit/{refid}",
                 method="post",
             ),
             cls="container",
@@ -536,7 +589,7 @@ def get(auth, refid: str):
     )
 
 
-@rt("/reference/{refid:str}/edit")
+@rt("/reference/edit/{refid:str}")
 def post(auth,
          refid: str,
          authors: str,
@@ -547,11 +600,10 @@ def post(auth,
          language: str,
          keywords: str,
          publisher: str,
-         source: str,
          doi: str,
          url: str,
          notes: str,
-         subtitle: str="",
+         subtitle: str="",      # The following may not be included in the form.
          journal: str="",
          volume: str="",
          number: str="",
@@ -564,8 +616,9 @@ def post(auth,
     try:
         ref = utils.get_references()[refid]
     except KeyError:
-        return error("no such reference", HTTPStatus.NOT_FOUND)
-    ref["authors"] = [s for s in authors.split("\n") if s]
+        return error(f"no such reference '{refid}'", HTTPStatus.NOT_FOUND)
+    
+    ref["authors"] = [s.strip() for s in authors.split("\n") if s.strip()]
     ref["title"] = utils.cleanup_whitespaces(title) # Even if empty string.
     ref.set("subtitle", utils.cleanup_whitespaces(subtitle))
     ref.set("year", year.strip())
@@ -577,7 +630,6 @@ def post(auth,
     ref.set("pages", pages.strip())
     ref.set("language", language.strip())
     ref.set("publisher", publisher.strip())
-    ref.set("source", source.strip())
     ref.set("keywords", [s.strip() for s in keywords.split(";") if s.strip()]),
     ref.set("issn", issn.strip())
     ref.set("isbn", isbn.strip())
@@ -585,12 +637,50 @@ def post(auth,
     ref.set("doi", doi.strip())
     ref.set("url", url.strip())
     ref.write(content=notes)
+
     return RedirectResponse(f"/reference/{refid}", status_code=HTTPStatus.SEE_OTHER)
+
+
+@rt("/reference/delete/{refid:str}")
+def get(auth, refid: str):
+    "Confirm delete of the reference."
+    references = utils.get_references()
+    try:
+        ref = references[refid]
+    except KeyError:
+        return error(f"no such reference '{refid}'", HTTPStatus.NOT_FOUND)
+
+    return (
+        Title(ref["name"]),
+        components.header(book=references, title=ref["name"]),
+        Main(
+            H3(Tx("Delete"), "?"),
+            Form(Button(Tx("Confirm")), action=f"/reference/delete/{refid}", method="post"),
+            cls="container",
+        ),
+    )
+
+
+@rt("/reference/delete/{refid:str}")
+def post(auth, refid: str):
+    "Delete the reference.."
+    references = utils.get_references()
+    try:
+        ref = references[refid]
+    except KeyError:
+        return error(f"no such reference '{refid}'", HTTPStatus.NOT_FOUND)
+
+    try:
+        references.delete(ref)
+    except ValueError as message:
+        return error(message, HTTPStatus.CONFLICT)
+
+    return RedirectResponse(f"/references", status_code=HTTPStatus.SEE_OTHER)
 
 
 @rt("/book")
 def get(auth):
-    "Page to create and/or upload book using a gzipped tar file."
+    "Create and/or upload book using a gzipped tar file."
     title = f'{Tx("Create or upload")} {Tx("book")}'
     return (
         Title(title),
@@ -648,7 +738,7 @@ async def post(auth, title: str, tgzfile: UploadFile):
 
 @rt("/book/{bid:str}")
 def get(auth, bid: str):
-    "Book page; contents list of sections and texts."
+    "Display book; contents list of sections and texts."
     if not bid:
         return error("no book identifier provided", HTTPStatus.BAD_REQUEST)
     try:
@@ -725,7 +815,7 @@ def get(auth, bid: str, path: str):
 
 @rt("/edit/{bid:str}")
 def get(auth, bid: str):
-    "Page for editing the book data."
+    "Edit the book data."
     if not bid:
         return error("no book id provided", HTTPStatus.BAD_REQUEST)
     book = utils.get_book(bid)
@@ -825,7 +915,7 @@ def post(
 
 @rt("/edit/{bid:str}/{path:path}")
 def get(auth, bid: str, path: str):
-    "Page for editing the item (section or text)."
+    "Edit the item (section or text)."
     if not bid:
         return error("no book id provided", HTTPStatus.BAD_REQUEST)
     book = utils.get_book(bid)
@@ -1061,7 +1151,7 @@ def get(auth, bid: str, path: str):
 
 @rt("/text/{bid:str}/{path:path}")
 def post(auth, bid: str, path: str, title: str = None):
-    "Create a new text in the section."
+    "Actually create a new text in the section."
     if not bid:
         return error("no book id provided", HTTPStatus.BAD_REQUEST)
     book = utils.get_book(bid)
@@ -1111,7 +1201,7 @@ def get(auth, bid: str, path: str):
 
 @rt("/section/{bid:str}/{path:path}")
 def post(auth, bid: str, path: str, title: str = None):
-    "Create a new section in the section."
+    "Actually create a new section in the section."
     if not bid:
         return error("no book id provided", HTTPStatus.BAD_REQUEST)
     book = utils.get_book(bid)
@@ -1128,7 +1218,7 @@ def post(auth, bid: str, path: str, title: str = None):
 
 @rt("/information/{bid:str}")
 def get(auth, bid: str):
-    "Book information page."
+    "Display information about the book."
     if not bid:
         return error("no book id provided", HTTPStatus.BAD_REQUEST)
     book = utils.get_book(bid)
@@ -1163,7 +1253,7 @@ def get(auth, bid: str):
 
 @rt("/index/{bid:str}")
 def get(auth, bid: str):
-    "Page listing the indexed terms."
+    "List the indexed terms of the book."
     if not bid:
         return error("no book id provided", HTTPStatus.BAD_REQUEST)
     book = utils.get_book(bid)
@@ -1185,7 +1275,7 @@ def get(auth, bid: str):
 
 @rt("/statuslist/{bid:str}")
 def get(auth, bid: str):
-    "Page listing each status and texts in it."
+    "List each status and texts of the book in it."
     if not bid:
         return error("no book id provided", HTTPStatus.BAD_REQUEST)
     book = utils.get_book(bid)
@@ -1540,7 +1630,7 @@ def get(auth, bid: str):
 
 @rt("/system")
 def get(auth):
-    "System information."
+    "Display system information."
     return (
         Title(Tx("System")),
         components.header(title=Tx("System")),
@@ -1634,6 +1724,7 @@ def post(user: str, password: str, sess):
 
 @rt("/logout")
 def get(sess):
+    "Perform logout."
     del sess["auth"]
     return login_redir
 

@@ -64,7 +64,6 @@ page number,sidnummer
 text full name,textens hela namn
 text heading,textens titel
 none,ingen
-Add BibTex,Lägg till BibTex
 add reference,lägg till referens
 edit reference,redigera referens
 status list,statuslista
@@ -109,3 +108,5 @@ not present here,finns inte här
 information,information
 system,system
 contents,innehåll
+continue,gå vidare
+BibTex data,BibTex data
