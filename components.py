@@ -35,11 +35,7 @@ def header(book=None, item=None, title=None, actions=None, state_url=None):
             nav_style = NAV_STYLE_TEMPLATE.format(color=book.status.color)
 
     elif item:
-        entries.append(
-            Ul(
-                Li(Strong(item.fulltitle))
-            )
-        )
+        entries.append(Ul(Li(Strong(item.fulltitle))))
         nav_style = NAV_STYLE_TEMPLATE.format(color=item.status.color)
 
     elif book:
@@ -109,10 +105,12 @@ def toc(book, items, show_arrows=False):
                     href=f"/book/{book.bid}/{item.path}",
                 ),
                 NotStr("&nbsp;&nbsp;&nbsp;"),
-                Small(f'{Tx(item.type)}; ',
-                      f'{Tx(repr(item.status))}; ',
-                      f'{utils.thousands(item.n_words)} {Tx("words")}; ',
-                      f'{utils.thousands(item.n_characters)} {Tx("characters")}'),
+                Small(
+                    f"{Tx(item.type)}; ",
+                    f"{Tx(repr(item.status))}; ",
+                    f'{utils.thousands(item.n_words)} {Tx("words")}; ',
+                    f'{utils.thousands(item.n_characters)} {Tx("characters")}',
+                ),
                 *arrows,
             )
         )
@@ -127,9 +125,11 @@ def footer(item):
         Div(
             Div(Tx(item.status)),
             Div(item.modified),
-            Div(f'{utils.thousands(item.n_words)} {Tx("words")}; ',
-                f'{utils.thousands(item.n_characters)} {Tx("characters")}'),
-            cls="grid"
+            Div(
+                f'{utils.thousands(item.n_words)} {Tx("words")}; ',
+                f'{utils.thousands(item.n_characters)} {Tx("characters")}',
+            ),
+            cls="grid",
         ),
         cls="container",
     )
@@ -138,10 +138,16 @@ def footer(item):
 def get_reference_fields(ref=None, type=None):
     "Return list of input fields for adding or editing a reference."
     if type is None:
-        return Fieldset(Legend(Tx("Type")),
-                        Select(*[Option(Tx(t.capitalize()), value=t)
-                                 for t in constants.REFERENCE_TYPES],
-                               name="type"))
+        return Fieldset(
+            Legend(Tx("Type")),
+            Select(
+                *[
+                    Option(Tx(t.capitalize()), value=t)
+                    for t in constants.REFERENCE_TYPES
+                ],
+                name="type",
+            ),
+        )
 
     else:
         result = [Input(type="hidden", name="type", value=type)]
@@ -150,62 +156,130 @@ def get_reference_fields(ref=None, type=None):
         autofocus = True
     else:
         autofocus = False
-    result.append(Fieldset(Legend(Tx("Authors"), required()),
-                           Textarea("\n".join(ref.get("authors") or []),
-                                    name="authors", required=True, autofocus=autofocus)))
-    result.append(Fieldset(Legend(Tx("Title"), required()),
-                           Input(name="title", value=ref.get("title") or "", required=True)))
+    result.append(
+        Fieldset(
+            Legend(Tx("Authors"), required()),
+            Textarea(
+                "\n".join(ref.get("authors") or []),
+                name="authors",
+                required=True,
+                autofocus=autofocus,
+            ),
+        )
+    )
+    result.append(
+        Fieldset(
+            Legend(Tx("Title"), required()),
+            Input(name="title", value=ref.get("title") or "", required=True),
+        )
+    )
     if type == constants.BOOK:
-        result.append(Fieldset(Legend(Tx("Subtitle")),
-                               Input(name="subtitle", value=ref.get("subtitle") or "")))
+        result.append(
+            Fieldset(
+                Legend(Tx("Subtitle")),
+                Input(name="subtitle", value=ref.get("subtitle") or ""),
+            )
+        )
     # The year cannot be edited once the reference has been created.
     if ref:
         result.append(Input(type="hidden", name="year", value=ref["year"]))
     else:
-        result.append(Fieldset(Legend(Tx("Year"), required()),
-                               Input(name="year", value=ref.get("year") or "", required=True)))
+        result.append(
+            Fieldset(
+                Legend(Tx("Year"), required()),
+                Input(name="year", value=ref.get("year") or "", required=True),
+            )
+        )
     # Both a book and an article may have been reprinted.
     if type in (constants.BOOK, constants.ARTICLE):
-        result.append(Fieldset(Legend(Tx("Edition published")),
-                               Input(name="edition_published", value=ref.get("edition_published") or "")))
-    result.append(Fieldset(Legend(Tx("Date")),
-                           Input(name="date", value=ref.get("date") or "")))
+        result.append(
+            Fieldset(
+                Legend(Tx("Edition published")),
+                Input(
+                    name="edition_published", value=ref.get("edition_published") or ""
+                ),
+            )
+        )
+    result.append(
+        Fieldset(Legend(Tx("Date")), Input(name="date", value=ref.get("date") or ""))
+    )
     if type == constants.ARTICLE:
-        result.append(Fieldset(Legend(Tx("Journal")),
-                               Input(name="journal", value=ref.get("journal") or "")))
-        result.append(Fieldset(Legend(Tx("Volume")),
-                               Input(name="volume", value=ref.get("volume") or "")))
-        result.append(Fieldset(Legend(Tx("Number")),
-                               Input(name="number", value=ref.get("number") or "")))
-        result.append(Fieldset(Legend(Tx("Pages")),
-                               Input(name="pages", value=ref.get("pages") or "")))
-        result.append(Fieldset(Legend(Tx("ISSN")),
-                               Input(name="issn", value=ref.get("issn") or "")))
-        result.append(Fieldset(Legend(Tx("PubMed")),
-                               Input(name="pmid", value=ref.get("pmid") or "")))
+        result.append(
+            Fieldset(
+                Legend(Tx("Journal")),
+                Input(name="journal", value=ref.get("journal") or ""),
+            )
+        )
+        result.append(
+            Fieldset(
+                Legend(Tx("Volume")),
+                Input(name="volume", value=ref.get("volume") or ""),
+            )
+        )
+        result.append(
+            Fieldset(
+                Legend(Tx("Number")),
+                Input(name="number", value=ref.get("number") or ""),
+            )
+        )
+        result.append(
+            Fieldset(
+                Legend(Tx("Pages")), Input(name="pages", value=ref.get("pages") or "")
+            )
+        )
+        result.append(
+            Fieldset(
+                Legend(Tx("ISSN")), Input(name="issn", value=ref.get("issn") or "")
+            )
+        )
+        result.append(
+            Fieldset(
+                Legend(Tx("PubMed")), Input(name="pmid", value=ref.get("pmid") or "")
+            )
+        )
     if type == constants.BOOK:
-        result.append(Fieldset(Legend(Tx("ISBN")),
-                               Input(name="isbn", value=ref.get("isbn") or "")))
+        result.append(
+            Fieldset(
+                Legend(Tx("ISBN")), Input(name="isbn", value=ref.get("isbn") or "")
+            )
+        )
     if type in (constants.BOOK, constants.ARTICLE):
-        result.append(Fieldset(Legend(Tx("DOI")),
-                               Input(name="doi", value=ref.get("doi") or "")))
-    result.append(Fieldset(Legend(Tx("URL")),
-                           Input(name="url", value=ref.get("url") or "")))
-    result.append(Fieldset(Legend(Tx("Publisher")),
-                           Input(name="publisher", value=ref.get("publisher") or "")))
-    result.append(Fieldset(Legend(Tx("Language")),
-                           Input(name="language", value=ref.get("language") or "")))
-    result.append(Fieldset(Legend(Tx("Keywords")),
-                           Input(name="keywords",
-                                 value="; ".join(ref.get("keywords") or []))))
+        result.append(
+            Fieldset(Legend(Tx("DOI")), Input(name="doi", value=ref.get("doi") or ""))
+        )
+    result.append(
+        Fieldset(Legend(Tx("URL")), Input(name="url", value=ref.get("url") or ""))
+    )
+    result.append(
+        Fieldset(
+            Legend(Tx("Publisher")),
+            Input(name="publisher", value=ref.get("publisher") or ""),
+        )
+    )
+    result.append(
+        Fieldset(
+            Legend(Tx("Language")),
+            Input(name="language", value=ref.get("language") or ""),
+        )
+    )
+    result.append(
+        Fieldset(
+            Legend(Tx("Keywords")),
+            Input(name="keywords", value="; ".join(ref.get("keywords") or [])),
+        )
+    )
     if ref:
         content = ref.content or ""
         autofocus = True
     else:
         content = ""
         autofocus = False
-    result.append(Fieldset(Legend(Tx("Notes")),
-                       Textarea(content, name="notes", rows=10, autofocus=autofocus)))
+    result.append(
+        Fieldset(
+            Legend(Tx("Notes")),
+            Textarea(content, name="notes", rows=10, autofocus=autofocus),
+        )
+    )
     return result
 
 
@@ -216,4 +290,3 @@ def required():
 if __name__ == "__main__":
     h = Html(Div("blah"))
     print(to_xml(h))
-    

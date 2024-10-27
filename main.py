@@ -100,7 +100,13 @@ def get(auth):
             Tr(
                 Td(A(book.title, href=f"/book/{book.bid}")),
                 Td(Tx(book.frontmatter.get("type", constants.BOOK).capitalize())),
-                Td(Tx(book.frontmatter.get("status", repr(constants.STARTED)).capitalize())),
+                Td(
+                    Tx(
+                        book.frontmatter.get(
+                            "status", repr(constants.STARTED)
+                        ).capitalize()
+                    )
+                ),
                 Td(Tx(utils.thousands(book.frontmatter.get("sum_characters", 0)))),
                 Td(book.owner),
                 Td(book.modified),
@@ -118,6 +124,12 @@ def get(auth):
         components.header(title=Tx("Books"), actions=actions, state_url="/state"),
         Main(Table(Thead(*hrows), Tbody(*rows)), cls="container"),
     )
+
+
+@rt("/ping")
+def get():
+    "Health check."
+    return "It's alive!"
 
 
 @rt("/references")
@@ -145,7 +157,7 @@ def get(auth):
         if ref.get("authors"):
             authors = [utils.short_name(a) for a in ref["authors"]]
             if len(authors) > constants.MAX_DISPLAY_AUTHORS:
-                authors = authors[:constants.MAX_DISPLAY_AUTHORS] + ["..."]
+                authors = authors[: constants.MAX_DISPLAY_AUTHORS] + ["..."]
             parts.append(", ".join(authors))
         parts.append(Br())
         parts.append(utils.full_title(ref))
@@ -222,11 +234,17 @@ def get(auth):
         items.append(P(*parts, id=ref["name"]))
 
     title = f'{Tx("References")} ({len(references.items)})'
-    actions = [A(Tx(f'{Tx("Add reference")}: {Tx(type)}'), href=f"/reference/add/{type}")
-               for type in constants.REFERENCE_TYPES]
+    actions = [
+        A(Tx(f'{Tx("Add reference")}: {Tx(type)}'), href=f"/reference/add/{type}")
+        for type in constants.REFERENCE_TYPES
+    ]
     actions.append(A(f'{Tx("Add reference")}: BibTex', href="/reference/add/bibtex"))
-    actions.append(A(f'{Tx("Download")} {Tx("references")} TGZ', href="/references/tgz"))
-    actions.append(A(f'{Tx("Upload")} {Tx("references")} TGZ', href="/references/upload"))
+    actions.append(
+        A(f'{Tx("Download")} {Tx("references")} TGZ', href="/references/tgz")
+    )
+    actions.append(
+        A(f'{Tx("Upload")} {Tx("references")} TGZ', href="/references/upload")
+    )
     if "MDBOOK_UPDATE_SITE" in os.environ:
         actions.append(A(Tx("Differences"), href="/differences/references"))
 
@@ -303,7 +321,8 @@ def get(auth, type: str):
         Title(title),
         components.header(title=title),
         Main(
-            Form(*components.get_reference_fields(type=type),
+            Form(
+                *components.get_reference_fields(type=type),
                 Button(Tx("Continue")),
                 action=f"/reference",
                 method="post",
@@ -314,28 +333,29 @@ def get(auth, type: str):
 
 
 @rt("/reference")
-def post(auth,
-         type: str,
-         authors: str,
-         title: str,
-         year: str,
-         date: str,
-         url: str,
-         publisher: str,
-         language: str,
-         keywords: str,
-         notes: str,
-         edition_published: str="",
-         subtitle: str="",
-         journal: str="",
-         volume: str="",
-         number: str="",
-         pages: str="",
-         issn: str="",
-         isbn: str="",
-         pmid: str="",
-         doi: str="",
-         ):
+def post(
+    auth,
+    type: str,
+    authors: str,
+    title: str,
+    year: str,
+    date: str,
+    url: str,
+    publisher: str,
+    language: str,
+    keywords: str,
+    notes: str,
+    edition_published: str = "",
+    subtitle: str = "",
+    journal: str = "",
+    volume: str = "",
+    number: str = "",
+    pages: str = "",
+    issn: str = "",
+    isbn: str = "",
+    pmid: str = "",
+    doi: str = "",
+):
     "Actually add a reference from scratch."
     authors = [s.strip() for s in authors.split("\n") if s.strip()]
     if not authors:
@@ -429,7 +449,7 @@ def post(auth, data: str):
             name=name,
             type=entry.get("ENTRYTYPE") or constants.ARTICLE,
             authors=authors,
-            year=year
+            year=year,
         )
         for key, value in entry.items():
             if key in ("author", "ID", "ENTRYTYPE"):
@@ -579,7 +599,8 @@ def get(auth, refid: str):
         Title(title),
         components.header(title=title),
         Main(
-            Form(*components.get_reference_fields(ref=ref, type=ref["type"]),
+            Form(
+                *components.get_reference_fields(ref=ref, type=ref["type"]),
                 Button(Tx("Save")),
                 action=f"/reference/edit/{refid}",
                 method="post",
@@ -590,36 +611,37 @@ def get(auth, refid: str):
 
 
 @rt("/reference/edit/{refid:str}")
-def post(auth,
-         refid: str,
-         authors: str,
-         title: str,
-         year: str,
-         edition_published: str,
-         date: str,
-         language: str,
-         keywords: str,
-         publisher: str,
-         doi: str,
-         url: str,
-         notes: str,
-         subtitle: str="",      # The following may not be included in the form.
-         journal: str="",
-         volume: str="",
-         number: str="",
-         pages: str="",
-         issn: str="",
-         isbn: str="",
-         pmid: str="",
-         ):
+def post(
+    auth,
+    refid: str,
+    authors: str,
+    title: str,
+    year: str,
+    edition_published: str,
+    date: str,
+    language: str,
+    keywords: str,
+    publisher: str,
+    doi: str,
+    url: str,
+    notes: str,
+    subtitle: str = "",  # The following may not be included in the form.
+    journal: str = "",
+    volume: str = "",
+    number: str = "",
+    pages: str = "",
+    issn: str = "",
+    isbn: str = "",
+    pmid: str = "",
+):
     "Actually edit the reference."
     try:
         ref = utils.get_references()[refid]
     except KeyError:
         return error(f"no such reference '{refid}'", HTTPStatus.NOT_FOUND)
-    
+
     ref["authors"] = [s.strip() for s in authors.split("\n") if s.strip()]
-    ref["title"] = utils.cleanup_whitespaces(title) # Even if empty string.
+    ref["title"] = utils.cleanup_whitespaces(title)  # Even if empty string.
     ref.set("subtitle", utils.cleanup_whitespaces(subtitle))
     ref.set("year", year.strip())
     ref.set("edition_published", edition_published.strip())
@@ -655,7 +677,11 @@ def get(auth, refid: str):
         components.header(book=references, title=ref["name"]),
         Main(
             H3(Tx("Delete"), "?"),
-            Form(Button(Tx("Confirm")), action=f"/reference/delete/{refid}", method="post"),
+            Form(
+                Button(Tx("Confirm")),
+                action=f"/reference/delete/{refid}",
+                method="post",
+            ),
             cls="container",
         ),
     )
@@ -772,7 +798,6 @@ def get(auth, bid: str):
         components.header(book=book, actions=actions, state_url=f"/state/{bid}"),
         Main(*segments, NotStr(book.html), cls="container"),
         components.footer(book),
-
     )
 
 
@@ -1895,39 +1920,38 @@ def get(auth, bid: str):
     rows = items_diffs(remote.get("items", []), rurl, here.get("items", []), lurl)
     # The book 'index.md' files may differ, if they exist.
     if remote and here:
-        row = item_diff(remote,
-                        f'{os.environ["MDBOOK_UPDATE_SITE"].rstrip("/")}/book/{bid}',
-                        here,
-                        f"/book/{bid}")
+        row = item_diff(
+            remote,
+            f'{os.environ["MDBOOK_UPDATE_SITE"].rstrip("/")}/book/{bid}',
+            here,
+            f"/book/{bid}",
+        )
         if row:
             rows.insert(0, row)
     if not rows:
         if not remote:
-            segments = (H4(f'{Tx("Not present in")} {os.environ["MDBOOK_UPDATE_SITE"]}'),
-                        update_remote)
+            segments = (
+                H4(f'{Tx("Not present in")} {os.environ["MDBOOK_UPDATE_SITE"]}'),
+                update_remote,
+            )
         elif not here:
-            segments = (H4(Tx("Not present here")),
-                        update_here)
+            segments = (H4(Tx("Not present here")), update_here)
         else:
-            segments =  (H4(Tx("Identical")),
-                         Div(
-                             Div(Strong(A(rurl, href=rurl))),
-                             Div(Strong(A(bid, href=lurl))),
-                             cls="grid"
-                         ))
+            segments = (
+                H4(Tx("Identical")),
+                Div(
+                    Div(Strong(A(rurl, href=rurl))),
+                    Div(Strong(A(bid, href=lurl))),
+                    cls="grid",
+                ),
+            )
         return (
             Title(f'{Tx("Differences")} {bid}'),
             components.header(title=f'{Tx("Differences")} {bid}'),
-            Main(*segments, cls="container")
+            Main(*segments, cls="container"),
         )
 
-    rows.append(
-        Tr(
-            Td(),
-            Td(update_remote),
-            Td(update_here, colspan=3)
-        )
-    )
+    rows.append(Tr(Td(), Td(update_remote), Td(update_here, colspan=3)))
     return (
         Title(f'{Tx("Differences")} {bid}'),
         components.header(title=f'{Tx("Differences")} {bid}'),
@@ -1937,15 +1961,15 @@ def get(auth, bid: str):
                     Tr(
                         Th(),
                         Th(A(rurl, href=rurl), colspan=1, scope="col"),
-                        Th(A(bid, href=lurl), colspan=3, scope="col")
+                        Th(A(bid, href=lurl), colspan=3, scope="col"),
                     ),
                     Tr(
                         Th(Tx("Title"), scope="col"),
                         Th(),
                         Th(Tx("Age"), scope="col"),
                         Th(Tx("Size"), scope="col"),
-                        Th()
-                    )
+                        Th(),
+                    ),
                 ),
                 Tbody(*rows),
             ),
