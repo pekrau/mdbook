@@ -3,6 +3,7 @@
 import csv
 import datetime
 import hashlib
+from http import HTTPStatus as HTTP
 import io
 import json
 import os
@@ -17,7 +18,12 @@ import constants
 import latex_utf8
 
 
-SAFE_CHARACTERS = set(string.ascii_letters + string.digits)
+class Error(Exception):
+    "Custom exception; return response with message and status code."
+
+    def __init__(self, message, status_code):
+        super().__init__(message)
+        self.status_code = status_code
 
 
 # Book instances cache. Key: bid; value: Book instance.
@@ -30,7 +36,7 @@ def get_book(bid, refresh=False):
 
     global _books
     if not bid:
-        raise ValueError("empty 'bid' string")
+        raise Error("no book identifier provided", HTTP.BAD_REQUEST)
     try:
         book = _books[bid]
         if refresh:
@@ -40,7 +46,7 @@ def get_book(bid, refresh=False):
         try:
             book = Book(os.path.join(os.environ["MDBOOK_DIR"], bid))
         except FileNotFoundError:
-            raise KeyError(f"no such book '{bid}'")
+            raise Error(f"no such book '{bid}'", HTTP.NOT_FOUND)
         _books[bid] = book
         return book
 
@@ -101,6 +107,9 @@ def cleanup_latex(value):
 def cleanup_whitespaces(value):
     "Replace all whitespaces with blanks."
     return " ".join([s for s in value.split()])
+
+
+SAFE_CHARACTERS = set(string.ascii_letters + string.digits)
 
 
 def nameify(title):

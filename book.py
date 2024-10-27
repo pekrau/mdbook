@@ -315,12 +315,6 @@ class Book:
     def pdf(self):
         return self.frontmatter.get("pdf") or {}
 
-    def allow_read(self, auth):
-        return self.owner == auth
-
-    def allow_write(self, auth):
-        return self.owner == auth
-
     @property
     def state(self):
         "Return a dictionary of the current state of the book."
