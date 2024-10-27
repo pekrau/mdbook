@@ -35,6 +35,9 @@ login_redir = RedirectResponse("/login", status_code=HTTPStatus.SEE_OTHER)
 
 def before(req, sess):
     "Login session handling."
+    # XXX Define list of allowed paths for anonymous login.
+    if req.url.path == "/ping":
+        return
     if "apikey" in req.headers and "MDBOOK_APIKEY" in os.environ:
         if req.headers["apikey"] == os.environ["MDBOOK_APIKEY"]:
             auth = req.scope["auth"] = os.environ["MDBOOK_USER"]
