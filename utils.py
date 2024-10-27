@@ -47,7 +47,7 @@ def get_book(bid, refresh=False):
 
 def delete_book(book):
     "Delete the book, no questions asked."
-    _books.pop(book.name, None)
+    _books.pop(book.bid, None)
     shutil.rmtree(book.abspath)
 
 
