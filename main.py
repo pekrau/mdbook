@@ -306,17 +306,11 @@ def get(auth):
 @rt("/references/upload")
 async def post(auth, tgzfile: UploadFile):
     "Actually add or replace references by contents of the uploaded file."
-    content = await tgzfile.read()
-    if not content:
-        raise Error("empty TGZ file", HTTP.BAD_REQUEST)
-    try:
-        utils.unpack_tgzfile(
-            os.path.join(os.environ["MDBOOK_DIR"], constants.REFERENCES),
-            content,
-            references=True,
-        )
-    except ValueError as message:
-        raise Error(f"error reading TGZ file: {message}", HTTP.BAD_REQUEST)
+    utils.unpack_tgzfile(
+        os.path.join(os.environ["MDBOOK_DIR"], constants.REFERENCES),
+        await tgzfile.read(),
+        references=True,
+    )
 
     return RedirectResponse("/references", status_code=HTTP.SEE_OTHER)
 
@@ -1588,7 +1582,7 @@ def get(auth, bid: str):
     else:
         book = utils.get_book(bid, refresh=True)
     result = dict(
-        software="mdbook",
+        software=constants.SOFTWARE,
         version=constants.__version__,
         now=utils.timestr(localtime=False, display=False),
     )
@@ -1611,7 +1605,7 @@ def get(auth):
                     Td(utils.thousands(psutil.Process().memory_info().rss), " bytes"),
                 ),
                 Tr(
-                    Td(A("mdbook", href="https://github.com/pekrau/mdbook")),
+                    Td(A(constants.SOFTWARE, href="https://github.com/pekrau/mdbook")),
                     Td(constants.__version__),
                 ),
                 Tr(
@@ -1712,31 +1706,7 @@ def get(auth):
 @rt("/state")
 def get(auth):
     "Return JSON for the overall state of this site."
-    return get_state()
-
-
-def get_state():
-    "Return JSON for the overall state of this site."
-    books = {}
-    for bid in os.listdir(os.environ["MDBOOK_DIR"]):
-        dirpath = os.path.join(os.environ["MDBOOK_DIR"], bid)
-        if not os.path.isdir(dirpath):
-            continue
-        book = Book(dirpath, index_only=True)
-        books[bid] = dict(
-            title=book.title,
-            modified=utils.timestr(filepath=dirpath, localtime=False, display=False),
-            sum_characters=book.frontmatter["sum_characters"],
-            digest=book.frontmatter["digest"],
-        )
-
-    return dict(
-        software="mdbook",
-        version=constants.__version__,
-        now=utils.timestr(localtime=False, display=False),
-        type="site",
-        books=books,
-    )
+    return utils.get_state_here()
 
 
 @rt("/differences")
@@ -1746,7 +1716,7 @@ def get(auth):
         remote = utils.get_state_remote()
     except ValueError as message:
         raise Error(message, HTTP.INTERNAL_SERVER_ERROR)
-    state = get_state()
+    state = utils.get_state_here()
     rows = []
     books = state["books"].copy()
     for bid, rbook in remote["books"].items():

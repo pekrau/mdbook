@@ -3,7 +3,8 @@
 import functools
 import os.path
 
-VERSION = (5, 7, 2)
+SOFTWARE = "mdbook"
+VERSION = (5, 7, 3)
 __version__ = ".".join([str(n) for n in VERSION])
 
 

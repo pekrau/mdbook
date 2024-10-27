@@ -157,12 +157,42 @@ def tolocaltime(utctime):
     return lt.strftime(constants.DATETIME_ISO_FORMAT)
 
 
+def get_state_here():
+    "Return JSON for the overall state of this site."
+    books = {}
+    for bid in os.listdir(os.environ["MDBOOK_DIR"]):
+        dirpath = os.path.join(os.environ["MDBOOK_DIR"], bid)
+        if not os.path.isdir(dirpath):
+            continue
+        book = Book(dirpath, index_only=True)
+        books[bid] = dict(
+            title=book.title,
+            modified=timestr(filepath=dirpath, localtime=False, display=False),
+            sum_characters=book.frontmatter["sum_characters"],
+            digest=book.frontmatter["digest"],
+        )
+
+    return dict(
+        software=constants.SOFTWARE,
+        version=constants.__version__,
+        now=timestr(localtime=False, display=False),
+        type="site",
+        books=books,
+    )
+
+
 def get_state_remote(bid=None):
     "Get the remote site state, optionally for the given bid."
     if "MDBOOK_UPDATE_SITE" not in os.environ:
-        raise ValueError("remote update site undefined; missing MDBOOK_UPDATE_SITE")
+        raise Error(
+            "remote update site undefined; missing MDBOOK_UPDATE_SITE",
+            HTTP.INTERNAL_SERVER_ERROR,
+        )
     if "MDBOOK_UPDATE_APIKEY" not in os.environ:
-        raise ValueError("remote update apikey undefined; missing MDBOOK_UPDATE_APIKEY")
+        raise Error(
+            "remote update apikey undefined; missing MDBOOK_UPDATE_APIKEY",
+            HTTP.INTERNAL_SERVER_ERROR,
+        )
     url = os.path.join(os.environ["MDBOOK_UPDATE_SITE"].rstrip("/"), "state")
     if bid:
         url += "/" + bid
@@ -171,8 +201,9 @@ def get_state_remote(bid=None):
     if response.status_code == 404 or not response.content:
         return {}
     elif response.status_code != 200:
-        raise ValueError(
-            f"remote {url} response error: {response.status_code}; {response.content}"
+        raise Error(
+            f"remote {url} response error: {response.status_code}; {response.content}",
+            HTTP.INTERNAL_SERVER_ERROR,
         )
     return response.json()
 
@@ -189,26 +220,34 @@ def get_tgzfile(dirpath):
 
 
 def unpack_tgzfile(dirpath, content, references=False):
-    """Unpack the contents of a TGZ file into the given directory.
-    Raise ValueError if any problem.
-    """
+    "Unpack the contents of a TGZ file into the given directory."
+    if not content:
+        raise Error("empty TGZ file", HTTP.BAD_REQUEST)
     try:
         tf = tarfile.open(fileobj=io.BytesIO(content), mode="r:gz")
         if "index.md" not in tf.getnames():
-            raise ValueError("no 'index.md' file in TGZ file; not from mdbook?")
+            raise Error(
+                "no 'index.md' file in TGZ file; not from mdbook?", HTTP.BAD_REQUEST
+            )
         if references:
             # No subdirectories or non-Markdown files are allowed in references.
             for name in tf.getnames():
                 if not name.endswith(".md"):
-                    raise ValueError("reference TGZ file must contain only *.md files")
+                    raise Error(
+                        "reference TGZ file must contain only *.md files",
+                        HTTP.BAD_REQUEST,
+                    )
                 if os.path.basename(name) != name:
-                    raise ValueError("reference TGZ file must contain no directories")
+                    raise Error(
+                        "reference TGZ file must contain no directories",
+                        HTTP.BAD_REQUEST,
+                    )
             filter = lambda tf: tf if tf.name != "index.md" else None
         else:
             filter = None
         tf.extractall(path=dirpath, filter=filter)
     except tarfile.TarError as message:
-        raise ValueError(str(message))
+        raise Error(f"tar file error: {message}", HTTP.BAD_REQUEST)
 
 
 class Translator:
