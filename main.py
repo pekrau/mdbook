@@ -86,7 +86,7 @@ def get(auth):
         dirpath = os.path.join(os.environ["MDBOOK_DIR"], bid)
         if not os.path.isdir(dirpath):
             continue
-        if bid == constants.REFERENCES:
+        if bid == "references":
             continue
         try:
             book = Book(dirpath, index_only=True)
@@ -261,7 +261,8 @@ def get(auth):
         components.header(
             title=title,
             actions=actions,
-            state_url="/state/references",
+            references=False,
+            state_url=f"/state/references",
         ),
         Main(*items, cls="container"),
     )
@@ -307,7 +308,7 @@ def get(auth):
 async def post(auth, tgzfile: UploadFile):
     "Actually add or replace references by contents of the uploaded file."
     utils.unpack_tgzfile(
-        os.path.join(os.environ["MDBOOK_DIR"], constants.REFERENCES),
+        os.path.join(os.environ["MDBOOK_DIR"], "references"),
         await tgzfile.read(),
         references=True,
     )
@@ -1577,7 +1578,7 @@ def get(auth, bid: str):
 @rt("/state/{bid:str}")
 def get(auth, bid: str):
     "Return JSON for complete state of this book."
-    if bid == constants.REFERENCES:
+    if bid == "references":
         book = utils.get_references()
     else:
         book = utils.get_book(bid, refresh=True)
@@ -1808,7 +1809,7 @@ def get(auth, bid: str):
         remote = utils.get_state_remote(bid)
     except ValueError as message:
         raise Error(message, HTTP.INTERNAL_SERVER_ERROR)
-    if bid == constants.REFERENCES:
+    if bid == "references":
         book = utils.get_references(refresh=True)
         here = book.state
     else:
@@ -1964,9 +1965,9 @@ def post(auth, bid: str):
     if not bid:
         raise Error("no book id provided", HTTP.BAD_REQUEST)
     url = os.environ["MDBOOK_UPDATE_SITE"].rstrip("/")
-    if bid == constants.REFERENCES:
+    if bid == "references":
         url += "/references/tgz"
-        dirpath = os.path.join(os.environ["MDBOOK_DIR"], constants.REFERENCES)
+        dirpath = os.path.join(os.environ["MDBOOK_DIR"], "references")
     else:
         url += f"/tgz/{bid}"
         dirpath = os.path.join(os.environ["MDBOOK_DIR"], bid)
@@ -1983,14 +1984,14 @@ def post(auth, bid: str):
     old_dirpath = os.path.join(os.environ["MDBOOK_DIR"], "_old")
     os.rename(dirpath, old_dirpath)
     try:
-        utils.unpack_tgzfile(dirpath, content, references=bid == constants.REFERENCES)
+        utils.unpack_tgzfile(dirpath, content, references=bid == "references")
         # Remove old contents after successful unpacking of new.
         shutil.rmtree(old_dirpath)
     except ValueError as message:
         # Reinstate old contents.
         os.rename(old_dirpath, dirpath)
         raise Error(f"error reading TGZ file from remote: {message}", HTTP.BAD_REQUEST)
-    if bid == constants.REFERENCES:
+    if bid == "references":
         return RedirectResponse("/references", status_code=HTTP.SEE_OTHER)
     else:
         return RedirectResponse(f"/book/{bid}", status_code=HTTP.SEE_OTHER)

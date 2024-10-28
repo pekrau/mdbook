@@ -13,7 +13,7 @@ from utils import Tx
 NAV_STYLE_TEMPLATE = "outline-color: {color}; outline-width:8px; outline-style:solid; padding:0px 10px; border-radius:5px;"
 
 
-def header(book=None, item=None, title=None, actions=None, state_url=None):
+def header(book=None, item=None, title=None, actions=None, references=True, state_url=None):
     "The standard page header with navigation bar."
     # The first cell: icon and book title (if any).
     if book:
@@ -45,7 +45,7 @@ def header(book=None, item=None, title=None, actions=None, state_url=None):
     else:
         nav_style = NAV_STYLE_TEMPLATE.format(color="black")
 
-    pages = [A(Tx("References"), href="/references")]
+    pages = []
     if item is not None:
         if item.parent:
             if item.parent.level == 0:  # Book.
@@ -67,9 +67,12 @@ def header(book=None, item=None, title=None, actions=None, state_url=None):
         pages.append(A(Tx("State"), href=state_url))
     if not book and not item:
         pages.append(A(Tx("System"), href="/system"))
-    items = [
+    items = []
+    if references:
+        items.append(Li(A(Tx("References"), href="/references")))
+    items.append(
         Li(Details(Summary(Tx("Pages")), Ul(*[Li(p) for p in pages]), cls="dropdown"))
-    ]
+    )
     if actions:
         items.append(
             Li(

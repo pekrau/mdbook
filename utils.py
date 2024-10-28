@@ -68,7 +68,7 @@ def get_references(refresh=False):
             _references.read()
         return _references
     except NameError:
-        dirpath = os.path.join(os.environ["MDBOOK_DIR"], constants.REFERENCES)
+        dirpath = os.path.join(os.environ["MDBOOK_DIR"], "references")
         if not os.path.exists(dirpath):
             os.mkdir(dirpath)
         _references = Book(dirpath)

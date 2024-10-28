@@ -4,14 +4,13 @@ import functools
 import os.path
 
 SOFTWARE = "mdbook"
-VERSION = (5, 7, 3)
+VERSION = (5, 7, 4)
 __version__ = ".".join([str(n) for n in VERSION])
 
 
 LANGUAGE_CODES = ("sv-SE", "en-GB", "en-US")
 
 MARKDOWN_EXT = ".md"
-REFERENCES = "references"
 SOURCE_DIRPATH = os.path.dirname(__file__)
 FONT_DIRPATH = os.path.join(SOURCE_DIRPATH, "freefont")
 TRANSLATIONS_FILEPATH = os.path.join(SOURCE_DIRPATH, "translations.csv")
