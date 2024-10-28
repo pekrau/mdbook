@@ -159,6 +159,8 @@ def tolocaltime(utctime):
 
 def get_state_here():
     "Return JSON for the overall state of this site."
+    from book import Book
+
     books = {}
     for bid in os.listdir(os.environ["MDBOOK_DIR"]):
         dirpath = os.path.join(os.environ["MDBOOK_DIR"], bid)
