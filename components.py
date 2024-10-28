@@ -1,13 +1,14 @@
-"Page components."
+"Page components and functions."
 
 import psutil
+import string
 
 from fasthtml.common import *
 
+import books
 import constants
 import utils
-from book import Book
-from utils import Tx
+from utils import Tx, Error
 
 
 NAV_STYLE_TEMPLATE = "outline-color: {color}; outline-width:8px; outline-style:solid; padding:0px 10px; border-radius:5px;"
@@ -288,6 +289,59 @@ def get_reference_fields(ref=None, type=None):
 
 def required():
     return Span(NotStr("&nbsp;*"), style="color: red")
+
+
+def set_reference_from_form(form, ref=None):
+    "Set the values of the reference from a form."
+    if ref is None:
+        type = form.get("type", "").strip()
+        if type not in constants.REFERENCE_TYPES:
+            raise Error(f"invalid reference type '{type}'", HTTP.BAD_REQUEST)
+    authors = [s.strip() for s in form.get("authors", "").split("\n") if s.strip()]
+    if not authors:
+        raise Error("no author(s) provided", HTTP.BAD_REQUEST)
+    title = utils.cleanup_whitespaces(form.get("title", ""))
+    if not title:
+        raise Error("no title provided", HTTP.BAD_REQUEST)
+    year = form.get("year", "").strip()
+    if not year:
+        raise Error("no year provided", HTTP.BAD_REQUEST)
+
+    if ref is None:
+        author = authors[0].split(",")[0].strip()
+        for char in [""] + list(string.ascii_lowercase):
+            name = f"{author} {year}{char}"
+            refid = utils.nameify(name)
+            if books.get_references().get(id) is None:
+                break
+        else:
+            raise Error(f"could not form unique id for {name} {year}", HTTP.BAD_REQUEST)
+        ref = books.get_references().create_text(name)
+        ref.set("type", type)
+        ref.set("id", refid)
+        ref.set("name", name)
+
+    # Don't bother selecting keys to add according to type...
+    ref.set("authors", authors)
+    ref.set("title", title)
+    ref.set("year", year)
+    ref.set("subtitle", utils.cleanup_whitespaces(form.get("subtitle", "")))
+    ref.set("edition_published", form.get("edition_published", "").strip())
+    ref.set("date", form.get("date", "").strip())
+    ref.set("journal", utils.cleanup_whitespaces(form.get("journal", "")))
+    ref.set("volume", form.get("volume", "").strip())
+    ref.set("number", form.get("number", "").strip())
+    ref.set("pages", form.get("pages", "").strip())
+    ref.set("language", form.get("language", "").strip())
+    ref.set("publisher", form.get("publisher", "").strip())
+    ref.set("keywords", [s.strip() for s in form.get("keywords", "").split(";") if s.strip()]),
+    ref.set("issn", form.get("issn", "").strip())
+    ref.set("isbn", form.get("isbn", "").strip())
+    ref.set("pmid", form.get("pmid", "").strip())
+    ref.set("doi", form.get("doi", "").strip())
+    ref.set("url", form.get("url", "").strip())
+    ref.write(content=form.get("notes", "").strip())
+    return ref
 
 
 if __name__ == "__main__":

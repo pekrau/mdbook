@@ -7,7 +7,6 @@ from http import HTTPStatus as HTTP
 import io
 import json
 import os
-import shutil
 import string
 import tarfile
 import unicodedata
@@ -24,55 +23,6 @@ class Error(Exception):
     def __init__(self, message, status_code):
         super().__init__(message)
         self.status_code = status_code
-
-
-# Book instances cache. Key: bid; value: Book instance.
-_books = {}
-
-
-def get_book(bid, refresh=False):
-    "Get the book contents, cached."
-    from book import Book
-
-    global _books
-    if not bid:
-        raise Error("no book identifier provided", HTTP.BAD_REQUEST)
-    try:
-        book = _books[bid]
-        if refresh:
-            book.read()
-        return book
-    except KeyError:
-        try:
-            book = Book(os.path.join(os.environ["MDBOOK_DIR"], bid))
-        except FileNotFoundError:
-            raise Error(f"no such book '{bid}'", HTTP.NOT_FOUND)
-        _books[bid] = book
-        return book
-
-
-def delete_book(book):
-    "Delete the book, no questions asked."
-    _books.pop(book.bid, None)
-    shutil.rmtree(book.abspath)
-
-
-def get_references(refresh=False):
-    "Get the references book, cached."
-    from book import Book
-
-    global _references
-    try:
-        _references
-        if refresh:
-            _references.read()
-        return _references
-    except NameError:
-        dirpath = os.path.join(os.environ["MDBOOK_DIR"], "references")
-        if not os.path.exists(dirpath):
-            os.mkdir(dirpath)
-        _references = Book(dirpath)
-        return _references
 
 
 def short_name(name):
@@ -155,32 +105,6 @@ def tolocaltime(utctime):
     mytz = datetime.datetime.now(datetime.timezone.utc).astimezone().tzinfo
     lt = datetime.datetime.fromisoformat(utctime).astimezone(mytz)
     return lt.strftime(constants.DATETIME_ISO_FORMAT)
-
-
-def get_state_here():
-    "Return JSON for the overall state of this site."
-    from book import Book
-
-    books = {}
-    for bid in os.listdir(os.environ["MDBOOK_DIR"]):
-        dirpath = os.path.join(os.environ["MDBOOK_DIR"], bid)
-        if not os.path.isdir(dirpath):
-            continue
-        book = Book(dirpath, index_only=True)
-        books[bid] = dict(
-            title=book.title,
-            modified=timestr(filepath=dirpath, localtime=False, display=False),
-            sum_characters=book.frontmatter["sum_characters"],
-            digest=book.frontmatter["digest"],
-        )
-
-    return dict(
-        software=constants.SOFTWARE,
-        version=constants.__version__,
-        now=timestr(localtime=False, display=False),
-        type="site",
-        books=books,
-    )
 
 
 def get_state_remote(bid=None):

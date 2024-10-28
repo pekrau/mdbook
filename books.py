@@ -6,6 +6,7 @@ import hashlib
 import io
 import os
 import re
+import shutil
 import tarfile
 import time
 
@@ -15,8 +16,70 @@ import constants
 import markdown
 import utils
 
-FRONTMATTER = re.compile(r"^---([\n\r].*?[\n\r])---[\n\r](.*)$", re.DOTALL)
 
+# Book instances cache. Key: bid; value: Book instance.
+_books = {}
+
+
+def get_book(bid, refresh=False):
+    "Get the book contents, cached."
+    global _books
+    if not bid:
+        raise Error("no book identifier provided", HTTP.BAD_REQUEST)
+    try:
+        book = _books[bid]
+        if refresh:
+            book.read()
+        return book
+    except KeyError:
+        try:
+            book = Book(os.path.join(os.environ["MDBOOK_DIR"], bid))
+        except FileNotFoundError:
+            raise Error(f"no such book '{bid}'", HTTP.NOT_FOUND)
+        _books[bid] = book
+        return book
+
+
+def get_references(refresh=False):
+    "Get the references book, cached."
+    global _references
+    try:
+        _references
+        if refresh:
+            _references.read()
+        return _references
+    except NameError:
+        dirpath = os.path.join(os.environ["MDBOOK_DIR"], "references")
+        if not os.path.exists(dirpath):
+            os.mkdir(dirpath)
+        _references = Book(dirpath)
+        return _references
+
+def get_state():
+    "Return JSON for the overall state of this site."
+    books = {}
+    for bid in os.listdir(os.environ["MDBOOK_DIR"]):
+        dirpath = os.path.join(os.environ["MDBOOK_DIR"], bid)
+        if not os.path.isdir(dirpath):
+            continue
+        book = Book(dirpath, index_only=True)
+        books[bid] = dict(
+            title=book.title,
+            modified=utilstimestr(filepath=dirpath, localtime=False, display=False),
+            sum_characters=book.frontmatter["sum_characters"],
+            digest=book.frontmatter["digest"],
+        )
+
+    return dict(
+        software=constants.SOFTWARE,
+        version=constants.__version__,
+        now=utils.timestr(localtime=False, display=False),
+        type="site",
+        books=books,
+    )
+
+
+FRONTMATTER = re.compile(r"^---([\n\r].*?[\n\r])---[\n\r](.*)$", re.DOTALL)
 
 def read_markdown(target, filepath):
     "Read frontmatter and content from the Markdown file to the target."
@@ -408,14 +471,22 @@ class Book:
         self.write()
         return text
 
-    def delete(self, item):
-        "Delete the given item."
+    def delete(self, item=None, force=False):
+        "Delete the given item, or book."
+        global _books
+        if item is None:
+            if not force and len(self.items) != 0:
+                raise ValueError("Cannot delete non-empty book.")
+            _books.pop(self.bid, None)
+            shutil.rmtree(self.abspath)
+            return
+                
         if item.is_section:
             if len(item.items) != 0:
                 raise ValueError("Cannot delete non-empty section.")
             os.remove(item.absfilepath)
             os.rmdir(item.abspath)
-        else:
+        elif item.is_text:
             os.remove(item.abspath)
         self.path_lookup.pop(item.path)
         item.parent.items.remove(item)

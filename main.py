@@ -16,14 +16,13 @@ import psutil
 import requests
 import yaml
 
+import books
 import components
 import constants
 import docx_creator
 import pdf_creator
 import utils
 from utils import Tx, Error
-
-from book import Book
 
 
 login_redir = RedirectResponse("/login", status_code=HTTP.SEE_OTHER)
@@ -81,7 +80,7 @@ def get(auth):
                 HTTP.INTERNAL_SERVER_ERROR,
             )
 
-    books = []
+    result = []
     for bid in os.listdir(os.environ["MDBOOK_DIR"]):
         dirpath = os.path.join(os.environ["MDBOOK_DIR"], bid)
         if not os.path.isdir(dirpath):
@@ -89,11 +88,11 @@ def get(auth):
         if bid == "references":
             continue
         try:
-            book = Book(dirpath, index_only=True)
-            books.append(book)
+            book = books.Book(dirpath, index_only=True)
+            result.append(book)
         except FileNotFoundError:
             pass
-    books.sort(key=lambda b: b.modified, reverse=True)
+    result.sort(key=lambda b: b.modified, reverse=True)
     hrows = Tr(
         Th(Tx("Title")),
         Th(Tx("Type")),
@@ -103,7 +102,7 @@ def get(auth):
         Th(Tx("Modified")),
     )
     rows = []
-    for book in books:
+    for book in result:
         rows.append(
             Tr(
                 Td(A(book.title, href=f"/book/{book.bid}")),
@@ -143,7 +142,7 @@ def get(auth):
 @rt("/references")
 def get(auth):
     "List of references."
-    references = utils.get_references(refresh=True)
+    references = books.get_references(refresh=True)
     references.write()  # Updates the 'index.md' file, if necessary.
     items = []
     for ref in references.items:
@@ -230,7 +229,7 @@ def get(auth):
 
         # XXX link to book text using the reference
         # xrefs = []
-        # texts = utils.get_book().references.get(ref["name"], [])
+        # texts = books.get_book().references.get(ref["name"], [])
         # for text in sorted(texts, key=lambda t: t.ordinal):
         #     if xrefs:
         #         xrefs.append(Br())
@@ -246,7 +245,7 @@ def get(auth):
         A(Tx(f'{Tx("Add reference")}: {Tx(type)}'), href=f"/reference/add/{type}")
         for type in constants.REFERENCE_TYPES
     ]
-    actions.append(A(f'{Tx("Add reference")}: BibTex', href="/reference/add/bibtex"))
+    actions.append(A(f'{Tx("Add reference")}: BibTex', href="/reference/bibtex"))
     actions.append(
         A(f'{Tx("Download")} {Tx("references")} TGZ', href="/references/tgz")
     )
@@ -271,7 +270,7 @@ def get(auth):
 @rt("/references/tgz")
 def get(auth):
     "Download a gzipped tar file of all references."
-    book = utils.get_references(refresh=True)
+    book = books.get_references(refresh=True)
     output = book.get_tgzfile()
     filename = f"mdbook_references_{utils.timestr(safe=True)}.tgz"
 
@@ -326,7 +325,7 @@ def get(auth, type: str):
         Main(
             Form(
                 *components.get_reference_fields(type=type),
-                Button(Tx("Continue")),
+                Button(Tx("Save")),
                 action=f"/reference",
                 method="post",
             ),
@@ -336,80 +335,18 @@ def get(auth, type: str):
 
 
 @rt("/reference")
-def post(
-    auth,
-    type: str,
-    authors: str,
-    title: str,
-    year: str,
-    date: str,
-    url: str,
-    publisher: str,
-    language: str,
-    keywords: str,
-    notes: str,
-    edition_published: str = "",
-    subtitle: str = "",
-    journal: str = "",
-    volume: str = "",
-    number: str = "",
-    pages: str = "",
-    issn: str = "",
-    isbn: str = "",
-    pmid: str = "",
-    doi: str = "",
-):
+def post(auth, form: dict):
     "Actually add a reference from scratch."
-    authors = [s.strip() for s in authors.split("\n") if s.strip()]
-    if not authors:
-        raise Error("no author(s) provided", HTTP.BAD_REQUEST)
-    year = year.strip()
-    if not year:
-        raise Error("no year provided", HTTP.BAD_REQUEST)
-    type = type.strip()
-    if type not in constants.REFERENCE_TYPES:
-        raise Error(f"invalid reference type '{type}'", HTTP.BAD_REQUEST)
-    author = authors[0].split(",")[0].strip()
-    for char in [""] + list(string.ascii_lowercase):
-        name = f"{author} {year}{char}"
-        refid = utils.nameify(name)
-        if utils.get_references().get(id) is None:
-            break
-    else:
-        raise ValueError(f"could not form unique id for {name} {year}")
-    ref = utils.get_references().create_text(name)
-    # Don't bother selecting keys to add according to type...
-    ref.set("type", type)
-    ref.set("authors", authors)
-    ref.set("title", utils.cleanup_whitespaces(title))
-    ref.set("year", year.strip())
-    ref.set("id", refid)
-    ref.set("name", name)
-    ref.set("subtitle", utils.cleanup_whitespaces(subtitle))
-    ref.set("edition_published", edition_published.strip())
-    ref.set("date", date.strip())
-    ref.set("journal", utils.cleanup_whitespaces(journal))
-    ref.set("volume", volume.strip())
-    ref.set("number", number.strip())
-    ref.set("pages", pages.strip())
-    ref.set("language", language.strip())
-    ref.set("publisher", publisher.strip())
-    ref.set("keywords", [s.strip() for s in keywords.split(";") if s.strip()]),
-    ref.set("issn", issn.strip())
-    ref.set("isbn", isbn.strip())
-    ref.set("pmid", pmid.strip())
-    ref.set("doi", doi.strip())
-    ref.set("url", url.strip())
-    ref.write(content=notes)
+    reference = components.set_reference_from_form(form)
     # Re-sort all references.
-    references = utils.get_references(refresh=True)
+    references = books.get_references(refresh=True)
     references.items.sort(key=lambda r: r["id"])
     references.write()
 
-    return RedirectResponse(f"/reference/{refid}", status_code=HTTP.SEE_OTHER)
+    return RedirectResponse(f"/reference/{reference['id']}", status_code=HTTP.SEE_OTHER)
 
 
-@rt("/reference/add/bibtex")
+@rt("/reference/bibtex")
 def get(auth):
     "Add reference(s) from BibTex data."
     title = f'{Tx("Add reference")}: BibTex'
@@ -420,7 +357,7 @@ def get(auth):
             Form(
                 Fieldset(Legend(Tx("BibTex data")), Textarea(name="data", rows="20")),
                 Button("Add"),
-                action="/reference/add/bibtex",
+                action="/reference/bibtex",
                 method="post",
             ),
             cls="container",
@@ -428,81 +365,52 @@ def get(auth):
     )
 
 
-@rt("/reference/add/bibtex")
+@rt("/reference/bibtex")
 def post(auth, data: str):
     "Actually add reference(s) using BibTex data."
     result = []
     for entry in bibtexparser.loads(data).entries:
-        authors = utils.cleanup_latex(entry["author"])
-        authors = [a.strip() for a in authors.split(" and ")]
-        if not authors:
-            continue
-        year = entry["year"].strip()
-        if not year:
-            continue
-        for char in [""] + list(string.ascii_lowercase):
-            name = authors[0].split(",")[0].strip() + char
-            id = utils.nameify(name)
-            if utils.get_references().get(id) is None:
-                break
-        else:
-            raise ValueError(f"could not form unique id for {name} {year}")
-        new = dict(
-            id=id,
-            name=name,
-            type=entry.get("ENTRYTYPE") or constants.ARTICLE,
-            authors=authors,
-            year=year,
-        )
+        form = {
+            "authors": utils.cleanup_latex(entry["author"]).replace(" and ", "\n"),
+            "year": entry["year"],
+            "type": entry.get("ENTRYTYPE") or constants.ARTICLE
+        }
         for key, value in entry.items():
             if key in ("author", "ID", "ENTRYTYPE"):
                 continue
-            value = utils.cleanup_latex(value).strip()
-            if value:
-                new[key] = value
-        # Split keywords into a list.
-        try:
-            new["keywords"] = [k.strip() for k in new["keywords"].split(";")]
-        except KeyError:
-            pass
+            form[key] = utils.cleanup_latex(value).strip()
+        # Do some post-processing.
         # Change month into date; sometimes has day number.
-        try:
-            month = new.pop("month")
-        except KeyError:
-            pass
-        else:
-            parts = month.split("~")
-            if len(parts) == 2:
-                month = constants.MONTHS[parts[1].strip().lower()]
-                day = int("".join([c for c in parts[0] if c in string.digits]))
-            else:
-                month = constants.MONTHS[parts[0].strip().lower()]
-                day = 0
-            new["date"] = f"{year}-{month:02d}-{day:02d}"
+        month = form.pop("month", "")
+        parts = month.split("~")
+        if len(parts) == 2:
+            month = constants.MONTHS[parts[1].strip().lower()]
+            day = int("".join([c for c in parts[0] if c in string.digits]))
+            form["date"] = f'{entry["year"]}-{month:02d}-{day:02d}'
+        elif len(parts) == 1:
+            month = constants.MONTHS[parts[0].strip().lower()]
+            form["date"] = f'{entry["year"]}-{month:02d}-00'
         # Change page numbers double dash to single dash.
+        form["pages"] = form.get("pages", "").replace("--", "-")
+        # Put abstract into notes.
+        abstract = form.pop("abstract", None)
+        if abstract:
+            form["notes"] = "**Abstract**\n\n" + abstract
         try:
-            pages = new.pop("pages")
-        except KeyError:
+            reference = components.set_reference_from_form(form)
+        except Error:
             pass
         else:
-            new["pages"] = pages.replace("--", "-")
-        abstract = new.pop("abstract", None)
-        reference = utils.get_references().create_text(new["name"])
-        for key, value in new.items():
-            reference[key] = value
-        if abstract:
-            reference.write(content="**Abstract**\n\n" + abstract)
-        else:
-            reference.write()
-        # Re-sort all references.
-        references = utils.get_references(refresh=True)
-        references.items.sort(key=lambda r: r["id"])
-        references.write()
-        result.append(reference)
+            result.append(reference)
+
+    # Re-sort all references.
+    references = books.get_references(refresh=True)
+    references.items.sort(key=lambda r: r["id"])
+    references.write()
 
     return (
-        Title("Added reference(s)"),
-        components.header(title="Added reference(s)"),
+        Title(Tx("Added reference(s)")),
+        components.header(title=Tx("Added reference(s)")),
         Main(
             Ul(*[Li(A(r["name"], href=f'/reference/{r["id"]}')) for r in result]),
             cls="container",
@@ -514,7 +422,7 @@ def post(auth, data: str):
 def get(auth, refid: str):
     "Display a reference."
     try:
-        ref = utils.get_references()[refid]
+        ref = books.get_references()[refid]
     except KeyError:
         raise Error(f"no such reference '{refid}'", HTTP.NOT_FOUND)
     rows = [
@@ -593,17 +501,17 @@ def get(auth, refid: str):
 def get(auth, refid: str):
     "Edit a reference."
     try:
-        ref = utils.get_references()[refid]
+        reference = books.get_references()[refid]
     except KeyError:
         raise Error(f"no such reference '{refid}'", HTTP.NOT_FOUND)
 
-    title = f'{Tx("Edit reference")} ({Tx(ref["type"])})'
+    title = f'{Tx("Edit reference")} ({Tx(reference["type"])})'
     return (
         Title(title),
         components.header(title=title),
         Main(
             Form(
-                *components.get_reference_fields(ref=ref, type=ref["type"]),
+                *components.get_reference_fields(ref=reference, type=reference["type"]),
                 Button(Tx("Save")),
                 action=f"/reference/edit/{refid}",
                 method="post",
@@ -614,62 +522,73 @@ def get(auth, refid: str):
 
 
 @rt("/reference/edit/{refid:str}")
-def post(
-    auth,
-    refid: str,
-    authors: str,
-    title: str,
-    year: str,
-    edition_published: str,
-    date: str,
-    language: str,
-    keywords: str,
-    publisher: str,
-    doi: str,
-    url: str,
-    notes: str,
-    subtitle: str = "",  # The following may not be included in the form.
-    journal: str = "",
-    volume: str = "",
-    number: str = "",
-    pages: str = "",
-    issn: str = "",
-    isbn: str = "",
-    pmid: str = "",
-):
+def post(auth, refid: str, form: dict):
     "Actually edit the reference."
     try:
-        ref = utils.get_references()[refid]
+        reference = books.get_references()[refid]
     except KeyError:
         raise Error(f"no such reference '{refid}'", HTTP.NOT_FOUND)
-
-    ref["authors"] = [s.strip() for s in authors.split("\n") if s.strip()]
-    ref["title"] = utils.cleanup_whitespaces(title)  # Even if empty string.
-    ref.set("subtitle", utils.cleanup_whitespaces(subtitle))
-    ref.set("year", year.strip())
-    ref.set("edition_published", edition_published.strip())
-    ref.set("date", date.strip())
-    ref.set("journal", utils.cleanup_whitespaces(journal))
-    ref.set("volume", volume.strip())
-    ref.set("number", number.strip())
-    ref.set("pages", pages.strip())
-    ref.set("language", language.strip())
-    ref.set("publisher", publisher.strip())
-    ref.set("keywords", [s.strip() for s in keywords.split(";") if s.strip()]),
-    ref.set("issn", issn.strip())
-    ref.set("isbn", isbn.strip())
-    ref.set("pmid", pmid.strip())
-    ref.set("doi", doi.strip())
-    ref.set("url", url.strip())
-    ref.write(content=notes)
+    components.set_reference_from_form(form, ref=reference)
 
     return RedirectResponse(f"/reference/{refid}", status_code=HTTP.SEE_OTHER)
+
+# @rt("/reference/edit/{refid:str}")
+# def post(
+#     auth,
+#     refid: str,
+#     authors: str,
+#     title: str,
+#     year: str,
+#     edition_published: str,
+#     date: str,
+#     language: str,
+#     keywords: str,
+#     publisher: str,
+#     doi: str,
+#     url: str,
+#     notes: str,
+#     subtitle: str = "",  # The following may not be included in the form.
+#     journal: str = "",
+#     volume: str = "",
+#     number: str = "",
+#     pages: str = "",
+#     issn: str = "",
+#     isbn: str = "",
+#     pmid: str = "",
+# ):
+#     "Actually edit the reference."
+#     try:
+#         ref = books.get_references()[refid]
+#     except KeyError:
+#         raise Error(f"no such reference '{refid}'", HTTP.NOT_FOUND)
+
+#     ref["authors"] = [s.strip() for s in authors.split("\n") if s.strip()]
+#     ref["title"] = utils.cleanup_whitespaces(title)  # Even if empty string.
+#     ref.set("subtitle", utils.cleanup_whitespaces(subtitle))
+#     ref.set("year", year.strip())
+#     ref.set("edition_published", edition_published.strip())
+#     ref.set("date", date.strip())
+#     ref.set("journal", utils.cleanup_whitespaces(journal))
+#     ref.set("volume", volume.strip())
+#     ref.set("number", number.strip())
+#     ref.set("pages", pages.strip())
+#     ref.set("issn", issn.strip())
+#     ref.set("isbn", isbn.strip())
+#     ref.set("pmid", pmid.strip())
+#     ref.set("doi", doi.strip())
+#     ref.set("url", url.strip())
+#     ref.set("publisher", publisher.strip())
+#     ref.set("language", language.strip())
+#     ref.set("keywords", [s.strip() for s in keywords.split(";") if s.strip()]),
+#     ref.write(content=notes)
+
+#     return RedirectResponse(f"/reference/{refid}", status_code=HTTP.SEE_OTHER)
 
 
 @rt("/reference/delete/{refid:str}")
 def get(auth, refid: str):
     "Confirm delete of the reference."
-    references = utils.get_references()
+    references = books.get_references()
     try:
         ref = references[refid]
     except KeyError:
@@ -692,8 +611,8 @@ def get(auth, refid: str):
 
 @rt("/reference/delete/{refid:str}")
 def post(auth, refid: str):
-    "Delete the reference.."
-    references = utils.get_references()
+    "Delete the reference."
+    references = books.get_references()
     try:
         ref = references[refid]
     except KeyError:
@@ -755,7 +674,7 @@ async def post(auth, title: str, tgzfile: UploadFile):
     # Just create the directory; no content.
     else:
         os.mkdir(dirpath)
-    book = Book(dirpath)
+    book = books.Book(dirpath)
     book.frontmatter["title"] = title or book.title
     book.frontmatter["owner"] = auth
     book.write()
@@ -766,7 +685,7 @@ async def post(auth, title: str, tgzfile: UploadFile):
 @rt("/book/{bid:str}")
 def get(auth, bid: str):
     "Display book; contents list of sections and texts."
-    book = utils.get_book(bid, refresh=True)
+    book = books.get_book(bid, refresh=True)
     book.write()  # Updates the 'index.md' file, if necessary.
     actions = [
         A(f'{Tx("Edit")}', href=f"/edit/{bid}"),
@@ -800,7 +719,7 @@ def get(auth, bid: str):
 @rt("/book/{bid:str}/{path:path}")
 def get(auth, bid: str, path: str):
     "View of book text or section contents."
-    book = utils.get_book(bid)
+    book = books.get_book(bid)
     item = book[path]
     actions = [A(Tx("Edit"), href=f"/edit/{bid}/{path}")]
     if item.is_text:
@@ -835,7 +754,7 @@ def get(auth, bid: str, path: str):
 @rt("/edit/{bid:str}")
 def get(auth, bid: str):
     "Edit the book data."
-    book = utils.get_book(bid)
+    book = books.get_book(bid)
     fields = [
         Fieldset(
             Legend(Tx("Title")),
@@ -911,7 +830,7 @@ def post(
     language: str = None,
 ):
     "Actually edit the book data."
-    book = utils.get_book(bid)
+    book = books.get_book(bid)
     book.frontmatter["title"] = title
     book.frontmatter["subtitle"] = subtitle
     book.frontmatter["authors"] = [a.strip() for a in authors.split("\n")]
@@ -931,7 +850,7 @@ def post(
 @rt("/edit/{bid:str}/{path:path}")
 def get(auth, bid: str, path: str):
     "Edit the item (section or text)."
-    book = utils.get_book(bid)
+    book = books.get_book(bid)
     item = book[path]
     title_field = Fieldset(
         Label(Tx("Title")),
@@ -980,7 +899,7 @@ def get(auth, bid: str, path: str):
 @rt("/edit/{bid:str}/{path:path}")
 def post(auth, bid: str, path: str, title: str, content: str, status: str = None):
     "Actually edit the item (section or text)."
-    book = utils.get_book(bid)
+    book = books.get_book(bid)
     item = book[path]
     item.title = title
     item.name = title  # Changes name of directory/file.
@@ -996,7 +915,7 @@ def post(auth, bid: str, path: str, title: str, content: str, status: str = None
 @rt("/up/{bid:str}/{path:path}")
 def get(auth, bid: str, path: str):
     "Move item up in its sibling list."
-    book = utils.get_book(bid)
+    book = books.get_book(bid)
     book[path].up()
     book.write()
 
@@ -1006,7 +925,7 @@ def get(auth, bid: str, path: str):
 @rt("/down/{bid:str}/{path:path}")
 def get(auth, bid: str, path: str):
     "Move item down in its sibling list."
-    book = utils.get_book(bid)
+    book = books.get_book(bid)
     book[path].down()
     book.write()
 
@@ -1016,7 +935,7 @@ def get(auth, bid: str, path: str):
 @rt("/delete/{bid:str}")
 def get(auth, bid: str):
     "Confirm delete of book."
-    book = utils.get_book(bid)
+    book = books.get_book(bid)
     if len(book.items) != 0:
         raise Error("cannot delete non-empty book", HTTP.CONFLICT)
 
@@ -1033,11 +952,9 @@ def get(auth, bid: str):
 
 @rt("/delete/{bid:str}")
 def post(auth, bid: str):
-    "Actually delete the book."
-    book = utils.get_book(bid)
-    if len(book.items) != 0:
-        raise Error("cannot delete non-empty book", HTTP.CONFLICT)
-    utils.delete_book(book)
+    "Actually delete the book, even if it contains items."
+    book = books.get_book(bid)
+    book.delete(force=True)
 
     return RedirectResponse("/", status_code=HTTP.SEE_OTHER)
 
@@ -1045,7 +962,7 @@ def post(auth, bid: str):
 @rt("/delete/{bid:str}/{path:path}")
 def get(auth, bid: str, path: str):
     "Confirm delete of the text or section; section must be empty."
-    book = utils.get_book(bid)
+    book = books.get_book(bid)
     item = book[path]
     if item.is_section and len(item.items) != 0:
         raise Error("cannot delete non-empty section", HTTP.CONFLICT)
@@ -1064,7 +981,7 @@ def get(auth, bid: str, path: str):
 @rt("/delete/{bid:str}/{path:path}")
 def post(auth, bid: str, path: str):
     "Delete the text or section; section must be empty."
-    book = utils.get_book(bid)
+    book = books.get_book(bid)
     item = book[path]
     try:
         book.delete(item)
@@ -1077,7 +994,7 @@ def post(auth, bid: str, path: str):
 @rt("/to_section/{bid:str}/{path:path}")
 def get(auth, bid: str, path: str):
     "Convert to section containing a text with this text."
-    book = utils.get_book(bid)
+    book = books.get_book(bid)
     text = book[path]
     assert text.is_text
 
@@ -1097,7 +1014,7 @@ def get(auth, bid: str, path: str):
 @rt("/to_section/{bid:str}/{path:path}")
 def post(auth, bid: str, path: str):
     "Convert to section containing a text with this text."
-    book = utils.get_book(bid)
+    book = books.get_book(bid)
     text = book[path]
     assert text.is_text
     section = text.to_section()
@@ -1110,7 +1027,7 @@ def post(auth, bid: str, path: str):
 @rt("/text/{bid:str}/{path:path}")
 def get(auth, bid: str, path: str):
     "Create a new text in the section."
-    book = utils.get_book(bid)
+    book = books.get_book(bid)
     if path:
         parent = book[path]
         assert parent.is_section
@@ -1141,7 +1058,7 @@ def get(auth, bid: str, path: str):
 @rt("/text/{bid:str}/{path:path}")
 def post(auth, bid: str, path: str, title: str = None):
     "Actually create a new text in the section."
-    book = utils.get_book(bid)
+    book = books.get_book(bid)
     if path == "":
         parent = None
     else:
@@ -1156,7 +1073,7 @@ def post(auth, bid: str, path: str, title: str = None):
 @rt("/section/{bid:str}/{path:path}")
 def get(auth, bid: str, path: str):
     "Create a new section in the section."
-    book = utils.get_book(bid)
+    book = books.get_book(bid)
     if path:
         parent = book[path]
         assert parent.is_section
@@ -1187,7 +1104,7 @@ def get(auth, bid: str, path: str):
 @rt("/section/{bid:str}/{path:path}")
 def post(auth, bid: str, path: str, title: str = None):
     "Actually create a new section in the section."
-    book = utils.get_book(bid)
+    book = books.get_book(bid)
     if path == "":
         parent = None
     else:
@@ -1202,7 +1119,7 @@ def post(auth, bid: str, path: str, title: str = None):
 @rt("/information/{bid:str}")
 def get(auth, bid: str):
     "Display information about the book."
-    book = utils.get_book(bid)
+    book = books.get_book(bid)
     segments = [H3(book.title)]
     if book.subtitle:
         segments.append(H4(book.subtitle))
@@ -1235,7 +1152,7 @@ def get(auth, bid: str):
 @rt("/index/{bid:str}")
 def get(auth, bid: str):
     "List the indexed terms of the book."
-    book = utils.get_book(bid)
+    book = books.get_book(bid)
     items = []
     for key, texts in sorted(book.indexed.items(), key=lambda tu: tu[0].lower()):
         refs = []
@@ -1255,7 +1172,7 @@ def get(auth, bid: str):
 @rt("/statuslist/{bid:str}")
 def get(auth, bid: str):
     "List each status and texts of the book in it."
-    book = utils.get_book(bid)
+    book = books.get_book(bid)
     rows = [Tr(Th(Tx("Status"), Th(Tx("Texts"))))]
     for status in constants.STATUSES:
         texts = []
@@ -1291,7 +1208,7 @@ def get(auth, bid: str, path: str):
 
 def get_docx(bid, path=None):
     "Get the parameters for downloading the DOCX file."
-    book = utils.get_book(bid)
+    book = books.get_book(bid)
     if path:
         item = book[path]
     else:
@@ -1404,7 +1321,7 @@ def post(
     indexed_font: str = None,
 ):
     "Actually download the DOCX file of the book."
-    book = utils.get_book(bid)
+    book = books.get_book(bid)
     if path:
         path = urllib.parse.unquote(path)
         item = book[path]
@@ -1421,7 +1338,7 @@ def post(
         filename = book.title + ".docx"
     else:
         filename = item.title + ".docx"
-    creator = docx_creator.Creator(book, utils.get_references(), item=item)
+    creator = docx_creator.Creator(book, books.get_references(), item=item)
     output = creator.create()
 
     return Response(
@@ -1434,7 +1351,7 @@ def post(
 @rt("/pdf/{bid:str}")
 def pdf(auth, bid: str):
     "Get the parameters for downloading PDF file of the whole book."
-    book = utils.get_book(bid)
+    book = books.get_book(bid)
     settings = book.frontmatter.setdefault("pdf", {})
     title_page_metadata = settings.get("title_page_metadata", True)
     page_break_level = settings.get("page_break_level", 1)
@@ -1541,7 +1458,7 @@ def post(
     indexed_xref: str = None,
 ):
     "Actually download the PDF file of the book."
-    book = utils.get_book(bid)
+    book = books.get_book(bid)
     settings = book.frontmatter.setdefault("pdf", {})
     settings["title_page_metadata"] = title_page_metadata
     settings["page_break_level"] = page_break_level
@@ -1551,7 +1468,7 @@ def post(
     settings["indexed_xref"] = indexed_xref
     book.write()
     filename = book.title + ".pdf"
-    creator = pdf_creator.Creator(book, utils.get_references())
+    creator = pdf_creator.Creator(book, books.get_references())
     output = creator.create()
 
     return Response(
@@ -1564,7 +1481,7 @@ def post(
 @rt("/tgz/{bid:str}")
 def get(auth, bid: str):
     "Download a gzipped tar file of the book."
-    book = utils.get_book(bid, refresh=True)
+    book = books.get_book(bid, refresh=True)
     filename = f"mdbook_{book.bid}_{utils.timestr(safe=True)}.tgz"
     output = book.get_tgzfile()
 
@@ -1579,9 +1496,9 @@ def get(auth, bid: str):
 def get(auth, bid: str):
     "Return JSON for complete state of this book."
     if bid == "references":
-        book = utils.get_references()
+        book = books.get_references()
     else:
-        book = utils.get_book(bid, refresh=True)
+        book = books.get_book(bid, refresh=True)
     result = dict(
         software=constants.SOFTWARE,
         version=constants.__version__,
@@ -1707,7 +1624,7 @@ def get(auth):
 @rt("/state")
 def get(auth):
     "Return JSON for the overall state of this site."
-    return utils.get_state_here()
+    return books.get_state()
 
 
 @rt("/differences")
@@ -1717,7 +1634,7 @@ def get(auth):
         remote = utils.get_state_remote()
     except ValueError as message:
         raise Error(message, HTTP.INTERNAL_SERVER_ERROR)
-    state = utils.get_state_here()
+    state = books.get_state()
     rows = []
     books = state["books"].copy()
     for bid, rbook in remote["books"].items():
@@ -1810,11 +1727,11 @@ def get(auth, bid: str):
     except ValueError as message:
         raise Error(message, HTTP.INTERNAL_SERVER_ERROR)
     if bid == "references":
-        book = utils.get_references(refresh=True)
+        book = books.get_references(refresh=True)
         here = book.state
     else:
         try:
-            book = utils.get_book(bid, refresh=True)
+            book = books.get_book(bid, refresh=True)
             here = book.state
         except Error:
             here = {}
