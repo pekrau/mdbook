@@ -6,7 +6,6 @@ import os
 import shutil
 import string
 import sys
-import urllib
 
 import fasthtml
 from fasthtml.common import *
@@ -337,7 +336,7 @@ def get(auth, type: str):
 @rt("/reference")
 def post(auth, form: dict):
     "Actually add a reference from scratch."
-    reference = components.set_reference_from_form(form)
+    reference = components.get_reference_from_form(form)
     # Re-sort all references.
     references = books.get_references(refresh=True)
     references.items.sort(key=lambda r: r["id"])
@@ -397,7 +396,7 @@ def post(auth, data: str):
         if abstract:
             form["notes"] = "**Abstract**\n\n" + abstract
         try:
-            reference = components.set_reference_from_form(form)
+            reference = components.get_reference_from_form(form)
         except Error:
             pass
         else:
@@ -528,61 +527,9 @@ def post(auth, refid: str, form: dict):
         reference = books.get_references()[refid]
     except KeyError:
         raise Error(f"no such reference '{refid}'", HTTP.NOT_FOUND)
-    components.set_reference_from_form(form, ref=reference)
+    components.get_reference_from_form(form, ref=reference)
 
     return RedirectResponse(f"/reference/{refid}", status_code=HTTP.SEE_OTHER)
-
-# @rt("/reference/edit/{refid:str}")
-# def post(
-#     auth,
-#     refid: str,
-#     authors: str,
-#     title: str,
-#     year: str,
-#     edition_published: str,
-#     date: str,
-#     language: str,
-#     keywords: str,
-#     publisher: str,
-#     doi: str,
-#     url: str,
-#     notes: str,
-#     subtitle: str = "",  # The following may not be included in the form.
-#     journal: str = "",
-#     volume: str = "",
-#     number: str = "",
-#     pages: str = "",
-#     issn: str = "",
-#     isbn: str = "",
-#     pmid: str = "",
-# ):
-#     "Actually edit the reference."
-#     try:
-#         ref = books.get_references()[refid]
-#     except KeyError:
-#         raise Error(f"no such reference '{refid}'", HTTP.NOT_FOUND)
-
-#     ref["authors"] = [s.strip() for s in authors.split("\n") if s.strip()]
-#     ref["title"] = utils.cleanup_whitespaces(title)  # Even if empty string.
-#     ref.set("subtitle", utils.cleanup_whitespaces(subtitle))
-#     ref.set("year", year.strip())
-#     ref.set("edition_published", edition_published.strip())
-#     ref.set("date", date.strip())
-#     ref.set("journal", utils.cleanup_whitespaces(journal))
-#     ref.set("volume", volume.strip())
-#     ref.set("number", number.strip())
-#     ref.set("pages", pages.strip())
-#     ref.set("issn", issn.strip())
-#     ref.set("isbn", isbn.strip())
-#     ref.set("pmid", pmid.strip())
-#     ref.set("doi", doi.strip())
-#     ref.set("url", url.strip())
-#     ref.set("publisher", publisher.strip())
-#     ref.set("language", language.strip())
-#     ref.set("keywords", [s.strip() for s in keywords.split(";") if s.strip()]),
-#     ref.write(content=notes)
-
-#     return RedirectResponse(f"/reference/{refid}", status_code=HTTP.SEE_OTHER)
 
 
 @rt("/reference/delete/{refid:str}")
@@ -759,7 +706,7 @@ def get(auth, bid: str):
         Fieldset(
             Legend(Tx("Title")),
             Input(
-                name="title", value=book.frontmatter.get("title", ""), autofocus=True
+                name="title", value=book.frontmatter["title"], required=True, autofocus=True
             ),
         ),
         Fieldset(
@@ -819,30 +766,22 @@ def get(auth, bid: str):
 
 
 @rt("/edit/{bid:str}")
-def post(
-    auth,
-    bid: str,
-    title: str,
-    subtitle: str,
-    authors: str,
-    content: str,
-    status: str = None,
-    language: str = None,
-):
+def post(auth, bid: str, form: dict):
     "Actually edit the book data."
     book = books.get_book(bid)
-    book.frontmatter["title"] = title
-    book.frontmatter["subtitle"] = subtitle
-    book.frontmatter["authors"] = [a.strip() for a in authors.split("\n")]
-    if status:
-        book.frontmatter["status"] = status
-    else:
-        book.frontmatter.pop("status", None)
-    if language:
-        book.frontmatter["language"] = language
-    else:
-        book.frontmatter.pop("language", None)
-    book.write(content=content, force=True)
+    try:
+        title = form["title"].strip()
+        if not title:
+            raise KeyError
+        book.frontmatter["title"] = title
+    except KeyError:
+        raise Error("no title given for book", HTTP.BAD_REQUEST)
+    book.frontmatter["authors"] = [a.strip() for a in form.get("authors", "").split("\n")]
+    for key in ["subtitle", "status", "language"]:
+        value = form.get("subtitle", "").strip()
+        if not value:
+            book.frontmatter.pop(key, None)
+    book.write(content=form.get("content"), force=True)
 
     return RedirectResponse(f"/book/{bid}", status_code=HTTP.SEE_OTHER)
 
@@ -1310,29 +1249,20 @@ def get_docx(bid, path=None):
 
 
 @rt("/docx/{bid:str}")
-def post(
-    auth,
-    bid: str,
-    path: str = None,
-    title_page_metadata: bool = False,
-    page_break_level: int = None,
-    footnotes_location: str = None,
-    reference_font: str = None,
-    indexed_font: str = None,
-):
+def post(auth, bid: str, form: dict):
     "Actually download the DOCX file of the book."
     book = books.get_book(bid)
+    path = form.get("path")
     if path:
-        path = urllib.parse.unquote(path)
         item = book[path]
     else:
         item = None
     settings = book.frontmatter.setdefault("docx", {})
-    settings["title_page_metadata"] = title_page_metadata
-    settings["page_break_level"] = page_break_level
-    settings["footnotes_location"] = footnotes_location
-    settings["reference_font"] = reference_font
-    settings["indexed_font"] = indexed_font
+    settings["title_page_metadata"] = form["title_page_metadata"]
+    settings["page_break_level"] = form["page_break_level"]
+    settings["footnotes_location"] = form["footnotes_location"]
+    settings["reference_font"] = form["reference_font"]
+    settings["indexed_font"] = form["indexed_font"]
     if item is None:
         book.write()
         filename = book.title + ".docx"
@@ -1447,25 +1377,16 @@ def pdf(auth, bid: str):
 
 
 @rt("/pdf/{bid:str}")
-def post(
-    auth,
-    bid: str,
-    title_page_metadata: bool = False,
-    page_break_level: int = None,
-    contents_pages: bool = False,
-    contents_level: int = None,
-    footnotes_location: str = None,
-    indexed_xref: str = None,
-):
+def post(auth, bid: str, form: dict):
     "Actually download the PDF file of the book."
     book = books.get_book(bid)
     settings = book.frontmatter.setdefault("pdf", {})
-    settings["title_page_metadata"] = title_page_metadata
-    settings["page_break_level"] = page_break_level
-    settings["contents_pages"] = contents_pages
-    settings["contents_level"] = contents_level
-    settings["footnotes_location"] = footnotes_location
-    settings["indexed_xref"] = indexed_xref
+    settings["title_page_metadata"] = form["title_page_metadata"]
+    settings["page_break_level"] = form["page_break_level"]
+    settings["contents_pages"] = form["contents_pages"]
+    settings["contents_level"] = form["contents_level"]
+    settings["footnotes_location"] = form["footnotes_location"]
+    settings["indexed_xref"] = form["indexed_xref"]
     book.write()
     filename = book.title + ".pdf"
     creator = pdf_creator.Creator(book, books.get_references())

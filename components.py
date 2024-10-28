@@ -291,7 +291,7 @@ def required():
     return Span(NotStr("&nbsp;*"), style="color: red")
 
 
-def set_reference_from_form(form, ref=None):
+def get_reference_from_form(form, ref=None):
     "Set the values of the reference from a form."
     if ref is None:
         type = form.get("type", "").strip()
@@ -316,7 +316,10 @@ def set_reference_from_form(form, ref=None):
                 break
         else:
             raise Error(f"could not form unique id for {name} {year}", HTTP.BAD_REQUEST)
-        ref = books.get_references().create_text(name)
+        try:
+            ref = books.get_references().create_text(name)
+        except ValueError as message:
+            raise Error(message, HTTP.BAD_REQUEST)
         ref.set("type", type)
         ref.set("id", refid)
         ref.set("name", name)
