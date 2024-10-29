@@ -1559,10 +1559,10 @@ def get(auth):
         raise Error(message, HTTP.INTERNAL_SERVER_ERROR)
     state = books.get_state()
     rows = []
-    books = state["books"].copy()
+    here_books = state["books"].copy()
     for bid, rbook in remote["books"].items():
         rurl = f'{os.environ["MDBOOK_UPDATE_SITE"].rstrip("/")}/book/{bid}'
-        lbook = books.pop(bid, {})
+        lbook = here_books.pop(bid, {})
         title = lbook.get("title") or rbook.get("title")
         if lbook:
             if lbook["digest"] == rbook["digest"]:
@@ -1604,7 +1604,7 @@ def get(auth):
                     Td("?"),
                 )
             )
-    for bid, lbook in books.items():
+    for bid, lbook in here_books.items():
         rows.append(
             Tr(
                 Th(Strong(lbook.get("title") or rbook.get("title")), scope="row"),

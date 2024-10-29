@@ -28,6 +28,7 @@ def read_books():
     # Read in all books into memory, including the references.
     global _books
     global _references
+    _books.clear()
     for bid in os.listdir(os.environ["MDBOOK_DIR"]):
         dirpath = os.path.join(os.environ["MDBOOK_DIR"], bid)
         if not os.path.isdir(dirpath):
@@ -159,9 +160,9 @@ def update_markdown(target, content):
 class Book:
     "Root container for Markdown book texts in files and directories."
 
-    def __init__(self, abspath, index_only=False):
+    def __init__(self, abspath):
         self.abspath = abspath
-        self.read(index_only=index_only)
+        self.read()
 
     def __str__(self):
         return self.title
@@ -173,16 +174,12 @@ class Book:
         "Return the item (section or text) given its URL path."
         return self.path_lookup[path]
 
-    def read(self, index_only=False):
+    def read(self):
         """ "Read the book from file.
-        If 'index_only', then only the 'index.md' file.
-        Otherwise all items (sections, texts) recursively from files.
+        All items (sections, texts) recursively from files.
         Set up indexed and references lookups.
         """
         read_markdown(self, self.absfilepath)
-
-        if index_only:
-            return
 
         self.items = []
 
@@ -773,7 +770,7 @@ class Section(Item):
         """
         read_markdown(self, self.absfilepath)
         for name in sorted(os.listdir(self.abspath)):
-            # Skip unsaved emacs files.
+            # Skip temporary emacs files.
             if name.startswith(".#"):
                 continue
             # Skip the already read 'index.md' file.
@@ -785,6 +782,10 @@ class Section(Item):
                 self.items.append(Text(self.book, self, os.path.splitext(name)[0]))
             else:  # Skip any non-Markdown files.
                 pass
+        # Repair if no 'index.md' in the directory.
+        if not os.path.exists(self.absfilepath):
+            ic(self.frontmatter)
+            write_markdown(self, self.absfilepath)
 
     def write(self, content=None, force=False):
         """Write the 'index.md' file, if changed.
@@ -990,13 +991,12 @@ class Text(Item):
         sectionpath = os.path.splitext(oldtextpath)[0]
         os.mkdir(sectionpath)
         os.rename(oldtextpath, os.path.join(sectionpath, self.filename()))
-        section = Section(self.book, self.parent, self.title)
+        section = Section(self.book, self.parent, self.name)
+        section.title = self.title
         section.items[0] = self
         self.parent.items[self.index] = section
-        self.book.path_lookup[section.path] = section
-        self.parent = section
-        self.book.path_lookup[self.path] = self
-        self.book.write()
+        section.write()
+        self.book.read()
         return section
 
     def check_integrity(self):
