@@ -84,7 +84,7 @@ def get_state():
         book = Book(dirpath, index_only=True)
         books[bid] = dict(
             title=book.title,
-            modified=utilstimestr(filepath=dirpath, localtime=False, display=False),
+            modified=utils.timestr(filepath=dirpath, localtime=False, display=False),
             sum_characters=book.frontmatter["sum_characters"],
             digest=book.frontmatter["digest"],
         )
