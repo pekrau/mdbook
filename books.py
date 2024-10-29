@@ -20,9 +20,38 @@ import utils
 # Book instances cache. Key: bid; value: Book instance.
 _books = {}
 
+# Cached references book.
+_references = None
+
+
+def read_books():
+    # Read in all books into memory, including the references.
+    global _books
+    global _references
+    for bid in os.listdir(os.environ["MDBOOK_DIR"]):
+        dirpath = os.path.join(os.environ["MDBOOK_DIR"], bid)
+        if not os.path.isdir(dirpath):
+            continue
+        if bid == "references":
+            continue
+        try:
+            book = Book(dirpath)
+            _books[book.bid] = book
+        except FileNotFoundError:
+            pass
+    dirpath = os.path.join(os.environ["MDBOOK_DIR"], "references")
+    if not os.path.exists(dirpath):
+        os.mkdir(dirpath)
+    _references = Book(dirpath)
+
+
+def get_books():
+    "Get the list of books, excluding references."
+    return sorted(_books.values(), key=lambda b: b.modified, reverse=True)
+
 
 def get_book(bid, refresh=False):
-    "Get the book contents, cached."
+    "Get the book, optionally refreshing the cache."
     global _books
     if not bid:
         raise Error("no book identifier provided", HTTP.BAD_REQUEST)
@@ -32,28 +61,18 @@ def get_book(bid, refresh=False):
             book.read()
         return book
     except KeyError:
-        try:
-            book = Book(os.path.join(os.environ["MDBOOK_DIR"], bid))
-        except FileNotFoundError:
-            raise Error(f"no such book '{bid}'", HTTP.NOT_FOUND)
-        _books[bid] = book
-        return book
+        raise Error(f"no such book '{bid}'", HTTP.NOT_FOUND)
 
 
 def get_references(refresh=False):
-    "Get the references book, cached."
+    "Get the references book, optionally refreshing the cache."
     global _references
-    try:
-        _references
-        if refresh:
-            _references.read()
-        return _references
-    except NameError:
-        dirpath = os.path.join(os.environ["MDBOOK_DIR"], "references")
-        if not os.path.exists(dirpath):
-            os.mkdir(dirpath)
-        _references = Book(dirpath)
-        return _references
+    if refresh:
+        _references.read()
+        _references.items.sort(key=lambda r: r["id"])
+        _references.write()
+    return _references
+
 
 def get_state():
     "Return JSON for the overall state of this site."
@@ -155,8 +174,10 @@ class Book:
         return self.path_lookup[path]
 
     def read(self, index_only=False):
-        """ "Read all items (sections, texts) recursively from files.
-        Set up references and indexed lookups, unless only 'index.md' to be read.
+        """ "Read the book from file.
+        If 'index_only', then only the 'index.md' file.
+        Otherwise all items (sections, texts) recursively from files.
+        Set up indexed and references lookups.
         """
         read_markdown(self, self.absfilepath)
 
@@ -194,13 +215,13 @@ class Book:
         for item in self.all_items:
             self.path_lookup[item.path] = item
 
-        self.references = {}
-        for item in self.all_texts:
-            self.find_references(item, item.ast)
-
         self.indexed = {}
         for item in self.all_texts:
             self.find_indexed(item, item.ast)
+
+        self.references = {}
+        for item in self.all_texts:
+            self.find_references(item, item.ast)
 
         # Write out "index.md" if order changed.
         self.write()
@@ -404,17 +425,6 @@ class Book:
             digest.update(item.digest.encode("utf-8"))
         return digest.hexdigest()
 
-    def find_references(self, item, ast):
-        try:
-            for child in ast["children"]:
-                if isinstance(child, str):
-                    continue
-                if child["element"] == "reference":
-                    self.references.setdefault(child["reference"], set()).add(item)
-                self.find_references(item, child)
-        except KeyError:
-            pass
-
     def find_indexed(self, item, ast):
         try:
             for child in ast["children"]:
@@ -423,6 +433,17 @@ class Book:
                 if child["element"] == "indexed":
                     self.indexed.setdefault(child["canonical"], set()).add(item)
                 self.find_indexed(item, child)
+        except KeyError:
+            pass
+
+    def find_references(self, item, ast):
+        try:
+            for child in ast["children"]:
+                if isinstance(child, str):
+                    continue
+                if child["element"] == "reference":
+                    self.references.setdefault(child["id"], set()).add(item)
+                self.find_references(item, child)
         except KeyError:
             pass
 

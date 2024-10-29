@@ -90,14 +90,15 @@ class Reference(marko.inline.InlineElement):
     parse_children = False
 
     def __init__(self, match):
-        self.reference = match.group(1).strip()
+        self.name = match.group(1).strip()
+        self.id = utils.nameify(self.name)
 
 
 class ReferenceRenderer:
     "Output a link to the reference page and item."
 
     def render_reference(self, element):
-        return f'<strong><a href="/reference/{utils.nameify(element.reference)}">{element.reference}</a></strong>'
+        return f'<strong><a href="/reference/{element.id}">{element.name}</a></strong>'
 
 
 html_converter = marko.Markdown()

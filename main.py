@@ -24,9 +24,6 @@ import utils
 from utils import Tx, Error
 
 
-login_redir = RedirectResponse("/login", status_code=HTTP.SEE_OTHER)
-
-
 def before(req, sess):
     "Login session handling."
     if "apikey" in req.headers and "MDBOOK_APIKEY" in os.environ:
@@ -37,7 +34,7 @@ def before(req, sess):
     else:
         auth = req.scope["auth"] = sess.get("auth", None)
     if not auth:
-        return login_redir
+        return RedirectResponse("/login", status_code=HTTP.SEE_OTHER)
 
 
 beforeware = Beforeware(
@@ -79,19 +76,6 @@ def get(auth):
                 HTTP.INTERNAL_SERVER_ERROR,
             )
 
-    result = []
-    for bid in os.listdir(os.environ["MDBOOK_DIR"]):
-        dirpath = os.path.join(os.environ["MDBOOK_DIR"], bid)
-        if not os.path.isdir(dirpath):
-            continue
-        if bid == "references":
-            continue
-        try:
-            book = books.Book(dirpath, index_only=True)
-            result.append(book)
-        except FileNotFoundError:
-            pass
-    result.sort(key=lambda b: b.modified, reverse=True)
     hrows = Tr(
         Th(Tx("Title")),
         Th(Tx("Type")),
@@ -101,7 +85,7 @@ def get(auth):
         Th(Tx("Modified")),
     )
     rows = []
-    for book in result:
+    for book in books.get_books():
         rows.append(
             Tr(
                 Td(A(book.title, href=f"/book/{book.bid}")),
@@ -141,7 +125,7 @@ def get(auth):
 @rt("/references")
 def get(auth):
     "List of references."
-    references = books.get_references(refresh=True)
+    references = books.get_references()
     references.write()  # Updates the 'index.md' file, if necessary.
     items = []
     for ref in references.items:
@@ -226,17 +210,18 @@ def get(auth):
             parts.append(" ")
             parts.extend(links)
 
-        # XXX link to book text using the reference
-        # xrefs = []
-        # texts = books.get_book().references.get(ref["name"], [])
-        # for text in sorted(texts, key=lambda t: t.ordinal):
-        #     if xrefs:
-        #         xrefs.append(Br())
-        #     xrefs.append(A(text.fulltitle,
-        #                    cls="secondary",
-        #                    href=f"/book/XXX/{text.fulltitle}"))
-        # if xrefs:
-        #     parts.append(Small(Br(), *xrefs))
+        xrefs = []
+        for book in books.get_books():
+            texts = book.references.get(ref["id"], [])
+            for text in sorted(texts, key=lambda t: t.ordinal):
+                if xrefs:
+                    xrefs.append(Br())
+                xrefs.append(A(f"{book.title}: {text.fulltitle}",
+                               cls="secondary",
+                               href=f"/book/{book.bid}/{text.path}"))
+        if xrefs:
+            parts.append(Small(Br(), *xrefs))
+
         items.append(P(*parts, id=ref["name"]))
 
     title = f'{Tx("References")} ({len(references.items)})'
@@ -269,7 +254,7 @@ def get(auth):
 @rt("/references/tgz")
 def get(auth):
     "Download a gzipped tar file of all references."
-    book = books.get_references(refresh=True)
+    book = books.get_references()
     output = book.get_tgzfile()
     filename = f"mdbook_references_{utils.timestr(safe=True)}.tgz"
 
@@ -310,6 +295,7 @@ async def post(auth, tgzfile: UploadFile):
         await tgzfile.read(),
         references=True,
     )
+    books.get_references(refresh=True)
 
     return RedirectResponse("/references", status_code=HTTP.SEE_OTHER)
 
@@ -337,10 +323,7 @@ def get(auth, type: str):
 def post(auth, form: dict):
     "Actually add a reference from scratch."
     reference = components.get_reference_from_form(form)
-    # Re-sort all references.
-    references = books.get_references(refresh=True)
-    references.items.sort(key=lambda r: r["id"])
-    references.write()
+    books.get_references(refresh=True)
 
     return RedirectResponse(f"/reference/{reference['id']}", status_code=HTTP.SEE_OTHER)
 
@@ -402,10 +385,8 @@ def post(auth, data: str):
         else:
             result.append(reference)
 
-    # Re-sort all references.
-    references = books.get_references(refresh=True)
-    references.items.sort(key=lambda r: r["id"])
-    references.write()
+    # Refresh the cache.
+    books.get_references(refresh=True)
 
     return (
         Title(Tx("Added reference(s)")),
@@ -528,6 +509,7 @@ def post(auth, refid: str, form: dict):
     except KeyError:
         raise Error(f"no such reference '{refid}'", HTTP.NOT_FOUND)
     components.get_reference_from_form(form, ref=reference)
+    books.get_references(refresh=True)
 
     return RedirectResponse(f"/reference/{refid}", status_code=HTTP.SEE_OTHER)
 
@@ -558,7 +540,7 @@ def get(auth, refid: str):
 
 @rt("/reference/delete/{refid:str}")
 def post(auth, refid: str):
-    "Delete the reference."
+    "Actually delete the reference."
     references = books.get_references()
     try:
         ref = references[refid]
@@ -566,9 +548,10 @@ def post(auth, refid: str):
         raise Error(f"no such reference '{refid}'", HTTP.NOT_FOUND)
 
     try:
-        references.delete(ref)
+        references.delete(item=ref)
     except ValueError as message:
         raise Error(message, HTTP.CONFLICT)
+    books.get_references(refresh=True)
 
     return RedirectResponse(f"/references", status_code=HTTP.SEE_OTHER)
 
@@ -621,7 +604,10 @@ async def post(auth, title: str, tgzfile: UploadFile):
     # Just create the directory; no content.
     else:
         os.mkdir(dirpath)
-    book = books.Book(dirpath)
+    # Re-read all books, ensuring everything is up to date.
+    books.read_books()
+    # Set the title and owner of the new book.
+    book = books.get_book(bid)
     book.frontmatter["title"] = title or book.title
     book.frontmatter["owner"] = auth
     book.write()
@@ -632,7 +618,7 @@ async def post(auth, title: str, tgzfile: UploadFile):
 @rt("/book/{bid:str}")
 def get(auth, bid: str):
     "Display book; contents list of sections and texts."
-    book = books.get_book(bid, refresh=True)
+    book = books.get_book(bid)
     book.write()  # Updates the 'index.md' file, if necessary.
     actions = [
         A(f'{Tx("Edit")}', href=f"/edit/{bid}"),
@@ -782,6 +768,8 @@ def post(auth, bid: str, form: dict):
         if not value:
             book.frontmatter.pop(key, None)
     book.write(content=form.get("content"), force=True)
+    # Refresh the book, ensuring everything is up to date.
+    book.read()
 
     return RedirectResponse(f"/book/{bid}", status_code=HTTP.SEE_OTHER)
 
@@ -847,6 +835,8 @@ def post(auth, bid: str, path: str, title: str, content: str, status: str = None
             item.status = status
     item.write(content=content)
     book.write()
+    # Refresh the book, ensuring everything is up to date.
+    book.read()
 
     return RedirectResponse(f"/book/{bid}/{item.path}", status_code=HTTP.SEE_OTHER)
 
@@ -857,6 +847,8 @@ def get(auth, bid: str, path: str):
     book = books.get_book(bid)
     book[path].up()
     book.write()
+    # Refresh the book, ensuring everything is up to date.
+    book.read()
 
     return RedirectResponse(f"/book/{bid}", status_code=HTTP.SEE_OTHER)
 
@@ -867,6 +859,8 @@ def get(auth, bid: str, path: str):
     book = books.get_book(bid)
     book[path].down()
     book.write()
+    # Refresh the book, ensuring everything is up to date.
+    book.read()
 
     return RedirectResponse(f"/book/{bid}", status_code=HTTP.SEE_OTHER)
 
@@ -894,7 +888,8 @@ def post(auth, bid: str):
     "Actually delete the book, even if it contains items."
     book = books.get_book(bid)
     book.delete(force=True)
-
+    # Re-read all books, ensuring everything is up to date.
+    books.read_books()
     return RedirectResponse("/", status_code=HTTP.SEE_OTHER)
 
 
@@ -923,9 +918,11 @@ def post(auth, bid: str, path: str):
     book = books.get_book(bid)
     item = book[path]
     try:
-        book.delete(item)
+        book.delete(item=item)
     except ValueError as message:
         raise Error(message, HTTP.CONFLICT)
+    # Refresh the book, ensuring everything is up to date.
+    book.read()
 
     return RedirectResponse(f"/book/{bid}", status_code=HTTP.SEE_OTHER)
 
@@ -958,7 +955,8 @@ def post(auth, bid: str, path: str):
     assert text.is_text
     section = text.to_section()
     book.write()
-    assert section.is_section
+    # Refresh the book, ensuring everything is up to date.
+    book.read()
 
     return RedirectResponse(f"/book/{bid}/{section.path}", status_code=HTTP.SEE_OTHER)
 
@@ -1005,6 +1003,8 @@ def post(auth, bid: str, path: str, title: str = None):
         assert parent.is_section
     new = book.create_text(title, parent=parent)
     book.write()
+    # Refresh the book, ensuring everything is up to date.
+    book.read()
 
     return RedirectResponse(f"/edit/{bid}/{new.path}", status_code=HTTP.SEE_OTHER)
 
@@ -1051,6 +1051,8 @@ def post(auth, bid: str, path: str, title: str = None):
         assert parent.is_section
     new = book.create_section(title, parent=parent)
     book.write()
+    # Refresh the book, ensuring everything is up to date.
+    book.read()
 
     return RedirectResponse(f"/edit/{bid}/{new.path}", status_code=HTTP.SEE_OTHER)
 
@@ -1402,7 +1404,7 @@ def post(auth, bid: str, form: dict):
 @rt("/tgz/{bid:str}")
 def get(auth, bid: str):
     "Download a gzipped tar file of the book."
-    book = books.get_book(bid, refresh=True)
+    book = books.get_book(bid)
     filename = f"mdbook_{book.bid}_{utils.timestr(safe=True)}.tgz"
     output = book.get_tgzfile()
 
@@ -1419,7 +1421,7 @@ def get(auth, bid: str):
     if bid == "references":
         book = books.get_references()
     else:
-        book = books.get_book(bid, refresh=True)
+        book = books.get_book(bid)
     result = dict(
         software=constants.SOFTWARE,
         version=constants.__version__,
@@ -1516,7 +1518,7 @@ def get():
 def post(user: str, password: str, sess):
     "Actually login."
     if not user or not password:
-        return login_redir
+        return RedirectResponse("/login", status_code=HTTP.SEE_OTHER)
     if user != os.environ["MDBOOK_USER"] or password != os.environ["MDBOOK_PASSWORD"]:
         raise Error("invalid credentials", HTTP.FORBIDDEN)
     sess["auth"] = user
@@ -1528,7 +1530,7 @@ def post(user: str, password: str, sess):
 def get(sess):
     "Perform logout."
     del sess["auth"]
-    return login_redir
+    return RedirectResponse("/login", status_code=HTTP.SEE_OTHER)
 
 
 @rt("/tgz")
@@ -1648,11 +1650,11 @@ def get(auth, bid: str):
     except ValueError as message:
         raise Error(message, HTTP.INTERNAL_SERVER_ERROR)
     if bid == "references":
-        book = books.get_references(refresh=True)
+        book = books.get_references()
         here = book.state
     else:
         try:
-            book = books.get_book(bid, refresh=True)
+            book = books.get_book(bid)
             here = book.state
         except Error:
             here = {}
@@ -1829,9 +1831,12 @@ def post(auth, bid: str):
         # Reinstate old contents.
         os.rename(old_dirpath, dirpath)
         raise Error(f"error reading TGZ file from remote: {message}", HTTP.BAD_REQUEST)
+
     if bid == "references":
+        books.get_references(refresh=True)
         return RedirectResponse("/references", status_code=HTTP.SEE_OTHER)
     else:
+        books.get_book(bid, refresh=True)
         return RedirectResponse(f"/book/{bid}", status_code=HTTP.SEE_OTHER)
 
 
@@ -1880,7 +1885,14 @@ async def post(auth, bid: str, tgzfile: UploadFile = None):
         if old_dirpath:
             os.rename(old_dirpath, dirpath)
         raise Error(f"error reading TGZ file: {message}", HTTP.BAD_REQUEST)
+    if bid == "references":
+        books.get_references(refresh=True)
+    else:
+        books.get_book(bid, refresh=True)
     return "success"
 
+
+# Read in all books into memory.
+books.read_books()
 
 serve()
