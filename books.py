@@ -78,11 +78,7 @@ def get_references(refresh=False):
 def get_state():
     "Return JSON for the overall state of this site."
     books = {}
-    for bid in os.listdir(os.environ["MDBOOK_DIR"]):
-        dirpath = os.path.join(os.environ["MDBOOK_DIR"], bid)
-        if not os.path.isdir(dirpath):
-            continue
-        book = Book(dirpath, index_only=True)
+    for book in get_books():
         books[bid] = dict(
             title=book.title,
             modified=utils.timestr(filepath=dirpath, localtime=False, display=False),
