@@ -80,9 +80,9 @@ def get_state():
     "Return JSON for the overall state of this site."
     books = {}
     for book in get_books():
-        books[bid] = dict(
+        books[book.bid] = dict(
             title=book.title,
-            modified=utils.timestr(filepath=dirpath, localtime=False, display=False),
+            modified=utils.timestr(filepath=book.abspath, localtime=False, display=False),
             sum_characters=book.frontmatter["sum_characters"],
             digest=book.frontmatter["digest"],
         )
