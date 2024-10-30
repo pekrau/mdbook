@@ -168,7 +168,7 @@ def unpack_tgzfile(dirpath, content, references=False):
                         "reference TGZ file must contain no directories",
                         HTTP.BAD_REQUEST,
                     )
-            filter = lambda tf: tf if tf.name != "index.md" else None
+            filter = lambda tf, path: tf if tf.name != "index.md" else None
         else:
             filter = None
         tf.extractall(path=dirpath, filter=filter)
