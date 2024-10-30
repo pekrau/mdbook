@@ -15,80 +15,83 @@ from utils import Tx, Error
 NAV_STYLE_TEMPLATE = "outline-color: {color}; outline-width:8px; outline-style:solid; padding:0px 10px; border-radius:5px;"
 
 
-def header(
-    book=None, item=None, title=None, actions=None, references=True, state_url=None
-):
+def header(title, book=None, status=None, references=True, pages=None, actions=None):
     "The standard page header with navigation bar."
-    # The first cell: icon and book title (if any).
+
+    # The first cell: icon to home page, and title of book, if any.
     if book:
-        entries = [
+        cells = [
             Ul(
                 Li(A(Img(src="/mdbook.png", width=32, height=32), href="/")),
                 Li(A(Strong(book.title), href=f"/book/{book.bid}")),
             )
         ]
     else:
-        entries = [Ul(Li(A(Img(src="/mdbook.png"), href="/")))]
+        cells = [Ul(Li(A(Img(src="/mdbook.png"), href="/")))]
 
-    # The second cell: title, or item info, or book info.
-    if title:
-        entries.append(Ul(Li(Strong(title))))
-        if book is None:
-            nav_style = NAV_STYLE_TEMPLATE.format(color="black")
-        else:
-            nav_style = NAV_STYLE_TEMPLATE.format(color=book.status.color)
+    # The second cell: title.
+    cells.append(Ul(Li(Strong(title))))
 
-    elif item:
-        entries.append(Ul(Li(Strong(item.fulltitle))))
-        nav_style = NAV_STYLE_TEMPLATE.format(color=item.status.color)
-
-    elif book:
-        entries.append(Ul(Li(Tx("Contents"))))
-        nav_style = NAV_STYLE_TEMPLATE.format(color=book.status.color)
-
-    else:
-        nav_style = NAV_STYLE_TEMPLATE.format(color="black")
-
-    pages = []
-    if item is not None:
-        if item.parent:
-            if item.parent.level == 0:  # Book.
-                url = f"/book/{book.bid}"
-            else:
-                url = f"/book/{book.bid}/{item.parent.path}"
-            pages.append(A(NotStr(f"&ShortUpArrow; {item.parent.title}"), href=url))
-        if item.prev:
-            url = f"/book/{book.bid}/{item.prev.path}"
-            pages.append(A(NotStr(f"&ShortLeftArrow; {item.prev.title}"), href=url))
-        if item.next:
-            url = f"/book/{book.bid}/{item.next.path}"
-            pages.append(A(NotStr(f"&ShortRightArrow; {item.next.title}"), href=url))
-    if book is not None:
-        pages.append(A(Tx("Index"), href=f"/index/{book.bid}"))
-        pages.append(A(Tx("Information"), href=f"/information/{book.bid}"))
-        pages.append(A(Tx("Status list"), href=f"/statuslist/{book.bid}"))
-    if state_url:
-        pages.append(A(Tx("State"), href=state_url))
-    if not book and not item:
-        pages.append(A(Tx("System"), href="/system"))
+    # Items for the third cell.
     items = []
+
+    # Optional link to references.
     if references:
         items.append(Li(A(Tx("References"), href="/references")))
-    items.append(
-        Li(Details(Summary(Tx("Pages")), Ul(*[Li(p) for p in pages]), cls="dropdown"))
-    )
+
+    # The third cell: pages and actions.
+    if pages:
+        items.append(
+            Li(
+                Details(
+                    Summary(Tx("Pages")), Ul(*[Li(p) for p in pages]), cls="dropdown"
+                )
+            )
+        )
     if actions:
         items.append(
             Li(
                 Details(
                     Summary(Tx("Actions")),
-                    Ul(*[Li(c) for c in actions]),
+                    Ul(*[Li(a) for a in actions]),
                     cls="dropdown",
                 )
             )
         )
-    entries.append(Ul(*items))
-    return Header(Nav(*entries, style=nav_style), cls="container")
+    cells.append(Ul(*items))
+
+    # Set the color of the nav frame.
+    if status:
+        nav_style = NAV_STYLE_TEMPLATE.format(color=status.color)
+    else:
+        nav_style = NAV_STYLE_TEMPLATE.format(color="black")
+    return Header(Nav(*cells, style=nav_style), cls="container")
+
+
+def standard_book_pages(book):
+    return [
+        A(Tx("Index"), href=f"/index/{book.bid}"),
+        A(Tx("Information"), href=f"/information/{book.bid}"),
+        A(Tx("Status list"), href=f"/statuslist/{book.bid}"),
+    ]
+
+
+def standard_item_pages(book, item):
+    pages = []
+    if item.parent:
+        if item.parent.level == 0:  # Book.
+            url = f"/book/{book.bid}"
+        else:
+            url = f"/book/{book.bid}/{item.parent.path}"
+        pages.append(A(NotStr(f"&ShortUpArrow; {item.parent.title}"), href=url))
+    if item.prev:
+        url = f"/book/{book.bid}/{item.prev.path}"
+        pages.append(A(NotStr(f"&ShortLeftArrow; {item.prev.title}"), href=url))
+    if item.next:
+        url = f"/book/{book.bid}/{item.next.path}"
+        pages.append(A(NotStr(f"&ShortRightArrow; {item.next.title}"), href=url))
+    pages.append(A(Tx("Index"), href=f"/index/{book.bid}"))
+    return pages
 
 
 def toc(book, items, show_arrows=False):

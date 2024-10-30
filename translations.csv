@@ -67,6 +67,7 @@ none,ingen
 add reference,lägg till referens
 added reference(s),lade till referens(er)
 edit reference,redigera referens
+delete reference,radera referens
 status list,statuslista
 section,sektion
 text,text
@@ -80,8 +81,9 @@ source,källa
 book title,boktitel
 delete,radera
 confirm,bekräfta
-create or upload,skapa eller ladda upp
-create in,skapa i
+create or upload book,skapa eller ladda upp bok
+create text in,skapa text i
+create section in,skapa sektion i
 optional,valfritt
 language,språk
 keywords,nyckelord
@@ -93,6 +95,7 @@ memory usage,minnesanvändning
 identifier,identifierare
 modified,modifierad
 differences,skillnader
+differences in,skillnader i
 here,här
 identical,identiska
 state,tillstånd
@@ -110,3 +113,5 @@ information,information
 system,system
 contents,innehåll
 BibTex data,BibTex data
+delete book,radera bok
+note: all contents will be lost!,notera: allt innehåll kommer att försvinna!

@@ -16,6 +16,7 @@ import yaml
 import constants
 import markdown
 import utils
+from utils import Error
 
 
 # Book instances cache. Key: bid; value: Book instance.
@@ -207,15 +208,19 @@ class Book:
         # Set the order to be that explicity given, if any.
         self.set_items_order(self, self.frontmatter.get("items", []))
 
-        # Key: item path, value: item
+        # Key: item path; value: item.
         self.path_lookup = {}
         for item in self.all_items:
             self.path_lookup[item.path] = item
 
+        # Key: indexed term; value: set of texts.
         self.indexed = {}
         for item in self.all_texts:
             self.find_indexed(item, item.ast)
+            for keyword in item.get("keywords", []):
+                self.indexed.setdefault(keyword, set()).add(item)
 
+        # Key: reference identifier; value: set of texts.
         self.references = {}
         for item in self.all_texts:
             self.find_references(item, item.ast)
