@@ -153,7 +153,7 @@ def get(auth):
         parts.append(utils.full_title(ref))
 
         links = []
-        if ref["type"] == "article":
+        if ref["type"] == constants.ARTICLE:
             parts.append(Br())
             if ref.get("journal"):
                 parts.append(I(ref["journal"]))
@@ -167,16 +167,18 @@ def get(auth):
                 parts.append(f' ({ref["year"]})')
             if ref.get("edition_published"):
                 parts.append(f' [{ref["edition_published"]}]')
-        elif ref["type"] == "book":
+        elif ref["type"] == constants.BOOK:
             parts.append(Br())
             if ref.get("publisher"):
                 parts.append(f'{ref["publisher"]}')
-                if ref.get("edition_published"):
-                    parts.append(f' {ref["edition_published"]}')
-                    if ref.get("year"):
-                        parts.append(f' [{ref["year"]}]')
-                elif ref.get("year"):
-                    parts.append(f' {ref["year"]}')
+            # If 'edition_published', then it is the latest, while 'year' is original.
+            if ref.get("edition_published"):
+                parts.append(f' {ref["edition_published"]}')
+                if ref.get("year"):
+                    parts.append(f' [{ref["year"]}]')
+            # This is the normal case; 'year' is the publicaton year.
+            elif ref.get("year"):
+                parts.append(f' {ref["year"]}')
             if ref.get("isbn"):
                 symbol, url = constants.REFERENCE_LINKS["isbn"]
                 url = url.format(value=ref["isbn"])
@@ -185,6 +187,12 @@ def get(auth):
                 links.append(
                     A(f'{symbol}:{ref["isbn"]}', href=url.format(value=ref["isbn"]))
                 )
+        elif ref["type"] == constants.LINK:
+            parts.append(Br())
+            if ref.get("publisher"):
+                parts.append(f'{ref["publisher"]}')
+            if ref.get("year"):
+                parts.append(f' ({ref["year"]})')
 
         if ref.get("url"):
             parts.append(Br())
