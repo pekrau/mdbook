@@ -224,9 +224,13 @@ def get(auth):
             for text in sorted(texts, key=lambda t: t.ordinal):
                 if xrefs:
                     xrefs.append(Br())
-                xrefs.append(A(f"{book.title}: {text.fulltitle}",
-                               cls="secondary",
-                               href=f"/book/{book.bid}/{text.path}"))
+                xrefs.append(
+                    A(
+                        f"{book.title}: {text.fulltitle}",
+                        cls="secondary",
+                        href=f"/book/{book.bid}/{text.path}",
+                    )
+                )
         if xrefs:
             parts.append(Small(Br(), *xrefs))
 
@@ -363,7 +367,7 @@ def post(auth, data: str):
         form = {
             "authors": utils.cleanup_latex(entry["author"]).replace(" and ", "\n"),
             "year": entry["year"],
-            "type": entry.get("ENTRYTYPE") or constants.ARTICLE
+            "type": entry.get("ENTRYTYPE") or constants.ARTICLE,
         }
         for key, value in entry.items():
             if key in ("author", "ID", "ENTRYTYPE"):
@@ -701,7 +705,10 @@ def get(auth, bid: str):
         Fieldset(
             Legend(Tx("Title")),
             Input(
-                name="title", value=book.frontmatter["title"], required=True, autofocus=True
+                name="title",
+                value=book.frontmatter["title"],
+                required=True,
+                autofocus=True,
             ),
         ),
         Fieldset(
@@ -771,7 +778,9 @@ def post(auth, bid: str, form: dict):
         book.frontmatter["title"] = title
     except KeyError:
         raise Error("no title given for book", HTTP.BAD_REQUEST)
-    book.frontmatter["authors"] = [a.strip() for a in form.get("authors", "").split("\n")]
+    book.frontmatter["authors"] = [
+        a.strip() for a in form.get("authors", "").split("\n")
+    ]
     for key in ["subtitle", "status", "language"]:
         value = form.get("subtitle", "").strip()
         if not value:

@@ -15,7 +15,9 @@ from utils import Tx, Error
 NAV_STYLE_TEMPLATE = "outline-color: {color}; outline-width:8px; outline-style:solid; padding:0px 10px; border-radius:5px;"
 
 
-def header(book=None, item=None, title=None, actions=None, references=True, state_url=None):
+def header(
+    book=None, item=None, title=None, actions=None, references=True, state_url=None
+):
     "The standard page header with navigation bar."
     # The first cell: icon and book title (if any).
     if book:
@@ -338,7 +340,10 @@ def get_reference_from_form(form, ref=None):
     ref.set("pages", form.get("pages", "").strip())
     ref.set("language", form.get("language", "").strip())
     ref.set("publisher", form.get("publisher", "").strip())
-    ref.set("keywords", [s.strip() for s in form.get("keywords", "").split(";") if s.strip()]),
+    ref.set(
+        "keywords",
+        [s.strip() for s in form.get("keywords", "").split(";") if s.strip()],
+    ),
     ref.set("issn", form.get("issn", "").strip())
     ref.set("isbn", form.get("isbn", "").strip())
     ref.set("pmid", form.get("pmid", "").strip())

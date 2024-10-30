@@ -82,7 +82,9 @@ def get_state():
     for book in get_books():
         books[book.bid] = dict(
             title=book.title,
-            modified=utils.timestr(filepath=book.abspath, localtime=False, display=False),
+            modified=utils.timestr(
+                filepath=book.absfilepath, localtime=False, display=False
+            ),
             sum_characters=book.frontmatter["sum_characters"],
             digest=book.frontmatter["digest"],
         )
@@ -97,6 +99,7 @@ def get_state():
 
 
 FRONTMATTER = re.compile(r"^---([\n\r].*?[\n\r])---[\n\r](.*)$", re.DOTALL)
+
 
 def read_markdown(target, filepath):
     "Read frontmatter and content from the Markdown file to the target."
@@ -495,7 +498,7 @@ class Book:
             _books.pop(self.bid, None)
             shutil.rmtree(self.abspath)
             return
-                
+
         if item.is_section:
             if len(item.items) != 0:
                 raise ValueError("Cannot delete non-empty section.")
