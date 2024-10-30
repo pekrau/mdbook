@@ -3,6 +3,7 @@
 import copy
 import datetime
 import hashlib
+from http import HTTPStatus as HTTP
 import io
 import os
 import re
@@ -455,7 +456,7 @@ class Book:
         dirpath = os.path.join(parent.abspath, name)
         filepath = dirpath + constants.MARKDOWN_EXT
         if os.path.exists(dirpath) or os.path.exists(filepath):
-            raise ValueError(f"The title is already in use within '{parent}'.")
+            raise ValueError(f"The title '{title}' is already used within '{parent}'.")
         os.mkdir(dirpath)
         section = Section(self, parent, name)
         section.title = title
@@ -476,7 +477,7 @@ class Book:
         dirpath = os.path.join(parent.abspath, name)
         filepath = dirpath + constants.MARKDOWN_EXT
         if os.path.exists(dirpath) or os.path.exists(filepath):
-            raise ValueError(f"The title is already in use within '{parent}'.")
+            raise ValueError(f"The title '{title}' is already used within '{parent}'.")
         text = Text(self, parent, name)
         text.title = title
         parent.items.append(text)

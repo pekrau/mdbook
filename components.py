@@ -1,5 +1,6 @@
 "Page components and functions."
 
+from http import HTTPStatus as HTTP
 import psutil
 import string
 
@@ -312,7 +313,7 @@ def get_reference_from_form(form, ref=None):
         for char in [""] + list(string.ascii_lowercase):
             name = f"{author} {year}{char}"
             refid = utils.nameify(name)
-            if books.get_references().get(id) is None:
+            if books.get_references().get(refid) is None:
                 break
         else:
             raise Error(f"could not form unique id for {name} {year}", HTTP.BAD_REQUEST)

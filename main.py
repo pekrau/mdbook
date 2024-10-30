@@ -302,7 +302,7 @@ async def post(auth, tgzfile: UploadFile):
 
 @rt("/reference/add/{type:str}")
 def get(auth, type: str):
-    "Add a reference from scratch."
+    "Add reference from scratch."
     title = f'{Tx("Add reference")}: {Tx(type)}'
     return (
         Title(title),
@@ -321,7 +321,7 @@ def get(auth, type: str):
 
 @rt("/reference")
 def post(auth, form: dict):
-    "Actually add a reference from scratch."
+    "Actually add reference from scratch."
     reference = components.get_reference_from_form(form)
     books.get_references(refresh=True)
 
@@ -678,6 +678,7 @@ def get(auth, bid: str, path: str):
             H3(item.heading),
             *segments,
             NotStr(item.html),
+            P(A(Tx("Edit"), href=f"/edit/{bid}/{path}"), style="text-align: right;"),
             cls="container",
         ),
         components.footer(item),
