@@ -16,7 +16,7 @@ import yaml
 import constants
 import markdown
 import utils
-from utils import Error
+from utils import Error, Tx
 
 
 # Book instances cache. Key: bid; value: Book instance.
@@ -215,14 +215,18 @@ class Book:
 
         # Key: indexed term; value: set of texts.
         self.indexed = {}
-        for item in self.all_texts:
+        self.find_indexed(self, self.ast)
+        # for item in self.all_texts:
+        for item in self.all_items:
             self.find_indexed(item, item.ast)
             for keyword in item.get("keywords", []):
                 self.indexed.setdefault(keyword, set()).add(item)
 
         # Key: reference identifier; value: set of texts.
         self.references = {}
-        for item in self.all_texts:
+        self.find_references(self, self.ast)
+        # for item in self.all_texts:
+        for item in self.all_items:
             self.find_references(item, item.ast)
 
         # Write out "index.md" if order changed.
@@ -291,6 +295,10 @@ class Book:
     @title.setter
     def title(self, title):
         self.frontmatter["title"] = title
+
+    @property
+    def fulltitle(self):
+        return Tx("Book")
 
     @property
     def path(self):
@@ -427,6 +435,10 @@ class Book:
             digest.update(item.digest.encode("utf-8"))
         return digest.hexdigest()
 
+    @property
+    def ordinal(self):
+        return (0,)
+
     def find_indexed(self, item, ast):
         try:
             for child in ast["children"]:
@@ -524,6 +536,19 @@ class Book:
             tgzfile.add(self.absfilepath, arcname="index.md")
             for item in self.items:
                 tgzfile.add(item.abspath, arcname=item.filename(), recursive=True)
+        return result
+
+    def search(self, term, ignorecase=True):
+        "Find the set of items that contain the term in the content."
+        if ignorecase:
+            flags = re.IGNORECASE
+        else:
+            flags = 0
+        result = set()
+        if re.search(term, self.content, flags):
+            result.add(self)
+        for item in self.items:
+            result.update(item.search(term, ignorecase=ignorecase))
         return result
 
     def check_integrity(self):
@@ -755,6 +780,10 @@ class Item:
         else:
             self.parent.items.insert(index + 1, self.parent.items.pop(index))
 
+    def search(self, term, ignorecase=True):
+        "Find the set of items that contain the term in the content."
+        raise NotImplementedError
+
     def check_integrity(self):
         assert isinstance(self.book, Book)
         assert self in self.parent.items
@@ -888,6 +917,19 @@ class Section(Item):
         else:
             return self.name
 
+    def search(self, term, ignorecase=True):
+        "Find the set of items that contain the term in the content."
+        if ignorecase:
+            flags = re.IGNORECASE
+        else:
+            flags = 0
+        result = set()
+        if re.search(term, self.content, flags):
+            result.add(self)
+        for item in self.items:
+            result.update(item.search(term, ignorecase=ignorecase))
+        return result
+
     def check_integrity(self):
         super().check_integrity()
         assert os.path.isdir(self.abspath)
@@ -1004,12 +1046,34 @@ class Text(Item):
         self.book.read()
         return section
 
+    def search(self, term, ignorecase=True):
+        "Find the set of items that contain the term in the content."
+        if ignorecase:
+            flags = re.IGNORECASE
+        else:
+            flags = 0
+        if re.search(term, self.content, flags):
+            return set([self])
+        else:
+            return set()
+
     def check_integrity(self):
         super().check_integrity()
         assert os.path.isfile(self.abspath)
 
 
 if __name__ == "__main__":
+    timer = utils.Timer()
     book = Book("/home/pekrau/Dropbox/mdbooks/lejonen")
+    print(timer)
+    timer.restart()
     book.check_integrity()
+    print(timer)
+    timer.restart()
+    result = book.search("XXX")
+    print(timer)
+    timer.restart()
+    result = book.search("XXX", ignorecase=False)
+    print(timer)
+    print(result)
     print(book, book.sum_words, book.sum_characters)

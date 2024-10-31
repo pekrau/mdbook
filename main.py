@@ -102,20 +102,20 @@ def get(auth):
                 Td(book.modified),
             )
         )
-    pages = [
+    menu = [
+        components.references_link(),
+        A(Tx("Create or upload book"), href="/book"),
+        A(f'{Tx("Download")} {Tx("TGZ file")}', href="/tgz"),
         A(Tx("State"), href="/state"),
-        A(Tx("System"), href="/system"),
-    ]
-    actions = [
-        A(f'{Tx("Create")} {Tx("book")}', href="/book"),
-        A(f'{Tx("Download")} TGZ', href="/tgz"),
     ]
     if "MDBOOK_UPDATE_SITE" in os.environ:
-        actions.append(A(Tx("Differences"), href="/differences"))
+        menu.append(A(Tx("Differences"), href="/differences"))
+    menu.append(A(Tx("System"), href="/system"))
 
+    title = Tx("Books")
     return (
-        Title(Tx("Books")),
-        components.header(title=Tx("Books"), pages=pages, actions=actions),
+        Title(title),
+        components.header(title=title, menu=menu),
         Main(Table(Thead(*hrows), Tbody(*rows)), cls="container"),
     )
 
@@ -240,34 +240,34 @@ def get(auth):
 
         items.append(P(*parts, id=ref["name"]))
 
-    pages = [
-        A(Tx("Keywords"), href="/references/keywords"),
-        A(Tx("State"), href="/state/references"),
-    ]
-
-    actions = [
-        A(Tx(f'{Tx("Add reference")}: {Tx(type)}'), href=f"/reference/add/{type}")
-        for type in constants.REFERENCE_TYPES
-    ]
-    actions.append(A(f'{Tx("Add reference")}: BibTex', href="/reference/bibtex"))
-    actions.append(
-        A(f'{Tx("Download")} {Tx("references")} TGZ', href="/references/tgz")
+    menu = [A(Tx("Keywords"), href="/references/keywords")]
+    menu.extend(
+        [
+            A(Tx(f'{Tx("Add reference")}: {Tx(type)}'), href=f"/reference/add/{type}")
+            for type in constants.REFERENCE_TYPES
+        ]
     )
-    actions.append(
-        A(f'{Tx("Upload")} {Tx("references")} TGZ', href="/references/upload")
+    menu.append(A(f'{Tx("Add reference")}: BibTex', href="/reference/bibtex"))
+    menu.append(
+        A(
+            f'{Tx("Download")} {Tx("references")} {Tx("TGZ file")}',
+            href="/references/tgz",
+        )
     )
+    menu.append(
+        A(
+            f'{Tx("Upload")} {Tx("references")} {Tx("TGZ file")}',
+            href="/references/upload",
+        )
+    )
+    menu.append(A(Tx("State"), href="/state/references"))
     if "MDBOOK_UPDATE_SITE" in os.environ:
-        actions.append(A(Tx("Differences"), href="/differences/references"))
+        menu.append(A(Tx("Differences"), href="/differences/references"))
 
     title = f'{Tx("References")} ({len(references.items)})'
     return (
         Title(title),
-        components.header(
-            title=title,
-            pages=pages,
-            actions=actions,
-            references=False,
-        ),
+        components.header(title=title, menu=menu),
         Main(*items, cls="container"),
     )
 
@@ -281,14 +281,22 @@ def get(auth):
         refs = []
         for text in sorted(texts, key=lambda t: t.ordinal):
             refs.append(
-                Li(A(text.fulltitle, cls="secondary", href=f"/reference/{text.path}"))
+                Li(
+                    A(
+                        f'{text["name"]}: {text.fulltitle}',
+                        cls="secondary",
+                        href=f"/reference/{text.path}",
+                    )
+                )
             )
         items.append(Li(key, Small(Ul(*refs))))
+
+    menu = [components.references_link()]
 
     title = f'{Tx("Keywords")}, {Tx("references")}'
     return (
         Title(title),
-        components.header(title=title),
+        components.header(title=title, menu=menu),
         Main(Ul(*items), cls="container"),
     )
 
@@ -310,17 +318,14 @@ def get(auth):
 @rt("/references/upload")
 def get(auth):
     "Upload a gzipped tar file of references; replace any with the same name."
-    title = f'{Tx("Upload")} {Tx("references")}'
+    title = Tx("Upload references")
     return (
         Title(title),
         components.header(title=title),
         Main(
             Form(
-                Fieldset(
-                    Legend(Tx(f'{Tx("Upload")} TGZ')),
-                    Input(type="file", name="tgzfile"),
-                ),
-                Button(Tx("Upload")),
+                Input(type="file", name="tgzfile"),
+                Button(f'{Tx("Upload")} {Tx("TGZ file")}'),
                 action="/references/upload",
                 method="post",
             ),
@@ -497,13 +502,14 @@ def get(auth, refid: str):
     if ref.get("url"):
         rows.append(Tr(Td("Url"), Td(A(ref["url"], href=ref["url"]))))
 
-    actions = [
+    menu = [
         A(
             Tx("Clipboard"),
             href="#",
             cls="to_clipboard",
             data_clipboard_text=f'[@{ref["name"]}]',
         ),
+        components.references_link(),
         A(Tx("Edit"), href=f"/reference/edit/{refid}"),
         A(Tx("Delete"), href=f"/reference/delete/{refid}"),
     ]
@@ -513,7 +519,7 @@ def get(auth, refid: str):
         Title(title),
         Script(src="/clipboard.min.js"),
         Script("new ClipboardJS('.to_clipboard');"),
-        components.header(title=title, actions=actions),
+        components.header(title=title, menu=menu),
         Main(Table(*rows), Div(NotStr(ref.html)), cls="container"),
         components.footer(ref),
     )
@@ -613,7 +619,7 @@ def get(auth):
                     Input(name="title", required=True, autofocus=True),
                 ),
                 Fieldset(
-                    Legend(Tx(f'{Tx("Upload")} TGZ ({Tx("optional")})')),
+                    Legend(Tx(f'{Tx("Upload")} {Tx("TGZ file")} ({Tx("optional")}).')),
                     Input(type="file", name="tgzfile"),
                 ),
                 Button(Tx("Create")),
@@ -664,22 +670,25 @@ def get(auth, bid: str):
     book = books.get_book(bid)
     book.write()  # Updates the 'index.md' file, if necessary.
 
-    pages = components.standard_book_pages(book)
-    pages.append(A(Tx("State"), href=f"/state/{bid}"))
-
-    actions = [
+    menu = [
         A(f'{Tx("Edit")}', href=f"/edit/{bid}"),
         A(f'{Tx("Create")} {Tx("section")}', href=f"/section/{bid}"),
         A(f'{Tx("Create")} {Tx("text")}', href=f"/text/{bid}"),
-        A(f'{Tx("Download")} DOCX', href=f"/docx/{bid}"),
-        A(f'{Tx("Download")} PDF', href=f"/pdf/{bid}"),
-        A(f'{Tx("Download")} TGZ', href=f"/tgz/{bid}"),
+        A(Tx("Index"), href=f"/index/{bid}"),
+        A(Tx("Status list"), href=f"/statuslist/{bid}"),
+        A(Tx("References"), href="/references"),
+        A(f'{Tx("Download")} {Tx("DOCX file")}', href=f"/docx/{bid}"),
+        A(f'{Tx("Download")} {Tx("PDF file")}', href=f"/pdf/{bid}"),
+        A(f'{Tx("Download")} {Tx("TGZ file")}', href=f"/tgz/{bid}"),
+        A(Tx("Information"), href=f"/information/{bid}"),
+        A(Tx("State"), href=f"/state/{bid}"),
     ]
     if "MDBOOK_UPDATE_SITE" in os.environ:
-        actions.append(A(f'{Tx("Differences")}', href=f"/differences/{bid}"))
-    actions.append(A(f'{Tx("Delete")}', href=f"/delete/{bid}"))
+        menu.append(A(f'{Tx("Differences")}', href=f"/differences/{bid}"))
+    menu.append(A(f'{Tx("Delete")}', href=f"/delete/{bid}"))
 
-    segments = []
+    segments = [components.search_form(f"/search/{bid}")]
+
     if len(book.items) == 0:
         segments.append(H3(book.title))
         if book.subtitle:
@@ -689,11 +698,16 @@ def get(auth, bid: str):
     else:
         segments.append(components.toc(book, book.items, show_arrows=True))
 
-    title = Tx("Contents")
+    title = Tx("Book contents")
     return (
         Title(title),
-        components.header(title=title, book=book, pages=pages, actions=actions),
-        Main(*segments, NotStr(book.html), cls="container"),
+        components.header(title=title, book=book, menu=menu),
+        Main(
+            *segments,
+            NotStr(book.html),
+            Div(components.edit_button(f"/edit/{bid}"), style="text-align: right;"),
+            cls="container",
+        ),
         components.footer(book),
     )
 
@@ -758,13 +772,15 @@ def get(auth, bid: str):
             ),
         )
     )
+    menu = [components.references_link()]
 
     title = f'{Tx("Edit")} {Tx("book")}'
     return (
         Title(title),
-        components.header(title=title, book=book),
+        components.header(title=title, book=book, menu=menu),
         Main(
             Form(*fields, Button(Tx("Save")), action=f"/edit/{bid}", method="post"),
+            components.cancel_button(f"/book/{bid}"),
             cls="container",
         ),
     )
@@ -795,38 +811,106 @@ def post(auth, bid: str, form: dict):
     return RedirectResponse(f"/book/{bid}", status_code=HTTP.SEE_OTHER)
 
 
+@rt("/search/{bid:str}")
+def post(auth, bid: str, form: dict):
+    "Actually search the book for a given term."
+    book = books.get_book(bid)
+    term = form.get("term")
+    if term:
+        items = [
+            Li(A(i.fulltitle, href=f"/book/{bid}/{i.path}"))
+            for i in sorted(
+                book.search(
+                    utils.wildcard_to_regexp(term), ignorecase=term == term.lower()
+                ),
+                key=lambda i: i.ordinal,
+            )
+        ]
+        if items:
+            result = P(Ul(*items))
+        else:
+            result = P(f'{Tx("No result")}.')
+    else:
+        result = P()
+
+    title = f'{Tx("Search in")} {Tx("book")}'
+    return (
+        Title(title),
+        components.header(title=title, book=book),
+        Main(
+            components.search_form(f"/search/{bid}", term=term),
+            result,
+            cls="container",
+        ),
+    )
+
+
 @rt("/book/{bid:str}/{path:path}")
 def get(auth, bid: str, path: str):
     "View of book text or section contents."
     book = books.get_book(bid)
+
+    if not path:
+        return RedirectResponse(f"/book/{bid}", status_code=HTTP.SEE_OTHER)
     item = book[path]
 
-    pages = components.standard_item_pages(book, item)
+    menu = []
+    if item.parent:
+        if item.parent.level == 0:  # Book.
+            url = f"/book/{book.bid}"
+        else:
+            url = f"/book/{book.bid}/{item.parent.path}"
+        menu.append(A(NotStr(f"&ShortUpArrow; {item.parent.title}"), href=url))
+    if item.prev:
+        url = f"/book/{book.bid}/{item.prev.path}"
+        menu.append(A(NotStr(f"&ShortLeftArrow; {item.prev.title}"), href=url))
+    if item.next:
+        url = f"/book/{book.bid}/{item.next.path}"
+        menu.append(A(NotStr(f"&ShortRightArrow; {item.next.title}"), href=url))
 
-    actions = [A(Tx("Edit"), href=f"/edit/{bid}/{path}")]
+    menu.append(A(Tx("Edit"), href=f"/edit/{bid}/{path}"))
+
     if item.is_text:
-        actions.append(A(Tx("Convert to section"), href=f"/to_section/{bid}/{path}"))
-        actions.append(A(f'{Tx("Download")} DOCX', href=f"/docx/{bid}/{path}"))
-        actions.append(A(f'{Tx("Delete")}', href=f"/delete/{bid}/{path}"))
-        segments = []
-    elif item.is_section:
-        actions.append(
-            A(f'{Tx("Create")} {Tx("section")}', href=f"/section/{bid}/{path}")
+        menu.append(A(Tx("Convert to section"), href=f"/to_section/{bid}/{path}"))
+        menu.append(
+            A(f'{Tx("Download")} {Tx("DOCX file")}', href=f"/docx/{bid}/{path}")
         )
-        actions.append(A(f'{Tx("Create")} {Tx("text")}', href=f"/text/{bid}/{path}"))
-        actions.append(A(f'{Tx("Download")} DOCX', href=f"/docx/{bid}/{path}"))
+        segments = [H3(item.heading)]
+
+    elif item.is_section:
+        menu.append(A(f'{Tx("Create")} {Tx("section")}', href=f"/section/{bid}/{path}"))
+        menu.append(A(f'{Tx("Create")} {Tx("text")}', href=f"/text/{bid}/{path}"))
+        menu.append(
+            A(f'{Tx("Download")} {Tx("DOCX file")}', href=f"/docx/{bid}/{path}")
+        )
+        segments = [
+            Div(
+                Div(H3(item.heading)),
+                Div(components.search_form(f"/search/{bid}/{path}")),
+                cls="grid",
+            ),
+            components.toc(book, item.items),
+        ]
+
+    menu.append(A(Tx("Index"), href=f"/index/{book.bid}"))
+    menu.append(components.references_link())
+
+    if item.is_text:
+        menu.append(A(f'{Tx("Delete")}', href=f"/delete/{bid}/{path}"))
+    elif item.is_section:
         if len(item.items) == 0:
-            actions.append(A(f'{Tx("Delete")}', href=f"/delete/{bid}/{path}"))
-        segments = [components.toc(book, item.items)]
+            menu.append(A(f'{Tx("Delete")}', href=f"/delete/{bid}/{path}"))
 
     return (
         Title(item.title),
-        components.header(title=item.title, book=book, pages=pages, actions=actions),
+        components.header(title=item.title, book=book, menu=menu),
         Main(
-            H3(item.heading),
             *segments,
             NotStr(item.html),
-            P(A(Tx("Edit"), href=f"/edit/{bid}/{path}"), style="text-align: right;"),
+            Div(
+                components.edit_button(f"/edit/{bid}/{path}"),
+                style="text-align: right;",
+            ),
             cls="container",
         ),
         components.footer(item),
@@ -871,14 +955,16 @@ def get(auth, bid: str, path: str):
             Textarea(NotStr(item.content), name="content", rows="30"),
         )
     )
-    fields.append(Button("Save"))
 
-    title = f"{Tx('Edit')} '{item.title}'"
+    title = f"{Tx('Edit')} {item.title}"
     return (
-        Title(title=title),
+        Title(title),
         components.header(title=title, book=book),
         Main(
-            Form(*fields, action=f"/edit/{bid}/{path}", method="post"),
+            Form(
+                *fields, Button(Tx("Save")), action=f"/edit/{bid}/{path}", method="post"
+            ),
+            components.cancel_button(f"/book/{bid}/{path}"),
             cls="container",
         ),
     )
@@ -900,6 +986,41 @@ def post(auth, bid: str, path: str, title: str, content: str, status: str = None
     book.read()
 
     return RedirectResponse(f"/book/{bid}/{item.path}", status_code=HTTP.SEE_OTHER)
+
+
+@rt("/search/{bid:str}/{path:path}")
+def post(auth, bid: str, path: str, form: dict):
+    "Actually search the item (text or section)  for a given term."
+    book = books.get_book(bid)
+    item = book[path]
+    term = form.get("term")
+    if term:
+        items = [
+            Li(A(i.fulltitle, href=i.path))
+            for i in sorted(
+                item.search(
+                    utils.wildcard_to_regexp(term), ignorecase=term == term.lower()
+                ),
+                key=lambda i: i.ordinal,
+            )
+        ]
+        if items:
+            result = P(Ul(*items))
+        else:
+            result = P(f'{Tx("No result")}.')
+    else:
+        result = P()
+
+    title = f"{Tx('Search in')} '{item.fulltitle}'"
+    return (
+        Title(title),
+        components.header(title=title, book=book),
+        Main(
+            components.search_form(f"/search/{bid}/{path}", term=term),
+            result,
+            cls="container",
+        ),
+    )
 
 
 @rt("/up/{bid:str}/{path:path}")
@@ -944,6 +1065,7 @@ def get(auth, bid: str):
             H3(Tx("Delete"), "?"),
             *segments,
             Form(Button(Tx("Confirm")), action=f"/delete/{bid}", method="post"),
+            components.cancel_button(f"/book/{bid}"),
             cls="container",
         ),
     )
@@ -975,11 +1097,12 @@ def get(auth, bid: str, path: str):
     title = f"{Tx('Delete')} {Tx(item.type)} '{item.fulltitle}'?"
     return (
         Title(title),
-        components.header(title=title, book=book, references=False),
+        components.header(title=title, book=book),
         Main(
             H3(Tx("Delete"), "?"),
             *segments,
             Form(Button(Tx("Confirm")), action=f"/delete/{bid}/{path}", method="post"),
+            components.cancel_button(f"/book/{bid}/{path}"),
             cls="container",
         ),
     )
@@ -1015,6 +1138,7 @@ def get(auth, bid: str, path: str):
             Form(
                 Button(Tx("Convert")), action=f"/to_section/{bid}/{path}", method="post"
             ),
+            components.cancel_button(f"/book/{bid}/{path}"),
             cls="container",
         ),
     )
@@ -1058,6 +1182,7 @@ def get(auth, bid: str, path: str):
                 action=f"/text/{bid}/{path}",
                 method="post",
             ),
+            components.cancel_button(f"/book/{bid}/{path}"),
             cls="container",
         ),
     )
@@ -1144,21 +1269,17 @@ def get(auth, bid: str):
     segments.append(P(f'{Tx("Characters")}: {utils.thousands(book.sum_characters)}'))
     segments.append(P(f'{Tx("Language")}: {book.frontmatter.get("language") or "-"}'))
 
-    actions = [
+    menu = [
         A(f'{Tx("Edit")}', href=f"/edit/{bid}"),
-        A(f'{Tx("Download")} DOCX', href=f"/docx/{bid}"),
-        A(f'{Tx("Download")} PDF', href=f"/pdf/{bid}"),
-        A(f'{Tx("Download")} TGZ', href=f"/tgz/{bid}"),
+        A(f'{Tx("Download")} {Tx("DOCX file")}', href=f"/docx/{bid}"),
+        A(f'{Tx("Download")} {Tx("PDF file")}', href=f"/pdf/{bid}"),
+        A(f'{Tx("Download")} {Tx("TGZ file")}', href=f"/tgz/{bid}"),
     ]
 
     title = Tx("Information")
     return (
         Title(title),
-        components.header(
-            title=title,
-            book=book,
-            actions=actions,
-        ),
+        components.header(title=title, book=book, menu=menu),
         Main(*segments, cls="container"),
     )
 
@@ -1201,7 +1322,7 @@ def get(auth, bid: str):
     title = Tx("Status list")
     return (
         Title(title),
-        components.header(title=title, book=book, references=False),
+        components.header(title=title, book=book),
         Main(Table(*rows), cls="container"),
     )
 
@@ -1311,18 +1432,22 @@ def get_docx(bid, path=None):
             Legend(Tx("Indexed font")), Select(*indexed_options, name="indexed_font")
         )
     )
-    fields.append(Button(f'{Tx("Download")} DOCX'))
+    fields.append(Button(f'{Tx("Download")} {Tx("DOCX file")}'))
 
     if path is None:
         title = book.title
     else:
         title = path
 
-    title = f'{Tx("Download")} DOCX:  {title}'
+    title = f'{Tx("Download")} {Tx("DOCX file")}: {title}'
     return (
         Title(title),
-        components.header(title=title, book=book, references=False),
-        Main(Form(*fields, action=f"/docx/{bid}", method="post"), cls="container"),
+        components.header(title=title, book=book),
+        Main(
+            Form(*fields, action=f"/docx/{bid}", method="post"),
+            components.cancel_button(f"/book/{bid}"),
+            cls="container",
+        ),
     )
 
 
@@ -1400,56 +1525,72 @@ def pdf(auth, bid: str):
         else:
             indexed_options.append(Option(Tx(value.capitalize()), value=value))
 
-    title = f'{Tx("Download")} PDF'
+    fields = []
+    fields.append(
+        Fieldset(
+            Legend(Tx("Metadata on title page")),
+            Label(
+                Input(
+                    type="checkbox",
+                    name="title_page_metadata",
+                    role="switch",
+                    checked=bool(title_page_metadata),
+                ),
+                Tx("Display"),
+            ),
+        )
+    )
+    fields.append(
+        Fieldset(
+            Legend(Tx("Page break level")),
+            Select(*page_break_options, name="page_break_level"),
+        )
+    )
+    fields.append(
+        Fieldset(
+            Legend(Tx("Contents pages")),
+            Label(
+                Input(
+                    type="checkbox",
+                    name="contents_pages",
+                    role="switch",
+                    checked=bool(contents_pages),
+                ),
+                Tx("Display in output"),
+            ),
+        )
+    )
+    fields.append(
+        Fieldset(
+            Legend(Tx("Contents level")),
+            Select(*contents_level_options, name="contents_level"),
+        )
+    )
+    fields.append(
+        Fieldset(
+            Legend(Tx("Footnotes location")),
+            Select(*footnotes_options, name="footnotes_location"),
+        )
+    )
+    fields.append(
+        Fieldset(
+            Legend(Tx("Display of indexed term reference")),
+            Select(*indexed_options, name="indexed_xref"),
+        )
+    )
+
+    title = f'{Tx("Download")} {Tx("PDF file")}'
     return (
         Title(title),
-        components.header(title=title, book=book, references=False),
+        components.header(title=title, book=book),
         Main(
             Form(
-                Fieldset(
-                    Legend(Tx("Metadata on title page")),
-                    Label(
-                        Input(
-                            type="checkbox",
-                            name="title_page_metadata",
-                            role="switch",
-                            checked=bool(title_page_metadata),
-                        ),
-                        Tx("Display"),
-                    ),
-                ),
-                Fieldset(
-                    Legend(Tx("Page break level")),
-                    Select(*page_break_options, name="page_break_level"),
-                ),
-                Fieldset(
-                    Legend(Tx("Contents pages")),
-                    Label(
-                        Input(
-                            type="checkbox",
-                            name="contents_pages",
-                            role="switch",
-                            checked=bool(contents_pages),
-                        ),
-                        Tx("Display in output"),
-                    ),
-                ),
-                Fieldset(
-                    Legend(Tx("Contents level")),
-                    Select(*contents_level_options, name="contents_level"),
-                ),
-                Fieldset(
-                    Legend(Tx("Footnotes location")),
-                    Select(*footnotes_options, name="footnotes_location"),
-                ),
-                Fieldset(
-                    Legend(Tx("Display of indexed term reference")),
-                    Select(*indexed_options, name="indexed_xref"),
-                ),
-                Button(f'{Tx("Download")} PDF'),
+                *fields,
+                Button(f'{Tx("Download")} {Tx("PDF file")}'),
                 action=f"/pdf/{bid}",
                 method="post",
             ),
+            components.cancel_button(f"/book/{bid}"),
             cls="container",
         ),
     )
@@ -1515,7 +1656,7 @@ def get(auth):
     title = Tx("System")
     return (
         Title(title),
-        components.header(title=title, references=False),
+        components.header(title=title),
         Main(
             Table(
                 Tr(Td(Tx("User")), Td(auth, " ", A("logout", href="/logout"))),
@@ -1581,7 +1722,7 @@ def get():
         )
     else:
         return Titled(
-            components.header("Login", references=False),
+            components.header("Login"),
             Form(
                 Input(id="user", placeholder=Tx("User")),
                 Input(id="password", type="password", placeholder=Tx("Password")),
@@ -1701,7 +1842,7 @@ def get(auth):
     title = Tx("Differences")
     return (
         Title(title),
-        components.header(title=title, references=False),
+        components.header(title=title),
         Main(
             Table(
                 Thead(
@@ -1793,7 +1934,7 @@ def get(auth, bid: str):
     title = f"{Tx('Differences in')} {Tx('book')} '{book.title}'"
     return (
         Title(title),
-        components.header(title=title, book=book, references=False),
+        components.header(title=title, book=book),
         Main(
             Table(
                 Thead(

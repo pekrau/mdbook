@@ -12,10 +12,50 @@ import utils
 from utils import Tx, Error
 
 
-NAV_STYLE_TEMPLATE = "outline-color: {color}; outline-width:8px; outline-style:solid; padding:0px 10px; border-radius:5px;"
+def references_link():
+    return A(Tx("References"), href="/references")
 
 
-def header(title, book=None, status=None, references=True, pages=None, actions=None):
+def index_link(book):
+    return A(Tx("Index"), href=f"/index/{book.bid}")
+
+
+def information_link(book):
+    return A(Tx("Information"), href=f"/information/{book.bid}")
+
+
+def statuslist_link(book):
+    return (A(Tx("Status list"), href=f"/statuslist/{book.bid}"),)
+
+
+def edit_button(href):
+    return A(Tx("Edit"), role="button", href=href)
+
+
+def cancel_button(href):
+    return Div(
+        A(Tx("Cancel"), role="button", href=href, cls="outline secondary"),
+        style="margin-top: 20px;",
+    )
+
+
+def search_form(action, term=None):
+    return Form(
+        Input(
+            name="term",
+            type="search",
+            placeholder=Tx("Search"),
+            value=term,
+            autofocus=True,
+        ),
+        Input(type="submit", value=Tx("Search")),
+        role="search",
+        action=action,
+        method="post",
+    )
+
+
+def header(title, book=None, status=None, menu=None):
     "The standard page header with navigation bar."
 
     # The first cell: icon to home page, and title of book, if any.
@@ -32,66 +72,27 @@ def header(title, book=None, status=None, references=True, pages=None, actions=N
     # The second cell: title.
     cells.append(Ul(Li(Strong(title))))
 
-    # Items for the third cell.
-    items = []
-
-    # Optional link to references.
-    if references:
-        items.append(Li(A(Tx("References"), href="/references")))
-
-    # The third cell: pages and actions.
-    if pages:
-        items.append(
-            Li(
-                Details(
-                    Summary(Tx("Pages")), Ul(*[Li(p) for p in pages]), cls="dropdown"
+    # The third cell: menu.
+    if menu:
+        cells.append(
+            Ul(
+                Li(
+                    Details(
+                        Summary(Tx("Menu")), Ul(*[Li(i) for i in menu]), cls="dropdown"
+                    )
                 )
             )
         )
-    if actions:
-        items.append(
-            Li(
-                Details(
-                    Summary(Tx("Actions")),
-                    Ul(*[Li(a) for a in actions]),
-                    cls="dropdown",
-                )
-            )
-        )
-    cells.append(Ul(*items))
+    else:
+        cells.append(Ul(Li()))
 
     # Set the color of the nav frame.
+    nav_style = "outline-color: {color}; outline-width:8px; outline-style:solid; padding:0px 10px; border-radius:5px;"
     if status:
-        nav_style = NAV_STYLE_TEMPLATE.format(color=status.color)
+        nav_style = nav_style.format(color=status.color)
     else:
-        nav_style = NAV_STYLE_TEMPLATE.format(color="black")
+        nav_style = nav_style.format(color="black")
     return Header(Nav(*cells, style=nav_style), cls="container")
-
-
-def standard_book_pages(book):
-    return [
-        A(Tx("Index"), href=f"/index/{book.bid}"),
-        A(Tx("Information"), href=f"/information/{book.bid}"),
-        A(Tx("Status list"), href=f"/statuslist/{book.bid}"),
-    ]
-
-
-def standard_item_pages(book, item):
-    pages = []
-    if item.parent:
-        if item.parent.level == 0:  # Book.
-            url = f"/book/{book.bid}"
-        else:
-            url = f"/book/{book.bid}/{item.parent.path}"
-        pages.append(A(NotStr(f"&ShortUpArrow; {item.parent.title}"), href=url))
-    if item.prev:
-        url = f"/book/{book.bid}/{item.prev.path}"
-        pages.append(A(NotStr(f"&ShortLeftArrow; {item.prev.title}"), href=url))
-    if item.next:
-        url = f"/book/{book.bid}/{item.next.path}"
-        pages.append(A(NotStr(f"&ShortRightArrow; {item.next.title}"), href=url))
-    pages.append(A(Tx("Index"), href=f"/index/{book.bid}"))
-    return pages
 
 
 def toc(book, items, show_arrows=False):
@@ -112,7 +113,7 @@ def toc(book, items, show_arrows=False):
                 A(
                     str(item),
                     style=f"color: {item.status.color};",
-                    href=f"/book/{book.bid}/{item.path}",
+                    href=f"/book/{item.book.bid}/{item.path}",
                 ),
                 NotStr("&nbsp;&nbsp;&nbsp;"),
                 Small(

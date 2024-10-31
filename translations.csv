@@ -54,7 +54,7 @@ italic,kursiv
 bold,fetstil
 underline,understruken
 write,skriv
-contents pages,innehållsförteckning
+book contents,innehållsförteckning
 display,visa
 true,sant
 false,falskt
@@ -76,7 +76,12 @@ convert,omforma
 convert to section,omforma till sektion
 download,ladda ner
 upload,ladda upp
+TGZ file, TGZ-fil
+DOCX file, DOCX-fil
+PDF file, PDF-fil
+upload references,ladda upp referenser
 save,spara
+cancel,avbryt
 source,källa
 book title,boktitel
 delete,radera
@@ -115,3 +120,7 @@ contents,innehåll
 BibTex data,BibTex data
 delete book,radera bok
 note: all contents will be lost!,notera: allt innehåll kommer att försvinna!
+search,sök
+search in,sök i
+term,term
+no result,inget resultat

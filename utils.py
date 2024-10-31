@@ -9,6 +9,7 @@ import json
 import os
 import string
 import tarfile
+import time
 import unicodedata
 
 import requests
@@ -98,6 +99,15 @@ def timestr(filepath=None, localtime=True, display=True, safe=False):
     if safe:
         result = result.replace(" ", "_").replace(":", "-")
     return result
+
+
+def wildcard_to_regexp(pattern):
+    """Convert a shell-like wildcard pattern into a proper regexp pattern.
+    Very basic implementation!
+    """
+    pattern = pattern.replace("*", ".*")
+    pattern = pattern.replace("?", ".?")
+    return pattern
 
 
 def tolocaltime(utctime):
@@ -213,6 +223,23 @@ class Translator:
 
 
 Tx = Translator(constants.TRANSLATIONS_FILEPATH)
+
+
+class Timer:
+    "Timer for process CPU time."
+
+    def __init__(self):
+        self.restart()
+
+    def __str__(self):
+        return f"{self.elapsed:.3f}"
+
+    @property
+    def elapsed(self):
+        return time.process_time() - self.start
+
+    def restart(self):
+        self.start = time.process_time()
 
 
 if __name__ == "__main__":
