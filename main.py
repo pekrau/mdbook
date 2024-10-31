@@ -106,7 +106,7 @@ def get(auth):
         components.references_link(),
         A(Tx("Create or upload book"), href="/book"),
         A(f'{Tx("Download")} {Tx("TGZ file")}', href="/tgz"),
-        A(Tx("State"), href="/state"),
+        A(Tx("State (JSON)"), href="/state"),
     ]
     if "MDBOOK_UPDATE_SITE" in os.environ:
         menu.append(A(Tx("Differences"), href="/differences"))
@@ -260,7 +260,7 @@ def get(auth):
             href="/references/upload",
         )
     )
-    menu.append(A(Tx("State"), href="/state/references"))
+    menu.append(A(Tx("State (JSON)"), href="/state/references"))
     if "MDBOOK_UPDATE_SITE" in os.environ:
         menu.append(A(Tx("Differences"), href="/differences/references"))
 
@@ -544,6 +544,7 @@ def get(auth, refid: str):
                 action=f"/reference/edit/{refid}",
                 method="post",
             ),
+            components.cancel_button(f"/reference/{refid}"),
             cls="container",
         ),
     )
@@ -582,6 +583,7 @@ def get(auth, refid: str):
                 action=f"/reference/delete/{refid}",
                 method="post",
             ),
+            components.cancel_button(f"/reference/{refid}"),
             cls="container",
         ),
     )
@@ -681,7 +683,7 @@ def get(auth, bid: str):
         A(f'{Tx("Download")} {Tx("PDF file")}', href=f"/pdf/{bid}"),
         A(f'{Tx("Download")} {Tx("TGZ file")}', href=f"/tgz/{bid}"),
         A(Tx("Information"), href=f"/information/{bid}"),
-        A(Tx("State"), href=f"/state/{bid}"),
+        A(Tx("State (JSON)"), href=f"/state/{bid}"),
     ]
     if "MDBOOK_UPDATE_SITE" in os.environ:
         menu.append(A(f'{Tx("Differences")}', href=f"/differences/{bid}"))
@@ -701,7 +703,7 @@ def get(auth, bid: str):
     title = Tx("Book contents")
     return (
         Title(title),
-        components.header(title=title, book=book, menu=menu),
+        components.header(title=title, book=book, menu=menu, status=book.status),
         Main(
             *segments,
             NotStr(book.html),
@@ -777,7 +779,7 @@ def get(auth, bid: str):
     title = f'{Tx("Edit")} {Tx("book")}'
     return (
         Title(title),
-        components.header(title=title, book=book, menu=menu),
+        components.header(title=title, book=book, menu=menu, status=book.status),
         Main(
             Form(*fields, Button(Tx("Save")), action=f"/edit/{bid}", method="post"),
             components.cancel_button(f"/book/{bid}"),
@@ -811,6 +813,40 @@ def post(auth, bid: str, form: dict):
     return RedirectResponse(f"/book/{bid}", status_code=HTTP.SEE_OTHER)
 
 
+@rt("/delete/{bid:str}")
+def get(auth, bid: str):
+    "Confirm deleting book."
+    book = books.get_book(bid)
+
+    if book.items:
+        segments = [P(Strong(Tx("Note: all contents will be lost!")))]
+    else:
+        segments = []
+
+    title = f"{Tx('Delete book')} '{book.title}'?"
+    return (
+        Title(title),
+        components.header(title=title, book=book, status=book.status),
+        Main(
+            H3(Tx("Delete"), "?"),
+            *segments,
+            Form(Button(Tx("Confirm")), action=f"/delete/{bid}", method="post"),
+            components.cancel_button(f"/book/{bid}"),
+            cls="container",
+        ),
+    )
+
+
+@rt("/delete/{bid:str}")
+def post(auth, bid: str):
+    "Actually delete the book, even if it contains items."
+    book = books.get_book(bid)
+    book.delete(force=True)
+    # Re-read all books, ensuring everything is up to date.
+    books.read_books()
+    return RedirectResponse("/", status_code=HTTP.SEE_OTHER)
+
+
 @rt("/search/{bid:str}")
 def post(auth, bid: str, form: dict):
     "Actually search the book for a given term."
@@ -836,7 +872,7 @@ def post(auth, bid: str, form: dict):
     title = f'{Tx("Search in")} {Tx("book")}'
     return (
         Title(title),
-        components.header(title=title, book=book),
+        components.header(title=title, book=book, status=book.status),
         Main(
             components.search_form(f"/search/{bid}", term=term),
             result,
@@ -903,7 +939,7 @@ def get(auth, bid: str, path: str):
 
     return (
         Title(item.title),
-        components.header(title=item.title, book=book, menu=menu),
+        components.header(title=item.title, book=book, menu=menu, status=item.status),
         Main(
             *segments,
             NotStr(item.html),
@@ -959,7 +995,7 @@ def get(auth, bid: str, path: str):
     title = f"{Tx('Edit')} {item.title}"
     return (
         Title(title),
-        components.header(title=title, book=book),
+        components.header(title=title, book=book, status=item.status),
         Main(
             Form(
                 *fields, Button(Tx("Save")), action=f"/edit/{bid}/{path}", method="post"
@@ -1014,7 +1050,7 @@ def post(auth, bid: str, path: str, form: dict):
     title = f"{Tx('Search in')} '{item.fulltitle}'"
     return (
         Title(title),
-        components.header(title=title, book=book),
+        components.header(title=title, book=book, status=item.status),
         Main(
             components.search_form(f"/search/{bid}/{path}", term=term),
             result,
@@ -1047,40 +1083,6 @@ def get(auth, bid: str, path: str):
     return RedirectResponse(f"/book/{bid}", status_code=HTTP.SEE_OTHER)
 
 
-@rt("/delete/{bid:str}")
-def get(auth, bid: str):
-    "Confirm deleting book."
-    book = books.get_book(bid)
-
-    if book.items:
-        segments = [P(Strong(Tx("Note: all contents will be lost!")))]
-    else:
-        segments = []
-
-    title = f"{Tx('Delete book')} '{book.title}'?"
-    return (
-        Title(title),
-        components.header(title=title, book=book),
-        Main(
-            H3(Tx("Delete"), "?"),
-            *segments,
-            Form(Button(Tx("Confirm")), action=f"/delete/{bid}", method="post"),
-            components.cancel_button(f"/book/{bid}"),
-            cls="container",
-        ),
-    )
-
-
-@rt("/delete/{bid:str}")
-def post(auth, bid: str):
-    "Actually delete the book, even if it contains items."
-    book = books.get_book(bid)
-    book.delete(force=True)
-    # Re-read all books, ensuring everything is up to date.
-    books.read_books()
-    return RedirectResponse("/", status_code=HTTP.SEE_OTHER)
-
-
 @rt("/delete/{bid:str}/{path:path}")
 def get(auth, bid: str, path: str):
     "Confirm delete of the text or section; section must be empty."
@@ -1097,7 +1099,7 @@ def get(auth, bid: str, path: str):
     title = f"{Tx('Delete')} {Tx(item.type)} '{item.fulltitle}'?"
     return (
         Title(title),
-        components.header(title=title, book=book),
+        components.header(title=title, book=book, status=item.status),
         Main(
             H3(Tx("Delete"), "?"),
             *segments,
@@ -1133,7 +1135,7 @@ def get(auth, bid: str, path: str):
     title = f"{Tx('Convert to section')}: '{text.fulltitle}'"
     return (
         Title(title),
-        components.header(title=title, book=book),
+        components.header(title=title, book=book, status=text.status),
         Main(
             Form(
                 Button(Tx("Convert")), action=f"/to_section/{bid}/{path}", method="post"
@@ -1279,7 +1281,7 @@ def get(auth, bid: str):
     title = Tx("Information")
     return (
         Title(title),
-        components.header(title=title, book=book, menu=menu),
+        components.header(title=title, book=book, menu=menu, status=book.status),
         Main(*segments, cls="container"),
     )
 
@@ -1322,7 +1324,7 @@ def get(auth, bid: str):
     title = Tx("Status list")
     return (
         Title(title),
-        components.header(title=title, book=book),
+        components.header(title=title, book=book, status=book.status),
         Main(Table(*rows), cls="container"),
     )
 
@@ -1343,7 +1345,7 @@ def get(auth, bid: str, path: str):
     return get_docx(bid, path)
 
 
-def get_docx(bid, path=None):
+def get_docx(bid, path=""):
     "Get the parameters for downloading the DOCX file."
     book = books.get_book(bid)
     if path:
@@ -1434,18 +1436,20 @@ def get_docx(bid, path=None):
     )
     fields.append(Button(f'{Tx("Download")} {Tx("DOCX file")}'))
 
-    if path is None:
+    if item is None:
         title = book.title
+        status = book.status
     else:
-        title = path
+        title = item.title
+        status = item.status
 
     title = f'{Tx("Download")} {Tx("DOCX file")}: {title}'
     return (
         Title(title),
-        components.header(title=title, book=book),
+        components.header(title=title, book=book, status=status),
         Main(
             Form(*fields, action=f"/docx/{bid}", method="post"),
-            components.cancel_button(f"/book/{bid}"),
+            components.cancel_button(f"/book/{bid}/{path}"),
             cls="container",
         ),
     )
@@ -1470,6 +1474,7 @@ def post(auth, bid: str, form: dict):
         book.write()
         filename = book.title + ".docx"
     else:
+        # Do not write out the book 'index.md'; the settings may be non-standard.
         filename = item.title + ".docx"
     creator = docx_creator.Creator(book, books.get_references(), item=item)
     output = creator.create()
@@ -1582,7 +1587,7 @@ def pdf(auth, bid: str):
     title = f'{Tx("Download")} {Tx("PDF file")}'
     return (
         Title(title),
-        components.header(title=title, book=book),
+        components.header(title=title, book=book, status=book.status),
         Main(
             Form(
                 *fields,
