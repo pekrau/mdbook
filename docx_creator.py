@@ -1,5 +1,7 @@
 "Create DOCX file."
 
+from icecream import ic
+
 import copy
 import datetime
 import io
@@ -36,7 +38,7 @@ class Creator:
         "Create the DOCX document; return a BytesIO instance containing it."
         # Key: fulltitle; value: dict(label, ast_children)
         self.footnotes = {}
-        # Reference ids
+        # References, key: refid; value: reference
         self.referenced = set()
         # Key: canonical; value: dict(id, fulltitle, ordinal)
         self.indexed = {}
@@ -152,6 +154,7 @@ class Creator:
             self.document.add_paragraph(f"{Tx('Created')}: {now}")
 
     def write_toc(self):
+        "Write table of contents."
         # XXX
         pass
 
@@ -262,9 +265,12 @@ class Creator:
         self.document.add_page_break()
         self.write_heading(Tx("References"), 1)
         for refid in sorted(self.referenced):
-            reference = self.references[refid]
+            try:
+                reference = self.references[refid]
+            except KeyError:
+                continue
             paragraph = self.document.add_paragraph()
-            run = paragraph.add_run(reference["id"])
+            run = paragraph.add_run(reference["name"])
             run.bold = True
             paragraph.add_run("  ")
             self.write_reference_authors(paragraph, reference)
@@ -581,8 +587,8 @@ class Creator:
         self.footnotes[fulltitle][key]["ast_children"] = ast["children"]
 
     def render_reference(self, ast):
-        self.referenced.add(ast["reference"])
-        run = self.paragraph.add_run(ast["reference"])
+        self.referenced.add(ast["id"])
+        run = self.paragraph.add_run(ast["name"])
         if self.reference_font == constants.ITALIC:
             run.italic = True
         elif self.reference_font == constants.BOLD:

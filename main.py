@@ -869,10 +869,15 @@ def post(auth, bid: str, form: dict):
     else:
         result = P()
 
+    menu = [
+        A(Tx("Index"), href=f"/index/{bid}"),
+        A(Tx("References"), href="/references"),
+    ]
+
     title = f'{Tx("Search in")} {Tx("book")}'
     return (
         Title(title),
-        components.header(title=title, book=book, status=book.status),
+        components.header(title=title, book=book, status=book.status, menu=menu),
         Main(
             components.search_form(f"/search/{bid}", term=term),
             result,
@@ -1059,11 +1064,11 @@ def post(auth, bid: str, path: str, form: dict):
     )
 
 
-@rt("/up/{bid:str}/{path:path}")
+@rt("/forward/{bid:str}/{path:path}")
 def get(auth, bid: str, path: str):
-    "Move item up in its sibling list."
+    "Move item forward in its sibling list."
     book = books.get_book(bid)
-    book[path].up()
+    book[path].forward()
     book.write()
     # Refresh the book, ensuring everything is up to date.
     book.read()
@@ -1071,14 +1076,38 @@ def get(auth, bid: str, path: str):
     return RedirectResponse(f"/book/{bid}", status_code=HTTP.SEE_OTHER)
 
 
-@rt("/down/{bid:str}/{path:path}")
+@rt("/backward/{bid:str}/{path:path}")
 def get(auth, bid: str, path: str):
-    "Move item down in its sibling list."
+    "Move item backward in its sibling list."
     book = books.get_book(bid)
-    book[path].down()
+    book[path].backward()
     book.write()
     # Refresh the book, ensuring everything is up to date.
     book.read()
+
+    return RedirectResponse(f"/book/{bid}", status_code=HTTP.SEE_OTHER)
+
+
+@rt("/outof/{bid:str}/{path:path}")
+def get(auth, bid: str, path: str):
+    "Move item out of its section."
+    book = books.get_book(bid)
+    book[path].outof()
+    book.write()
+    # Refresh the book, ensuring everything is up to date.
+    book.read()
+
+    return RedirectResponse(f"/book/{bid}", status_code=HTTP.SEE_OTHER)
+
+
+@rt("/into/{bid:str}/{path:path}")
+def get(auth, bid: str, path: str):
+    "Move item into the nearest preceding section."
+    book = books.get_book(bid)
+    book[path].into()
+    # book.write()
+    # # Refresh the book, ensuring everything is up to date.
+    # book.read()
 
     return RedirectResponse(f"/book/{bid}", status_code=HTTP.SEE_OTHER)
 
@@ -1466,7 +1495,7 @@ def post(auth, bid: str, form: dict):
         item = None
     settings = book.frontmatter.setdefault("docx", {})
     settings["title_page_metadata"] = form["title_page_metadata"]
-    settings["page_break_level"] = form["page_break_level"]
+    settings["page_break_level"] = int(form["page_break_level"])
     settings["footnotes_location"] = form["footnotes_location"]
     settings["reference_font"] = form["reference_font"]
     settings["indexed_font"] = form["indexed_font"]
@@ -1790,9 +1819,9 @@ def get(auth):
         title = lbook.get("title") or rbook.get("title")
         if lbook:
             if lbook["digest"] == rbook["digest"]:
-                action = Small(Tx("Identical"))
+                action = Tx("Identical")
             else:
-                action = A(Tx("Differences"), href=f"/differences/{bid}")
+                action = A(Tx("Differences"), href=f"/differences/{bid}", role="button")
             rows.append(
                 Tr(
                     Th(Strong(title), scope="row"),
@@ -1840,7 +1869,7 @@ def get(auth):
                     Br(),
                     f'{utils.thousands(lbook["sum_characters"])} {Tx("characters")}',
                 ),
-                Td(A(Tx("Differences"), href=f"/differences/{bid}")),
+                Td(A(Tx("Differences"), href=f"/differences/{bid}", role="button")),
             ),
         )
 
@@ -1886,21 +1915,11 @@ def get(auth, bid: str):
     rurl = f'{os.environ["MDBOOK_UPDATE_SITE"].rstrip("/")}/book/{bid}'
     lurl = f"/book/{bid}"
 
-    update_remote = Form(
-        Button(f'{Tx("Update")} {os.environ["MDBOOK_UPDATE_SITE"]}'),
-        action=f"/push/{bid}",
-        method="post",
-    )
-    update_here = Form(
-        Button(f'{Tx("Update")} {Tx("here")}'),
-        action=f"/pull/{bid}",
-        method="post",
-    )
+    rows, rflag, lflag = items_diffs(remote.get("items", []), rurl, here.get("items", []), lurl)
 
-    rows = items_diffs(remote.get("items", []), rurl, here.get("items", []), lurl)
     # The book 'index.md' files may differ, if they exist.
     if remote and here:
-        row = item_diff(
+        row, rf, lf = item_diff(
             remote,
             f'{os.environ["MDBOOK_UPDATE_SITE"].rstrip("/")}/book/{bid}',
             here,
@@ -1908,16 +1927,28 @@ def get(auth, bid: str):
         )
         if row:
             rows.insert(0, row)
+            rflag += rf
+            lflag += lf
 
     title = f"{Tx('Differences in')} {Tx('book')} '{book.title}'"
     if not rows:
         if not remote:
             segments = (
                 H4(f'{Tx("Not present in")} {os.environ["MDBOOK_UPDATE_SITE"]}'),
-                update_remote,
+                Form(
+                    Button(f'{Tx("Update")} {os.environ["MDBOOK_UPDATE_SITE"]}'),
+                    action=f"/push/{bid}",
+                    method="post",
+                ),
             )
         elif not here:
-            segments = (H4(Tx("Not present here")), update_here)
+            segments = (H4(Tx("Not present here")),
+                        Form(
+                            Button(f'{Tx("Update")} {Tx("here")}'),
+                            action=f"/pull/{bid}",
+                            method="post",
+                        ),
+                        )
         else:
             segments = (
                 H4(Tx("Identical")),
@@ -1930,11 +1961,22 @@ def get(auth, bid: str):
 
         return (
             Title(title),
-            components.headers2(title=title, book=book, references=False),
+            components.header(title=title, book=book),
             Main(*segments, cls="container"),
         )
 
-    rows.append(Tr(Td(), Td(update_remote), Td(update_here, colspan=3)))
+    rows.append(Tr(Td(),
+                   Td(Form(
+        Button(f'{Tx("Update")} {os.environ["MDBOOK_UPDATE_SITE"]}',
+               cls=None if rflag else "outline"),
+        action=f"/push/{bid}",
+        method="post",
+    )),
+                   Td(Form(
+        Button(f'{Tx("Update")} {Tx("here")}', cls=None if lflag else "outline"),
+        action=f"/pull/{bid}",
+        method="post",
+    ), colspan=3)))
 
     title = f"{Tx('Differences in')} {Tx('book')} '{book.title}'"
     return (
@@ -1964,32 +2006,47 @@ def get(auth, bid: str):
 
 
 def items_diffs(ritems, rurl, litems, lurl):
-    "Return list of rows specifying differences between remote and local items."
+    """Return list of rows and flags specifying differences between
+    remote and local items.
+    """
     result = []
+    rflag = 0
+    lflag = 0
     for ritem in ritems:
         riurl = f'{rurl}/{ritem["name"]}'
         for pos, litem in enumerate(list(litems)):
             if litem["title"] != ritem["title"]:
                 continue
             liurl = f'{lurl}/{litem["name"]}'
-            row = item_diff(ritem, riurl, litem, liurl)
+            row, rf, lf = item_diff(ritem, riurl, litem, liurl)
+            rflag += rf
+            lflag += lf
             if row:
                 result.append(row)
             litems.pop(pos)
             try:
-                result.extend(items_diffs(ritem["items"], riurl, litem["items"], liurl))
+                rows, rf, lf = items_diffs(ritem["items"], riurl, litem["items"], liurl)
+                rflag += rf
+                lflag += lf
+                result.extend(rows)
             except KeyError as message:
                 pass
             break
         else:
-            result.append(item_diff(ritem, riurl, None, None))
+            row, rflag, lflag = item_diff(ritem, riurl, None, None)
+            rflag += rf
+            lflag += lf
+            result.append(row)
     for litem in litems:
-        result.append(item_diff(None, None, litem, f'{lurl}/{litem["name"]}'))
-    return result
+        row, rflag, lflag = item_diff(None, None, litem, f'{lurl}/{litem["name"]}')
+        rflag += rf
+        lflag += lf
+        result.append(row)
+    return result, rflag, lflag
 
 
 def item_diff(ritem, riurl, litem, liurl):
-    "Return row specifying differences between the items."
+    "Return row and update flags specifying differences between the items."
     if ritem is None:
         return Tr(
             Td(Strong(litem["title"])),
@@ -1997,7 +2054,7 @@ def item_diff(ritem, riurl, litem, liurl):
             Td("-"),
             Td("-"),
             Td(A(liurl, href=liurl)),
-        )
+        ), 1, 0
     elif litem is None:
         return Tr(
             Td(Strong(ritem["title"])),
@@ -2005,15 +2062,21 @@ def item_diff(ritem, riurl, litem, liurl):
             Td("-"),
             Td("-"),
             Td("-"),
-        )
+        ), 0, 1
     if litem["digest"] == ritem["digest"]:
-        return None
+        return None, 0, 0
     if litem["modified"] < ritem["modified"]:
         age = "Older"
+        rflag = 0
+        lflag = 1
     elif litem["modified"] > ritem["modified"]:
         age = "Newer"
+        rflag = 1
+        lflag = 0
     else:
         age = "Same"
+        rflag = 0
+        lflag = 0
     if litem["n_characters"] < ritem["n_characters"]:
         size = "Smaller"
     elif litem["n_characters"] > ritem["n_characters"]:
@@ -2026,7 +2089,7 @@ def item_diff(ritem, riurl, litem, liurl):
         Td(Tx(age)),
         Td(Tx(size)),
         Td(A(liurl, href=liurl)),
-    )
+    ), rflag, lflag
 
 
 @rt("/pull/{bid:str}")

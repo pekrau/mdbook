@@ -721,6 +721,17 @@ class Item:
         return self.parent.items[index - 1]
 
     @property
+    def prev_section(self):
+        "Return the section sibling that closest backward to it, if any."
+        index = self.index
+        while index:
+            item = self.parent.items[index - 1]
+            if item.is_section:
+                return item
+            index -= 1
+        return None
+        
+    @property
     def next(self):
         "Next sibling or None."
         try:
@@ -739,16 +750,16 @@ class Item:
     @property
     def abspath(self):
         """The absolute path for this item.
-        - Directory path for Section.
-        - File path for Text.
+        - Section: Directory path.
+        - Text: File path.
         """
         return os.path.join(self.parent.abspath, self.filename())
 
     @property
     def absfilepath(self):
         """The absolute filepath ot this item.
-        - The file path to 'index.md' for Section.
-        - File path for Text.
+        - Section: File path to 'index.md'.
+        - Text: File path.
         To be implemented by inheriting classes.
         """
         raise NotImplementedError
@@ -764,21 +775,87 @@ class Item:
         """
         raise NotImplementedError
 
-    def up(self):
-        "Move this item up in its list of siblings."
+    def forward(self):
+        "Move this item forward in its list of siblings. Loop around at end."
+        index = self.index
+        if index == len(self.parent.items) - 1:
+            self.parent.items.insert(0, self.parent.items.pop(index))
+        else:
+            self.parent.items.insert(index + 1, self.parent.items.pop(index))
+
+    def backward(self):
+        "Move this item backward in its list of siblings. Loop around at beginning."
         index = self.index
         if index == 0:
             self.parent.items.append(self.parent.items.pop(0))
         else:
             self.parent.items.insert(index - 1, self.parent.items.pop(index))
 
-    def down(self):
-        "Move this item down in its list of siblings."
-        index = self.index
-        if index == len(self.parent.items) - 1:
-            self.parent.items.insert(0, self.parent.items.pop(index))
-        else:
-            self.parent.items.insert(index + 1, self.parent.items.pop(index))
+    def outof(self):
+        "Move this item out of its section into the section or book above."
+        if self.parent is self.book:
+            return
+        old_abspath = self.abspath
+        new_abspath = os.path.join(self.parent.parent.abspath, self.filename())
+        # Must check both file and directory for name collision.
+        for path in [new_abspath,
+                     os.path.splitext(new_abspath)[0],
+                     new_abspath + constants.MARKDOWN_EXT]: # Doesn't matter if '.md.md'
+            if os.path.exists(path):
+                raise Error("cannot move item; name collision with an existing item",
+                            HTTP.CONFLICT)
+        # Remove item and all its subitems from the path lookup of the book.
+        self.book.path_lookup.pop(self.path)
+        for item in self.all_items:
+            self.book.path_lookup.pop(item.path)
+        # Remove item from its parent's list of items.
+        self.parent.items.remove(self)
+        # Actually move the item on disk.
+        os.rename(old_abspath, new_abspath)
+        # Add item into the parent above, after the position of its old parent.
+        pos = self.parent.parent.items.index(self.parent) + 1
+        self.parent.parent.items.insert(pos, self)
+        # Set the new parent for this item.
+        self.parent = self.parent.parent
+        # Add back this item and its subitems to the path lookup of the book.
+        self.book.path_lookup[self.path] = self
+        for item in self.all_items:
+            self.book.path_lookup[item.path] = item
+        # Finally check everything.
+        self.check_integrity()
+
+    def into(self):
+        "Move this item into the section closest backward of it."
+        section = self.prev_section
+        if not section:
+            return
+        old_abspath = self.abspath
+        new_abspath = os.path.join(section.abspath, self.filename())
+        # Must check both file and directory for name collision.
+        for path in [new_abspath,
+                     os.path.splitext(new_abspath)[0],
+                     new_abspath + constants.MARKDOWN_EXT]: # Doesn't matter if '.md.md'
+            if os.path.exists(path):
+                raise Error("cannot move item; name collision with an existing item",
+                            HTTP.CONFLICT)
+        # Remove item and all its subitems from the path lookup of the book.
+        self.book.path_lookup.pop(self.path)
+        for item in self.all_items:
+            self.book.path_lookup.pop(item.path)
+        # Remove item from its parent's list of items.
+        self.parent.items.remove(self)
+        # Actually move the item on disk.
+        os.rename(old_abspath, new_abspath)
+        # Add item into the section, as the last one.
+        section.items.append(self)
+        # Set the new parent for this item.
+        self.parent = section
+        # Add back this item and its subitems to the path lookup of the book.
+        self.book.path_lookup[self.path] = self
+        for item in self.all_items:
+            self.book.path_lookup[item.path] = item
+        # Finally check everything.
+        self.check_integrity()
 
     def search(self, term, ignorecase=True):
         "Find the set of items that contain the term in the content."
@@ -818,7 +895,6 @@ class Section(Item):
                 pass
         # Repair if no 'index.md' in the directory.
         if not os.path.exists(self.absfilepath):
-            ic(self.frontmatter)
             write_markdown(self, self.absfilepath)
 
     def write(self, content=None, force=False):

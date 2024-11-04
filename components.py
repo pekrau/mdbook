@@ -102,10 +102,16 @@ def toc(book, items, show_arrows=False):
         if show_arrows:
             arrows = [
                 NotStr("&nbsp;"),
-                A(NotStr("&ShortUpArrow;"), href=f"/up/{book.bid}/{item.path}"),
+                A(NotStr("&ShortUpArrow;"), title="backward", cls="plain", href=f"/backward/{book.bid}/{item.path}"),
                 NotStr("&nbsp;"),
-                A(NotStr("&ShortDownArrow;"), href=f"/down/{book.bid}/{item.path}"),
+                A(NotStr("&ShortDownArrow;"), title="forward", cls="plain", href=f"/forward/{book.bid}/{item.path}")
             ]
+            if item.parent is not book:
+                arrows.append(NotStr("&nbsp;"))
+                arrows.append(A(NotStr("&ShortLeftArrow;"), title="outof", cls="plain", href=f"/outof/{book.bid}/{item.path}"))
+            if item.prev_section:
+                arrows.append(NotStr("&nbsp;"))
+                arrows.append(A(NotStr("&ShortRightArrow;"), title="into", cls="plain", href=f"/into/{book.bid}/{item.path}"))
         else:
             arrows = []
         parts.append(

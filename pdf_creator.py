@@ -305,7 +305,10 @@ class Creator:
         self.pdf.start_section(Tx("References"), level=0)
         self.write_heading(Tx("References"), 1)
         for refid in sorted(self.referenced):
-            reference = self.references[refid]
+            try:
+                reference = self.references[refid]
+            except KeyError:
+                continue
             self.state.set(style="B")
             self.state.write(refid)
             self.state.reset()
