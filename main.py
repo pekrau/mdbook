@@ -2033,12 +2033,12 @@ def items_diffs(ritems, rurl, litems, lurl):
                 pass
             break
         else:
-            row, rflag, lflag = item_diff(ritem, riurl, None, None)
+            row, rf, lf = item_diff(ritem, riurl, None, None)
             rflag += rf
             lflag += lf
             result.append(row)
     for litem in litems:
-        row, rflag, lflag = item_diff(None, None, litem, f'{lurl}/{litem["name"]}')
+        row, rf, lf = item_diff(None, None, litem, f'{lurl}/{litem["name"]}')
         rflag += rf
         lflag += lf
         result.append(row)
