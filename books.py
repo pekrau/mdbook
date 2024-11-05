@@ -157,6 +157,7 @@ def update_markdown(target, content):
         target.ast = markdown.convert_to_ast(target.content)
     return changed
 
+
 def get_copy_abspath(abspath):
     "Get the abspath for the next valid copy, and the number."
     abspath, ext = os.path.splitext(abspath)
@@ -750,7 +751,7 @@ class Item:
                 return item
             index -= 1
         return None
-        
+
     @property
     def next(self):
         "Next sibling or None."
@@ -824,12 +825,16 @@ class Item:
         old_abspath = self.abspath
         new_abspath = os.path.join(self.parent.parent.abspath, self.filename())
         # Must check both file and directory for name collision.
-        for path in [new_abspath,
-                     os.path.splitext(new_abspath)[0],
-                     new_abspath + constants.MARKDOWN_EXT]: # Doesn't matter if '.md.md'
+        for path in [
+            new_abspath,
+            os.path.splitext(new_abspath)[0],
+            new_abspath + constants.MARKDOWN_EXT,
+        ]:  # Doesn't matter if '.md.md'
             if os.path.exists(path):
-                raise Error("cannot move item; name collision with an existing item",
-                            HTTP.CONFLICT)
+                raise Error(
+                    "cannot move item; name collision with an existing item",
+                    HTTP.CONFLICT,
+                )
         # Remove item and all its subitems from the path lookup of the book.
         self.book.path_lookup.pop(self.path)
         for item in self.all_items:
@@ -861,12 +866,16 @@ class Item:
         old_abspath = self.abspath
         new_abspath = os.path.join(section.abspath, self.filename())
         # Must check both file and directory for name collision.
-        for path in [new_abspath,
-                     os.path.splitext(new_abspath)[0],
-                     new_abspath + constants.MARKDOWN_EXT]: # Doesn't matter if '.md.md'
+        for path in [
+            new_abspath,
+            os.path.splitext(new_abspath)[0],
+            new_abspath + constants.MARKDOWN_EXT,
+        ]:  # Doesn't matter if '.md.md'
             if os.path.exists(path):
-                raise Error("cannot move item; name collision with an existing item",
-                            HTTP.CONFLICT)
+                raise Error(
+                    "cannot move item; name collision with an existing item",
+                    HTTP.CONFLICT,
+                )
         # Remove item and all its subitems from the path lookup of the book.
         self.book.path_lookup.pop(self.path)
         for item in self.all_items:
@@ -1195,6 +1204,7 @@ class Text(Item):
     def copy(self):
         "Make a copy of this text."
         from icecream import ic
+
         abspath, number = get_copy_abspath(self.abspath)
         ic(self.abspath, abspath)
         try:
@@ -1202,7 +1212,9 @@ class Text(Item):
         except shutil.Error as error:
             raise Error(error, HTTP.CONFLICT)
 
-        text = Text(self.book, self.parent, os.path.splitext(os.path.basename(abspath))[0])
+        text = Text(
+            self.book, self.parent, os.path.splitext(os.path.basename(abspath))[0]
+        )
         if number:
             text.frontmatter["title"] = f'{self.title} ({Tx("copy*")} {number})'
         else:

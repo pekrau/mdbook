@@ -34,7 +34,9 @@ def before(req, sess):
     else:
         auth = req.scope["auth"] = sess.get("auth", None)
     if not auth:
-        return RedirectResponse("/login", status_code=HTTP.SEE_OTHER)
+        return RedirectResponse(
+            f"/login?path={req.url.path}", status_code=HTTP.SEE_OTHER
+        )
 
 
 beforeware = Beforeware(
@@ -486,9 +488,13 @@ def get(auth, refid: str):
     ]:
         value = ref.get(key)
         if value:
-            rows.append(Tr(Td((Tx(key.replace("_", " ")).title()), valign="top"), Td(value)))
+            rows.append(
+                Tr(Td((Tx(key.replace("_", " ")).title()), valign="top"), Td(value))
+            )
     if ref.get("keywords"):
-        rows.append(Tr(Td(Tx("Keywords"), valign="top"), Td("; ".join(ref["keywords"]))))
+        rows.append(
+            Tr(Td(Tx("Keywords"), valign="top"), Td("; ".join(ref["keywords"])))
+        )
     if ref.get("issn"):
         rows.append(Tr(Td("ISSN"), Td(ref["issn"])))
     if ref.get("isbn"):
@@ -1116,7 +1122,7 @@ def get(auth, bid: str, path: str):
     "Make a copy of the item (text or section)."
     path = books.get_book(bid)[path].copy()
     return RedirectResponse(f"/book/{bid}/{path}", status_code=HTTP.SEE_OTHER)
-    
+
 
 @rt("/delete/{bid:str}/{path:path}")
 def get(auth, bid: str, path: str):
@@ -1744,7 +1750,7 @@ def get(auth):
 
 
 @rt("/login")
-def get():
+def get(form: dict):
     "Login form."
     if not (os.environ.get("MDBOOK_USER") and os.environ.get("MDBOOK_PASSWORD")):
         return Titled(
@@ -1753,9 +1759,14 @@ def get():
             P("Environment variables MDBOOK_USER and/or MDBOOK_PASSWORD not set."),
         )
     else:
+        try:
+            hidden = [Input(type="hidden", name="path", value=form["path"])]
+        except KeyError:
+            hidden = []
         return Titled(
-            components.header("Login"),
+            f"{constants.SOFTWARE} login",
             Form(
+                *hidden,
                 Input(id="user", placeholder=Tx("User")),
                 Input(id="password", type="password", placeholder=Tx("Password")),
                 Button(Tx("Login")),
@@ -1766,15 +1777,16 @@ def get():
 
 
 @rt("/login")
-def post(user: str, password: str, sess):
+def post(user: str, password: str, path: str, sess):
     "Actually login."
     if not user or not password:
         return RedirectResponse("/login", status_code=HTTP.SEE_OTHER)
     if user != os.environ["MDBOOK_USER"] or password != os.environ["MDBOOK_PASSWORD"]:
         raise Error("invalid credentials", HTTP.FORBIDDEN)
     sess["auth"] = user
+    print(path)
 
-    return RedirectResponse("/", status_code=HTTP.SEE_OTHER)
+    return RedirectResponse(path or "/", status_code=HTTP.SEE_OTHER)
 
 
 @rt("/logout")
@@ -1913,7 +1925,9 @@ def get(auth, bid: str):
     rurl = f'{os.environ["MDBOOK_UPDATE_SITE"].rstrip("/")}/book/{bid}'
     lurl = f"/book/{bid}"
 
-    rows, rflag, lflag = items_diffs(remote.get("items", []), rurl, here.get("items", []), lurl)
+    rows, rflag, lflag = items_diffs(
+        remote.get("items", []), rurl, here.get("items", []), lurl
+    )
 
     # The book 'index.md' files may differ, if they exist.
     if remote and here:
@@ -1940,13 +1954,14 @@ def get(auth, bid: str):
                 ),
             )
         elif not here:
-            segments = (H4(Tx("Not present here")),
-                        Form(
-                            Button(f'{Tx("Update")} {Tx("here")}'),
-                            action=f"/pull/{bid}",
-                            method="post",
-                        ),
-                        )
+            segments = (
+                H4(Tx("Not present here")),
+                Form(
+                    Button(f'{Tx("Update")} {Tx("here")}'),
+                    action=f"/pull/{bid}",
+                    method="post",
+                ),
+            )
         else:
             segments = (
                 H4(Tx("Identical")),
@@ -1963,18 +1978,31 @@ def get(auth, bid: str):
             Main(*segments, cls="container"),
         )
 
-    rows.append(Tr(Td(),
-                   Td(Form(
-        Button(f'{Tx("Update")} {os.environ["MDBOOK_UPDATE_SITE"]}',
-               cls=None if rflag else "outline"),
-        action=f"/push/{bid}",
-        method="post",
-    )),
-                   Td(Form(
-        Button(f'{Tx("Update")} {Tx("here")}', cls=None if lflag else "outline"),
-        action=f"/pull/{bid}",
-        method="post",
-    ), colspan=3)))
+    rows.append(
+        Tr(
+            Td(),
+            Td(
+                Form(
+                    Button(
+                        f'{Tx("Update")} {os.environ["MDBOOK_UPDATE_SITE"]}',
+                        cls=None if rflag else "outline",
+                    ),
+                    action=f"/push/{bid}",
+                    method="post",
+                )
+            ),
+            Td(
+                Form(
+                    Button(
+                        f'{Tx("Update")} {Tx("here")}', cls=None if lflag else "outline"
+                    ),
+                    action=f"/pull/{bid}",
+                    method="post",
+                ),
+                colspan=3,
+            ),
+        )
+    )
 
     title = f"{Tx('Differences in')} {Tx('book')} '{book.title}'"
     return (
@@ -2046,21 +2074,29 @@ def items_diffs(ritems, rurl, litems, lurl):
 def item_diff(ritem, riurl, litem, liurl):
     "Return row and update flags specifying differences between the items."
     if ritem is None:
-        return Tr(
-            Td(Strong(litem["title"])),
-            Td("-"),
-            Td("-"),
-            Td("-"),
-            Td(A(liurl, href=liurl)),
-        ), 1, 0
+        return (
+            Tr(
+                Td(Strong(litem["title"])),
+                Td("-"),
+                Td("-"),
+                Td("-"),
+                Td(A(liurl, href=liurl)),
+            ),
+            1,
+            0,
+        )
     elif litem is None:
-        return Tr(
-            Td(Strong(ritem["title"])),
-            Td(A(riurl, href=riurl)),
-            Td("-"),
-            Td("-"),
-            Td("-"),
-        ), 0, 1
+        return (
+            Tr(
+                Td(Strong(ritem["title"])),
+                Td(A(riurl, href=riurl)),
+                Td("-"),
+                Td("-"),
+                Td("-"),
+            ),
+            0,
+            1,
+        )
     if litem["digest"] == ritem["digest"]:
         return None, 0, 0
     if litem["modified"] < ritem["modified"]:
@@ -2081,13 +2117,17 @@ def item_diff(ritem, riurl, litem, liurl):
         size = "Larger"
     else:
         size = "Same"
-    return Tr(
-        Td(Strong(ritem["title"])),
-        Td(A(riurl, href=riurl)),
-        Td(Tx(age)),
-        Td(Tx(size)),
-        Td(A(liurl, href=liurl)),
-    ), rflag, lflag
+    return (
+        Tr(
+            Td(Strong(ritem["title"])),
+            Td(A(riurl, href=riurl)),
+            Td(Tx(age)),
+            Td(Tx(size)),
+            Td(A(liurl, href=liurl)),
+        ),
+        rflag,
+        lflag,
+    )
 
 
 @rt("/pull/{bid:str}")
