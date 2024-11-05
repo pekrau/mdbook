@@ -82,8 +82,10 @@ def header(title, book=None, status=None, menu=None):
             Ul(
                 Li(
                     Details(
-                        Summary(Tx("Menu")), Ul(*[Li(i) for i in menu]), cls="dropdown"
-                    )
+                        Summary(Tx("Menu"), style="width: 10em;"),
+                        Ul(*[Li(i) for i in menu]),
+                        cls="dropdown",
+                    ),
                 )
             )
         )

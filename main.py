@@ -435,12 +435,12 @@ def post(auth, data: str):
             result.append(reference)
 
     # Refresh the cache.
-    books.get_references(refresh=True)
+    references = books.get_references(refresh=True)
 
     title = Tx("Added reference(s)")
     return (
         Title(title),
-        components.header(title=title),
+        components.header(book=references, title=title),
         Main(
             Ul(*[Li(A(r["name"], href=f'/reference/{r["id"]}')) for r in result]),
             cls="container",
@@ -598,6 +598,7 @@ def get(auth, refid: str):
         components.header(title=title),
         Main(
             H3(Tx("Delete"), "?"),
+            P(Strong(Tx("Note: all contents will be lost!"))),
             Form(
                 Button(Tx("Confirm")),
                 action=f"/reference/delete/{refid}",
