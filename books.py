@@ -157,6 +157,19 @@ def update_markdown(target, content):
         target.ast = markdown.convert_to_ast(target.content)
     return changed
 
+def get_copy_abspath(abspath):
+    "Get the abspath for the next valid copy, and the number."
+    abspath, ext = os.path.splitext(abspath)
+    for number in [None] + list(range(2, constants.MAX_COPY_NUMBER + 1)):
+        if number:
+            newpath = f'{abspath}_{Tx("copy*")}_{number}{ext}'
+        else:
+            newpath = f'{abspath}_{Tx("copy*")}{ext}'
+        if not os.path.exists(newpath):
+            return newpath, number
+    else:
+        raise Error("could not form copy identifier; too many copies", HTTP.BAD_REQUEST)
+
 
 class Book:
     "Root container for Markdown book texts in files and directories."
@@ -506,26 +519,33 @@ class Book:
         self.write()
         return text
 
-    def delete(self, item=None, force=False):
-        "Delete the given item, or book."
-        global _books
-        if item is None:
-            if not force and len(self.items) != 0:
-                raise ValueError("Cannot delete non-empty book.")
-            _books.pop(self.bid, None)
-            shutil.rmtree(self.abspath)
-            return
+    def copy(self, owner=None):
+        "Make a copy of the book."
+        abspath, number = get_copy_abspath(self.abspath)
+        try:
+            shutil.copytree(self.abspath, abspath)
+        except shutil.Error as error:
+            raise Error(error, HTTP.CONFLICT)
+        book = Book(abspath)
+        if number:
+            book.title = f'{self.title} ({Tx("copy*")} {number})'
+        else:
+            book.title = f'{self.title} ({Tx("copy*")})'
+        if owner:
+            book.frontmatter["owner"] = owner
+        book.write()
+        get_references(refresh=True)
+        _books[book.bid] = book
+        return book
 
-        if item.is_section:
-            if len(item.items) != 0:
-                raise ValueError("Cannot delete non-empty section.")
-            os.remove(item.absfilepath)
-            os.rmdir(item.abspath)
-        elif item.is_text:
-            os.remove(item.abspath)
-        self.path_lookup.pop(item.path)
-        item.parent.items.remove(item)
-        self.write()
+    def delete(self, force=False):
+        "Delete the book."
+        global _books
+        if not force and len(self.items) != 0:
+            raise ValueError("Cannot delete non-empty book.")
+        _books.pop(self.bid, None)
+        shutil.rmtree(self.abspath)
+        get_references(refresh=True)
 
     def get_tgzfile(self):
         """Write all files for the items in this book to a gzipped tar file.
@@ -782,6 +802,9 @@ class Item:
             self.parent.items.insert(0, self.parent.items.pop(index))
         else:
             self.parent.items.insert(index + 1, self.parent.items.pop(index))
+        # Write out book and refresh (references need not be refreshed).
+        self.book.write()
+        self.book.read()
 
     def backward(self):
         "Move this item backward in its list of siblings. Loop around at beginning."
@@ -790,6 +813,9 @@ class Item:
             self.parent.items.append(self.parent.items.pop(0))
         else:
             self.parent.items.insert(index - 1, self.parent.items.pop(index))
+        # Write out book and refresh (references need not be refreshed).
+        self.book.write()
+        self.book.read()
 
     def outof(self):
         "Move this item out of its section into the section or book above."
@@ -821,8 +847,11 @@ class Item:
         self.book.path_lookup[self.path] = self
         for item in self.all_items:
             self.book.path_lookup[item.path] = item
-        # Finally check everything.
         self.check_integrity()
+        # Write out book and refresh everything.
+        self.book.write()
+        self.book.read()
+        get_references(refresh=True)
 
     def into(self):
         "Move this item into the section closest backward of it."
@@ -854,8 +883,19 @@ class Item:
         self.book.path_lookup[self.path] = self
         for item in self.all_items:
             self.book.path_lookup[item.path] = item
-        # Finally check everything.
         self.check_integrity()
+        # Write out book and refresh everything.
+        self.book.write()
+        self.book.read()
+        get_references(refresh=True)
+
+    def copy(self):
+        "Copy this item."
+        raise NotImplementedError
+
+    def delete(self):
+        "Delete this item from the book."
+        raise NotImplementedError
 
     def search(self, term, ignorecase=True):
         "Find the set of items that contain the term in the content."
@@ -993,6 +1033,36 @@ class Section(Item):
         else:
             return self.name
 
+    def copy(self):
+        "Make a copy of this section and all below it."
+        abspath, number = get_copy_abspath(self.abspath)
+        try:
+            shutil.copytree(self.abspath, abspath)
+        except shutil.Error as error:
+            raise Error(error, HTTP.CONFLICT)
+        section = Section(self.book, self.parent, os.path.basename(abspath))
+        if number:
+            section.frontmatter["title"] = f'{self.title} ({Tx("copy*")} {number})'
+        else:
+            section.frontmatter["title"] = f'{self.title} ({Tx("copy*")})'
+        self.parent.items.insert(self.index + 1, section)
+        section.write()
+        path = section.path
+        self.book.write()
+        self.book.read()
+        get_references(refresh=True)
+        return path
+
+    def delete(self, force=False):
+        "Delete this section from the book."
+        if not force and len(self.items) != 0:
+            raise ValueError("Cannot delete non-empty section.")
+        self.book.path_lookup.pop(self.path)
+        self.parent.items.remove(self)
+        shutil.rmtree(self.abspath)
+        self.book.write()
+        get_references(refresh=True)
+
     def search(self, term, ignorecase=True):
         "Find the set of items that contain the term in the content."
         if ignorecase:
@@ -1121,6 +1191,36 @@ class Text(Item):
         section.write()
         self.book.read()
         return section
+
+    def copy(self):
+        "Make a copy of this text."
+        from icecream import ic
+        abspath, number = get_copy_abspath(self.abspath)
+        ic(self.abspath, abspath)
+        try:
+            shutil.copy2(self.abspath, abspath)
+        except shutil.Error as error:
+            raise Error(error, HTTP.CONFLICT)
+
+        text = Text(self.book, self.parent, os.path.splitext(os.path.basename(abspath))[0])
+        if number:
+            text.frontmatter["title"] = f'{self.title} ({Tx("copy*")} {number})'
+        else:
+            text.frontmatter["title"] = f'{self.title} ({Tx("copy*")})'
+        self.parent.items.insert(self.index + 1, text)
+        text.write()
+        path = text.path
+        self.book.write()
+        self.book.read()
+        get_references(refresh=True)
+        return path
+
+    def delete(self):
+        "Delete this text from the book."
+        self.book.path_lookup.pop(self.path)
+        self.parent.items.remove(self)
+        os.remove(self.abspath)
+        self.book.write()
 
     def search(self, term, ignorecase=True):
         "Find the set of items that contain the term in the content."

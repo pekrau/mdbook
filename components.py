@@ -60,10 +60,14 @@ def header(title, book=None, status=None, menu=None):
 
     # The first cell: icon to home page, and title of book, if any.
     if book:
+        if book is books.get_references():
+            link = A(Strong(Tx("References")), href="/references")
+        else:
+            link = A(Strong(book.title), href=f"/book/{book.bid}")
         cells = [
             Ul(
                 Li(A(Img(src="/mdbook.png", width=32, height=32), href="/")),
-                Li(A(Strong(book.title), href=f"/book/{book.bid}")),
+                Li(link),
             )
         ]
     else:
@@ -102,16 +106,16 @@ def toc(book, items, show_arrows=False):
         if show_arrows:
             arrows = [
                 NotStr("&nbsp;"),
-                A(NotStr("&ShortUpArrow;"), title="backward", cls="plain", href=f"/backward/{book.bid}/{item.path}"),
+                A(NotStr("&ShortUpArrow;"), title=Tx("Backward"), cls="plain", href=f"/backward/{book.bid}/{item.path}"),
                 NotStr("&nbsp;"),
-                A(NotStr("&ShortDownArrow;"), title="forward", cls="plain", href=f"/forward/{book.bid}/{item.path}")
+                A(NotStr("&ShortDownArrow;"), title=Tx("Forward"), cls="plain", href=f"/forward/{book.bid}/{item.path}")
             ]
             if item.parent is not book:
                 arrows.append(NotStr("&nbsp;"))
-                arrows.append(A(NotStr("&ShortLeftArrow;"), title="outof", cls="plain", href=f"/outof/{book.bid}/{item.path}"))
+                arrows.append(A(NotStr("&ShortLeftArrow;"), title=Tx("Out of"), cls="plain", href=f"/outof/{book.bid}/{item.path}"))
             if item.prev_section:
                 arrows.append(NotStr("&nbsp;"))
-                arrows.append(A(NotStr("&ShortRightArrow;"), title="into", cls="plain", href=f"/into/{book.bid}/{item.path}"))
+                arrows.append(A(NotStr("&ShortRightArrow;"), title=Tx("Into"), cls="plain", href=f"/into/{book.bid}/{item.path}"))
         else:
             arrows = []
         parts.append(

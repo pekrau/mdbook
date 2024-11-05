@@ -4,7 +4,7 @@ import functools
 import os.path
 
 SOFTWARE = "mdbook"
-VERSION = (5, 12, 1)
+VERSION = (5, 13, 0)
 __version__ = ".".join([str(n) for n in VERSION])
 
 
@@ -89,12 +89,20 @@ STATUSES = (STARTED, OUTLINE, INCOMPLETE, DRAFT, WRITTEN, REVISED, DONE, PROOFS,
 STATUS_LOOKUP = dict([(s.name, s) for s in STATUSES])
 STATUS_LOOKUP.update(dict([(str(s), s) for s in STATUSES]))
 
-REFERENCE_MAX_AUTHORS = 5
 ARTICLE = "article"
 BOOK = "book"
 LINK = "link"
 REFERENCE_TYPES = (ARTICLE, BOOK, LINK)
 REFERENCE_COLOR = "royalblue"
+
+MAX_COPY_NUMBER = 20
+MAX_DISPLAY_AUTHORS = 4
+
+REFERENCE_LINKS = dict(
+    doi=("DOI", "https://doi.org/{value}"),
+    pmid=("PubMed", "https://pubmed.ncbi.nlm.nih.gov/{value}"),
+    isbn=("ISBN", "https://isbnsearch.org/isbn/{value}"),
+)
 
 BOLD = "bold"
 ITALIC = "italic"
@@ -174,13 +182,6 @@ FOOTNOTES_LOCATIONS = (
     FOOTNOTES_EACH_TEXT,
     FOOTNOTES_EACH_CHAPTER,
     FOOTNOTES_END_OF_BOOK,
-)
-
-MAX_DISPLAY_AUTHORS = 4
-REFERENCE_LINKS = dict(
-    doi=("DOI", "https://doi.org/{value}"),
-    pmid=("PubMed", "https://pubmed.ncbi.nlm.nih.gov/{value}"),
-    isbn=("ISBN", "https://isbnsearch.org/isbn/{value}"),
 )
 
 DOCX_MIMETYPE = (

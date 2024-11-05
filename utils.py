@@ -219,7 +219,7 @@ class Translator:
             self.translation[term[source].capitalize()] = term[target].capitalize()
 
     def __call__(self, term):
-        return self.translation.get(str(term), term)
+        return self.translation.get(str(term), term).rstrip("*")
 
 
 Tx = Translator(constants.TRANSLATIONS_FILEPATH)

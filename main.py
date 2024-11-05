@@ -449,8 +449,9 @@ def post(auth, data: str):
 @rt("/reference/{refid:str}")
 def get(auth, refid: str):
     "Display a reference."
+    references = books.get_references()
     try:
-        ref = books.get_references()[refid]
+        ref = references[refid]
     except KeyError:
         raise Error(f"no such reference '{refid}'", HTTP.NOT_FOUND)
     rows = [
@@ -468,7 +469,7 @@ def get(auth, refid: str):
                 ),
             ),
         ),
-        Tr(Td(Tx("Authors")), Td("; ".join(ref.get("authors") or []))),
+        Tr(Td(Tx("Authors"), valign="top"), Td("; ".join(ref.get("authors") or []))),
     ]
     for key in [
         "title",
@@ -485,9 +486,9 @@ def get(auth, refid: str):
     ]:
         value = ref.get(key)
         if value:
-            rows.append(Tr(Td((Tx(key.replace("_", " ")).title())), Td(value)))
+            rows.append(Tr(Td((Tx(key.replace("_", " ")).title()), valign="top"), Td(value)))
     if ref.get("keywords"):
-        rows.append(Tr(Td(Tx("Keywords")), Td("; ".join(ref["keywords"]))))
+        rows.append(Tr(Td(Tx("Keywords"), valign="top"), Td("; ".join(ref["keywords"]))))
     if ref.get("issn"):
         rows.append(Tr(Td("ISSN"), Td(ref["issn"])))
     if ref.get("isbn"):
@@ -501,6 +502,19 @@ def get(auth, refid: str):
         rows.append(Tr(Td("DOI"), Td(A(ref["doi"], href=url))))
     if ref.get("url"):
         rows.append(Tr(Td("Url"), Td(A(ref["url"], href=ref["url"]))))
+    xrefs = []
+    for book in books.get_books():
+        texts = book.references.get(ref["id"], [])
+        for text in sorted(texts, key=lambda t: t.ordinal):
+            if xrefs:
+                xrefs.append(Br())
+            xrefs.append(
+                A(
+                    f"{book.title}: {text.fulltitle}",
+                    href=f"/book/{book.bid}/{text.path}",
+                )
+            )
+    rows.append(Tr(Td(Tx("Referenced by"), valign="top"), Td(*xrefs)))
 
     menu = [
         A(
@@ -519,7 +533,7 @@ def get(auth, refid: str):
         Title(title),
         Script(src="/clipboard.min.js"),
         Script("new ClipboardJS('.to_clipboard');"),
-        components.header(title=title, menu=menu),
+        components.header(book=references, title=title, menu=menu),
         Main(Table(*rows), Div(NotStr(ref.html)), cls="container"),
         components.footer(ref),
     )
@@ -594,12 +608,12 @@ def post(auth, refid: str):
     "Actually delete the reference."
     references = books.get_references()
     try:
-        ref = references[refid]
+        reference = references[refid]
     except KeyError:
         raise Error(f"no such reference '{refid}'", HTTP.NOT_FOUND)
 
     try:
-        references.delete(item=ref)
+        reference.delete()
     except ValueError as message:
         raise Error(message, HTTP.CONFLICT)
     books.get_references(refresh=True)
@@ -673,12 +687,12 @@ def get(auth, bid: str):
     book.write()  # Updates the 'index.md' file, if necessary.
 
     menu = [
-        A(f'{Tx("Edit")}', href=f"/edit/{bid}"),
+        A(Tx("Edit"), href=f"/edit/{bid}"),
         A(f'{Tx("Create")} {Tx("section")}', href=f"/section/{bid}"),
         A(f'{Tx("Create")} {Tx("text")}', href=f"/text/{bid}"),
-        A(Tx("Index"), href=f"/index/{bid}"),
-        A(Tx("Status list"), href=f"/statuslist/{bid}"),
-        A(Tx("References"), href="/references"),
+        components.index_link(book),
+        components.statuslist_link(book),
+        components.references_link(),
         A(f'{Tx("Download")} {Tx("DOCX file")}', href=f"/docx/{bid}"),
         A(f'{Tx("Download")} {Tx("PDF file")}', href=f"/pdf/{bid}"),
         A(f'{Tx("Download")} {Tx("TGZ file")}', href=f"/tgz/{bid}"),
@@ -687,6 +701,7 @@ def get(auth, bid: str):
     ]
     if "MDBOOK_UPDATE_SITE" in os.environ:
         menu.append(A(f'{Tx("Differences")}', href=f"/differences/{bid}"))
+    menu.append(A(f'{Tx("Copy")}', href=f"/copy/{bid}"))
     menu.append(A(f'{Tx("Delete")}', href=f"/delete/{bid}"))
 
     segments = [components.search_form(f"/search/{bid}")]
@@ -813,6 +828,15 @@ def post(auth, bid: str, form: dict):
     return RedirectResponse(f"/book/{bid}", status_code=HTTP.SEE_OTHER)
 
 
+@rt("/copy/{bid:str}")
+def get(auth, bid: str):
+    "Make a copy of the book."
+    book = books.get_book(bid)
+    new = book.copy(owner=auth)
+
+    return RedirectResponse(f"/book/{new.bid}", status_code=HTTP.SEE_OTHER)
+
+
 @rt("/delete/{bid:str}")
 def get(auth, bid: str):
     "Confirm deleting book."
@@ -842,8 +866,7 @@ def post(auth, bid: str):
     "Actually delete the book, even if it contains items."
     book = books.get_book(bid)
     book.delete(force=True)
-    # Re-read all books, ensuring everything is up to date.
-    books.read_books()
+
     return RedirectResponse("/", status_code=HTTP.SEE_OTHER)
 
 
@@ -870,8 +893,8 @@ def post(auth, bid: str, form: dict):
         result = P()
 
     menu = [
-        A(Tx("Index"), href=f"/index/{bid}"),
-        A(Tx("References"), href="/references"),
+        components.index_link(book),
+        components.references_link(),
     ]
 
     title = f'{Tx("Search in")} {Tx("book")}'
@@ -933,14 +956,10 @@ def get(auth, bid: str, path: str):
             components.toc(book, item.items),
         ]
 
-    menu.append(A(Tx("Index"), href=f"/index/{book.bid}"))
+    menu.append(components.index_link(book))
     menu.append(components.references_link())
-
-    if item.is_text:
-        menu.append(A(f'{Tx("Delete")}', href=f"/delete/{bid}/{path}"))
-    elif item.is_section:
-        if len(item.items) == 0:
-            menu.append(A(f'{Tx("Delete")}', href=f"/delete/{bid}/{path}"))
+    menu.append(A(f'{Tx("Copy")}', href=f"/copy/{bid}/{path}"))
+    menu.append(A(f'{Tx("Delete")}', href=f"/delete/{bid}/{path}"))
 
     return (
         Title(item.title),
@@ -1067,60 +1086,44 @@ def post(auth, bid: str, path: str, form: dict):
 @rt("/forward/{bid:str}/{path:path}")
 def get(auth, bid: str, path: str):
     "Move item forward in its sibling list."
-    book = books.get_book(bid)
-    book[path].forward()
-    book.write()
-    # Refresh the book, ensuring everything is up to date.
-    book.read()
-
+    books.get_book(bid)[path].forward()
     return RedirectResponse(f"/book/{bid}", status_code=HTTP.SEE_OTHER)
 
 
 @rt("/backward/{bid:str}/{path:path}")
 def get(auth, bid: str, path: str):
     "Move item backward in its sibling list."
-    book = books.get_book(bid)
-    book[path].backward()
-    book.write()
-    # Refresh the book, ensuring everything is up to date.
-    book.read()
-
+    books.get_book(bid)[path].backward()
     return RedirectResponse(f"/book/{bid}", status_code=HTTP.SEE_OTHER)
 
 
 @rt("/outof/{bid:str}/{path:path}")
 def get(auth, bid: str, path: str):
     "Move item out of its section."
-    book = books.get_book(bid)
-    book[path].outof()
-    book.write()
-    # Refresh the book, ensuring everything is up to date.
-    book.read()
-
+    books.get_book(bid)[path].outof()
     return RedirectResponse(f"/book/{bid}", status_code=HTTP.SEE_OTHER)
 
 
 @rt("/into/{bid:str}/{path:path}")
 def get(auth, bid: str, path: str):
     "Move item into the nearest preceding section."
-    book = books.get_book(bid)
-    book[path].into()
-    # book.write()
-    # # Refresh the book, ensuring everything is up to date.
-    # book.read()
-
+    book = books.get_book(bid)[path].into()
     return RedirectResponse(f"/book/{bid}", status_code=HTTP.SEE_OTHER)
 
+
+@rt("/copy/{bid:str}/{path:path}")
+def get(auth, bid: str, path: str):
+    "Make a copy of the item (text or section)."
+    path = books.get_book(bid)[path].copy()
+    return RedirectResponse(f"/book/{bid}/{path}", status_code=HTTP.SEE_OTHER)
+    
 
 @rt("/delete/{bid:str}/{path:path}")
 def get(auth, bid: str, path: str):
     "Confirm delete of the text or section; section must be empty."
     book = books.get_book(bid)
     item = book[path]
-    if item.is_section and len(item.items) != 0:
-        raise Error("cannot delete non-empty section", HTTP.CONFLICT)
-
-    if item.content:
+    if len(item.items) != 0 or item.content:
         segments = [P(Strong(Tx("Note: all contents will be lost!")))]
     else:
         segments = []
@@ -1144,12 +1147,7 @@ def post(auth, bid: str, path: str):
     "Delete the text or section; section must be empty."
     book = books.get_book(bid)
     item = book[path]
-    try:
-        book.delete(item=item)
-    except ValueError as message:
-        raise Error(message, HTTP.CONFLICT)
-    # Refresh the book, ensuring everything is up to date.
-    book.read()
+    item.delete(force=True)
 
     return RedirectResponse(f"/book/{bid}", status_code=HTTP.SEE_OTHER)
 
