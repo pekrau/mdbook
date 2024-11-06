@@ -4,7 +4,7 @@ import functools
 import os.path
 
 SOFTWARE = "mdbook"
-VERSION = (5, 13, 2)
+VERSION = (5, 14, 0)
 __version__ = ".".join([str(n) for n in VERSION])
 
 
@@ -92,12 +92,13 @@ STATUS_LOOKUP.update(dict([(str(s), s) for s in STATUSES]))
 ARTICLE = "article"
 BOOK = "book"
 LINK = "link"
-REFERENCE_TYPES = (ARTICLE, BOOK, LINK)
-REFERENCE_COLOR = "royalblue"
 
 MAX_COPY_NUMBER = 20
-MAX_DISPLAY_AUTHORS = 4
 
+MAX_DISPLAY_AUTHORS = 4
+REFERENCES = "references"
+REFERENCE_TYPES = (ARTICLE, BOOK, LINK)
+REFERENCE_COLOR = "royalblue"
 REFERENCE_LINKS = dict(
     doi=("DOI", "https://doi.org/{value}"),
     pmid=("PubMed", "https://pubmed.ncbi.nlm.nih.gov/{value}"),

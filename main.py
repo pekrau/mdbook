@@ -253,7 +253,7 @@ def get(auth):
     menu.append(
         A(
             f'{Tx("Download")} {Tx("references")} {Tx("TGZ file")}',
-            href="/references/tgz",
+            href="/tgz/references",
         )
     )
     menu.append(
@@ -303,23 +303,9 @@ def get(auth):
     )
 
 
-@rt("/references/tgz")
-def get(auth):
-    "Download a gzipped tar file of all references."
-    book = books.get_references()
-    output = book.get_tgzfile()
-    filename = f"mdbook_references_{utils.timestr(safe=True)}.tgz"
-
-    return Response(
-        content=output.getvalue(),
-        media_type=constants.GZIP_MIMETYPE,
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
-
-
 @rt("/references/upload")
 def get(auth):
-    "Upload a gzipped tar file of references; replace any with the same name."
+    "Upload a gzipped tar file of references; replace any reference with the same name."
     title = Tx("Upload references")
     return (
         Title(title),
@@ -340,7 +326,7 @@ def get(auth):
 async def post(auth, tgzfile: UploadFile):
     "Actually add or replace references by contents of the uploaded file."
     utils.unpack_tgzfile(
-        os.path.join(os.environ["MDBOOK_DIR"], "references"),
+        os.path.join(os.environ["MDBOOK_DIR"], constants.REFERENCES),
         await tgzfile.read(),
         references=True,
     )
@@ -531,7 +517,7 @@ def get(auth, refid: str):
         ),
         components.references_link(),
         A(Tx("Edit"), href=f"/reference/edit/{refid}"),
-        A(Tx("Delete"), href=f"/reference/delete/{refid}"),
+        A(Tx("Delete"), href=f"/delete/references/{refid}"), # Yes, plural.
     ]
 
     title = f'{ref["name"]} ({Tx(ref["type"])})'
@@ -581,51 +567,6 @@ def post(auth, refid: str, form: dict):
     books.get_references(refresh=True)
 
     return RedirectResponse(f"/reference/{refid}", status_code=HTTP.SEE_OTHER)
-
-
-@rt("/reference/delete/{refid:str}")
-def get(auth, refid: str):
-    "Confirm delete of the reference."
-    references = books.get_references()
-    try:
-        ref = references[refid]
-    except KeyError:
-        raise Error(f"no such reference '{refid}'", HTTP.NOT_FOUND)
-
-    title = f'{Tx("Delete reference")} {ref["name"]}?'
-    return (
-        Title(title),
-        components.header(title=title),
-        Main(
-            H3(Tx("Delete"), "?"),
-            P(Strong(Tx("Note: all contents will be lost!"))),
-            Form(
-                Button(Tx("Confirm")),
-                action=f"/reference/delete/{refid}",
-                method="post",
-            ),
-            components.cancel_button(f"/reference/{refid}"),
-            cls="container",
-        ),
-    )
-
-
-@rt("/reference/delete/{refid:str}")
-def post(auth, refid: str):
-    "Actually delete the reference."
-    references = books.get_references()
-    try:
-        reference = references[refid]
-    except KeyError:
-        raise Error(f"no such reference '{refid}'", HTTP.NOT_FOUND)
-
-    try:
-        reference.delete()
-    except ValueError as message:
-        raise Error(message, HTTP.CONFLICT)
-    books.get_references(refresh=True)
-
-    return RedirectResponse(f"/references", status_code=HTTP.SEE_OTHER)
 
 
 @rt("/book")
@@ -690,6 +631,9 @@ async def post(auth, title: str, tgzfile: UploadFile):
 @rt("/book/{bid:str}")
 def get(auth, bid: str):
     "Display book; contents list of sections and texts."
+    if bid == constants.REFERENCES:
+        return RedirectResponse("/references", status_code=HTTP.SEE_OTHER)
+
     book = books.get_book(bid)
     book.write()  # Updates the 'index.md' file, if necessary.
 
@@ -1128,14 +1072,21 @@ def get(auth, bid: str, path: str):
 @rt("/delete/{bid:str}/{path:path}")
 def get(auth, bid: str, path: str):
     "Confirm delete of the text or section; section must be empty."
-    book = books.get_book(bid)
+    if bid == constants.REFERENCES:
+        book = books.get_references()
+    else:
+        book = books.get_book(bid)
     item = book[path]
     if len(item.items) != 0 or item.content:
         segments = [P(Strong(Tx("Note: all contents will be lost!")))]
     else:
         segments = []
 
-    title = f"{Tx('Delete')} {Tx(item.type)} '{item.fulltitle}'?"
+    if bid == constants.REFERENCES:
+        title = f'{Tx("Delete reference")} {item["name"]}?'
+    else:
+        title = f"{Tx('Delete')} {Tx(item.type)} '{item.fulltitle}'?"
+
     return (
         Title(title),
         components.header(title=title, book=book, status=item.status),
@@ -1151,12 +1102,18 @@ def get(auth, bid: str, path: str):
 
 @rt("/delete/{bid:str}/{path:path}")
 def post(auth, bid: str, path: str):
-    "Delete the text or section; section must be empty."
-    book = books.get_book(bid)
+    "Delete the text or section."
+    if bid == constants.REFERENCES:
+        book = books.get_references()
+    else:
+        book = books.get_book(bid)
     item = book[path]
     item.delete(force=True)
 
-    return RedirectResponse(f"/book/{bid}", status_code=HTTP.SEE_OTHER)
+    if bid == constants.REFERENCES:
+        return RedirectResponse("/references", status_code=HTTP.SEE_OTHER)
+    else:
+        return RedirectResponse(f"/book/{bid}", status_code=HTTP.SEE_OTHER)
 
 
 @rt("/to_section/{bid:str}/{path:path}")
@@ -1661,7 +1618,10 @@ def post(auth, bid: str, form: dict):
 @rt("/tgz/{bid:str}")
 def get(auth, bid: str):
     "Download a gzipped tar file of the book."
-    book = books.get_book(bid)
+    if bid == constants.REFERENCES:
+        book = books.get_references()
+    else:
+        book = books.get_book(bid)
     filename = f"mdbook_{book.bid}_{utils.timestr(safe=True)}.tgz"
     output = book.get_tgzfile()
 
@@ -1675,7 +1635,7 @@ def get(auth, bid: str):
 @rt("/state/{bid:str}")
 def get(auth, bid: str):
     "Return JSON for complete state of this book."
-    if bid == "references":
+    if bid == constants.REFERENCES:
         book = books.get_references()
     else:
         book = books.get_book(bid)
@@ -1914,7 +1874,7 @@ def get(auth, bid: str):
         remote = utils.get_state_remote(bid)
     except ValueError as message:
         raise Error(message, HTTP.INTERNAL_SERVER_ERROR)
-    if bid == "references":
+    if bid == constants.REFERENCES:
         book = books.get_references()
         here = book.state
     else:
@@ -2136,15 +2096,13 @@ def post(auth, bid: str):
     "Update book at this site by downloading it from the remote site."
     if not bid:
         raise Error("no book id provided", HTTP.BAD_REQUEST)
-    url = os.environ["MDBOOK_UPDATE_SITE"].rstrip("/")
-    if bid == "references":
-        url += "/references/tgz"
-        dirpath = os.path.join(os.environ["MDBOOK_DIR"], "references")
-    else:
-        url += f"/tgz/{bid}"
-        dirpath = os.path.join(os.environ["MDBOOK_DIR"], bid)
+
+    url = f'{os.environ["MDBOOK_UPDATE_SITE"].rstrip("/")}/tgz/{bid}'
+    dirpath = os.path.join(os.environ["MDBOOK_DIR"], bid)
     headers = dict(apikey=os.environ["MDBOOK_UPDATE_APIKEY"])
+
     response = requests.get(url, headers=headers)
+
     if response.status_code != HTTP.OK:
         raise Error(f"remote error: {response.content}", HTTP.BAD_REQUEST)
     if response.headers["Content-Type"] != constants.GZIP_MIMETYPE:
@@ -2152,19 +2110,21 @@ def post(auth, bid: str):
     content = response.content
     if not content:
         raise Error("empty TGZ file from remote", HTTP.BAD_REQUEST)
+
     # Temporarily save old contents.
     old_dirpath = os.path.join(os.environ["MDBOOK_DIR"], "_old")
     os.rename(dirpath, old_dirpath)
     try:
-        utils.unpack_tgzfile(dirpath, content, references=bid == "references")
-        # Remove old contents after successful unpacking of new.
-        shutil.rmtree(old_dirpath)
+        utils.unpack_tgzfile(dirpath, content, references=bid == constants.REFERENCES)
     except ValueError as message:
         # Reinstate old contents.
         os.rename(old_dirpath, dirpath)
         raise Error(f"error reading TGZ file from remote: {message}", HTTP.BAD_REQUEST)
+    else:
+        # Remove old contents after new was successful unpacked.
+        shutil.rmtree(old_dirpath)
 
-    if bid == "references":
+    if bid == constants.REFERENCES:
         books.get_references(refresh=True)
         return RedirectResponse("/references", status_code=HTTP.SEE_OTHER)
     else:
@@ -2199,9 +2159,11 @@ async def post(auth, bid: str, tgzfile: UploadFile = None):
         raise Error("book bid may not be empty", HTTP.BAD_REQUEST)
     if bid.startswith("_"):
         raise Error("book bid may not start with an underscore '_'", HTTP.BAD_REQUEST)
+
     content = await tgzfile.read()
     if not content:
         raise Error("no content in TGZ file", HTTP.BAD_REQUEST)
+
     dirpath = os.path.join(os.environ["MDBOOK_DIR"], bid)
     if os.path.exists(dirpath):
         # Temporarily save old contents.
@@ -2217,14 +2179,15 @@ async def post(auth, bid: str, tgzfile: UploadFile = None):
         if old_dirpath:
             os.rename(old_dirpath, dirpath)
         raise Error(f"error reading TGZ file: {message}", HTTP.BAD_REQUEST)
-    if bid == "references":
+
+    if bid == constants.REFERENCES:
         books.get_references(refresh=True)
     else:
         books.get_book(bid, refresh=True)
     return "success"
 
 
-# Read in all books into memory.
+# Read in all books and references into memory.
 books.read_books()
 
 serve()

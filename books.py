@@ -35,14 +35,14 @@ def read_books():
         dirpath = os.path.join(os.environ["MDBOOK_DIR"], bid)
         if not os.path.isdir(dirpath):
             continue
-        if bid == "references":
+        if bid == constants.REFERENCES:
             continue
         try:
             book = Book(dirpath)
             _books[book.bid] = book
         except FileNotFoundError:
             pass
-    dirpath = os.path.join(os.environ["MDBOOK_DIR"], "references")
+    dirpath = os.path.join(os.environ["MDBOOK_DIR"], constants.REFERENCES)
     if not os.path.exists(dirpath):
         os.mkdir(dirpath)
     _references = Book(dirpath)
@@ -80,7 +80,7 @@ def get_references(refresh=False):
 def get_state():
     "Return JSON for the overall state of this site."
     books = {}
-    for book in get_books():
+    for book in get_books() + [get_references()]:
         books[book.bid] = dict(
             title=book.title,
             modified=utils.timestr(
@@ -1112,6 +1112,11 @@ class Text(Item):
         return "text"
 
     @property
+    def items(self):
+        "Return list of sub-items. Self is *not* included."
+        return []
+
+    @property
     def all_items(self):
         "Return list of all sub-items. Self is *not* included."
         return []
@@ -1227,7 +1232,7 @@ class Text(Item):
         get_references(refresh=True)
         return path
 
-    def delete(self):
+    def delete(self, force=False):
         "Delete this text from the book."
         self.book.path_lookup.pop(self.path)
         self.parent.items.remove(self)
