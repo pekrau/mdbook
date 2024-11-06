@@ -526,7 +526,10 @@ def get(auth, refid: str):
         Script(src="/clipboard.min.js"),
         Script("new ClipboardJS('.to_clipboard');"),
         components.header(book=references, title=title, menu=menu),
-        Main(Table(*rows), Div(NotStr(ref.html)), cls="container"),
+        Main(Table(*rows), 
+             Div(NotStr(ref.html)),
+             components.edit_button(f"/reference/edit/{refid}", right=True),
+             cls="container"),
         components.footer(ref),
     )
 
@@ -673,7 +676,7 @@ def get(auth, bid: str):
         Main(
             *segments,
             NotStr(book.html),
-            Div(components.edit_button(f"/edit/{bid}"), style="text-align: right;"),
+            components.edit_button(f"/edit/{bid}", right=True),
             cls="container",
         ),
         components.footer(book),
@@ -918,10 +921,7 @@ def get(auth, bid: str, path: str):
         Main(
             *segments,
             NotStr(item.html),
-            Div(
-                components.edit_button(f"/edit/{bid}/{path}"),
-                style="text-align: right;",
-            ),
+            components.edit_button(f"/edit/{bid}/{path}", right=True),
             cls="container",
         ),
         components.footer(item),

@@ -28,8 +28,11 @@ def statuslist_link(book):
     return (A(Tx("Status list"), href=f"/statuslist/{book.bid}"),)
 
 
-def edit_button(href):
-    return A(Tx("Edit"), role="button", href=href)
+def edit_button(href, right=False):
+    result = A(Tx("Edit"), role="button", href=href)
+    if right:
+        result = Div(result, style = "text-align: right;")
+    return result
 
 
 def cancel_button(href):
