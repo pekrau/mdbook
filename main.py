@@ -117,7 +117,7 @@ def get(auth):
     title = Tx("Books")
     return (
         Title(title),
-        components.header(title=title, menu=menu),
+        components.header(title, menu=menu),
         Main(Table(Thead(*hrows), Tbody(*rows)), cls="container"),
     )
 
@@ -143,12 +143,12 @@ def get(auth):
                 cls="to_clipboard",
                 data_clipboard_text=f'[@{ref["name"]}]',
             ),
-            NotStr("&nbsp;"),
+            components.blank(0.2),
             A(
                 Strong(ref["name"], style=f"color: {constants.REFERENCE_COLOR};"),
                 href=f'/reference/{ref["id"]}',
             ),
-            NotStr("&nbsp;&nbsp;"),
+            components.blank(0.4),
         ]
         if ref.get("authors"):
             authors = [utils.short_name(a) for a in ref["authors"]]
@@ -177,12 +177,12 @@ def get(auth):
             parts.append(Br())
             if ref.get("publisher"):
                 parts.append(f'{ref["publisher"]}')
-            # If 'edition_published', then it is the latest, while 'year' is original.
+            # Edition published later than original publication.
             if ref.get("edition_published"):
                 parts.append(f' {ref["edition_published"]}')
                 if ref.get("year"):
                     parts.append(f' [{ref["year"]}]')
-            # This is the normal case; 'year' is the publicaton year.
+            # Standard case; publication and edition same year.
             elif ref.get("year"):
                 parts.append(f' {ref["year"]}')
             if ref.get("isbn"):
@@ -250,6 +250,7 @@ def get(auth):
         ]
     )
     menu.append(A(f'{Tx("Add reference")}: BibTex', href="/reference/bibtex"))
+    menu.append(components.statuslist_link(references)),
     menu.append(
         A(
             f'{Tx("Download")} {Tx("references")} {Tx("TGZ file")}',
@@ -269,8 +270,8 @@ def get(auth):
     title = f'{Tx("References")} ({len(references.items)})'
     return (
         Title(title),
-        components.header(title=title, menu=menu),
-        Main(*items, cls="container"),
+        components.header(title, menu=menu),
+        Main(components.search_form(f"/search/references"), *items, cls="container"),
     )
 
 
@@ -298,7 +299,7 @@ def get(auth):
     title = f'{Tx("Keywords")}, {Tx("references")}'
     return (
         Title(title),
-        components.header(title=title, menu=menu),
+        components.header(title, menu=menu),
         Main(Ul(*items), cls="container"),
     )
 
@@ -309,7 +310,7 @@ def get(auth):
     title = Tx("Upload references")
     return (
         Title(title),
-        components.header(title=title),
+        components.header(title),
         Main(
             Form(
                 Input(type="file", name="tgzfile"),
@@ -341,7 +342,7 @@ def get(auth, type: str):
     title = f'{Tx("Add reference")}: {Tx(type)}'
     return (
         Title(title),
-        components.header(title=title),
+        components.header(title),
         Main(
             Form(
                 *components.get_reference_fields(type=type),
@@ -369,7 +370,7 @@ def get(auth):
     title = f'{Tx("Add reference")}: BibTex'
     return (
         Title(title),
-        components.header(title=title),
+        components.header(title),
         Main(
             Form(
                 Fieldset(Legend(Tx("BibTex data")), Textarea(name="data", rows="20")),
@@ -426,7 +427,7 @@ def post(auth, data: str):
     title = Tx("Added reference(s)")
     return (
         Title(title),
-        components.header(book=references, title=title),
+        components.header(title, book=references),
         Main(
             Ul(*[Li(A(r["name"], href=f'/reference/{r["id"]}')) for r in result]),
             cls="container",
@@ -437,6 +438,9 @@ def post(auth, data: str):
 @rt("/reference/{refid:str}")
 def get(auth, refid: str):
     "Display a reference."
+    if not refid:
+        return RedirectResponse(f"/references", status_code=HTTP.SEE_OTHER)
+
     references = books.get_references()
     try:
         ref = references[refid]
@@ -447,7 +451,7 @@ def get(auth, refid: str):
             Td(Tx("Reference")),
             Td(
                 f'{ref["name"]}',
-                NotStr("&nbsp;"),
+                components.blank(0.2),
                 Img(
                     src="/clipboard.svg",
                     title=Tx("Reference to clipboard"),
@@ -517,6 +521,7 @@ def get(auth, refid: str):
         ),
         components.references_link(),
         A(Tx("Edit"), href=f"/reference/edit/{refid}"),
+        A(Tx("Append"), href=f"/append/references/{refid}"),
         A(Tx("Delete"), href=f"/delete/references/{refid}"), # Yes, plural.
     ]
 
@@ -525,10 +530,14 @@ def get(auth, refid: str):
         Title(title),
         Script(src="/clipboard.min.js"),
         Script("new ClipboardJS('.to_clipboard');"),
-        components.header(book=references, title=title, menu=menu),
+        components.header(title, book=references, status=ref.status, menu=menu),
         Main(Table(*rows), 
              Div(NotStr(ref.html)),
-             components.edit_button(f"/reference/edit/{refid}", right=True),
+             Div(
+                 Div(A(Tx("Edit"), role="button", href=f"/reference/edit/{refid}")),
+                 Div(A(Tx("Append"), role="button", href=f"/append/references/{refid}")),
+                 cls="grid"
+             ),
              cls="container"),
         components.footer(ref),
     )
@@ -537,18 +546,16 @@ def get(auth, refid: str):
 @rt("/reference/edit/{refid:str}")
 def get(auth, refid: str):
     "Edit a reference."
-    try:
-        reference = books.get_references()[refid]
-    except KeyError:
-        raise Error(f"no such reference '{refid}'", HTTP.NOT_FOUND)
+    reference = books.get_references()[refid]
 
-    title = f'{Tx("Edit reference")} ({Tx(reference["type"])})'
+    title = f"{Tx('Edit')} '{reference['name']}' ({Tx(reference['type'])})"
     return (
         Title(title),
-        components.header(title=title),
+        components.header(title),
         Main(
             Form(
                 *components.get_reference_fields(ref=reference, type=reference["type"]),
+                components.get_status_field(reference),
                 Button(Tx("Save")),
                 action=f"/reference/edit/{refid}",
                 method="post",
@@ -562,10 +569,11 @@ def get(auth, refid: str):
 @rt("/reference/edit/{refid:str}")
 def post(auth, refid: str, form: dict):
     "Actually edit the reference."
+    reference = books.get_references()[refid]
     try:
-        reference = books.get_references()[refid]
+        reference.status = form.pop("status")
     except KeyError:
-        raise Error(f"no such reference '{refid}'", HTTP.NOT_FOUND)
+        pass
     components.get_reference_from_form(form, ref=reference)
     books.get_references(refresh=True)
 
@@ -578,7 +586,7 @@ def get(auth):
     title = Tx("Create or upload book")
     return (
         Title(title),
-        components.header(title=title),
+        components.header(title),
         Main(
             Form(
                 Fieldset(
@@ -642,6 +650,7 @@ def get(auth, bid: str):
 
     menu = [
         A(Tx("Edit"), href=f"/edit/{bid}"),
+        A(Tx("Append"), href=f"/append/{bid}/"),
         A(f'{Tx("Create")} {Tx("section")}', href=f"/section/{bid}"),
         A(f'{Tx("Create")} {Tx("text")}', href=f"/text/{bid}"),
         components.index_link(book),
@@ -672,11 +681,15 @@ def get(auth, bid: str):
     title = Tx("Book contents")
     return (
         Title(title),
-        components.header(title=title, book=book, menu=menu, status=book.status),
+        components.header(title, book=book, menu=menu, status=book.status),
         Main(
             *segments,
             NotStr(book.html),
-            components.edit_button(f"/edit/{bid}", right=True),
+            Div(
+                Div(A(Tx("Edit"), role="button", href=f"/edit/{bid}")),
+                Div(A(Tx("Append"), role="button", href=f"/append/{bid}/")),
+                cls="grid",
+            ),
             cls="container",
         ),
         components.footer(book),
@@ -705,7 +718,7 @@ def get(auth, bid: str):
         Fieldset(
             Legend(Tx("Authors")),
             Textarea(
-                "\n".join(book.frontmatter.get("authors", [])), name="authors", rows="3"
+                "\n".join(book.frontmatter.get("authors", [])), name="authors", rows="10"
             ),
         ),
     ]
@@ -748,7 +761,7 @@ def get(auth, bid: str):
     title = f'{Tx("Edit")} {Tx("book")}'
     return (
         Title(title),
-        components.header(title=title, book=book, menu=menu, status=book.status),
+        components.header(title, book=book, menu=menu, status=book.status),
         Main(
             Form(*fields, Button(Tx("Save")), action=f"/edit/{bid}", method="post"),
             components.cancel_button(f"/book/{bid}"),
@@ -775,8 +788,9 @@ def post(auth, bid: str, form: dict):
         value = form.get("subtitle", "").strip()
         if not value:
             book.frontmatter.pop(key, None)
-    book.write(content=form.get("content"), force=True)
+
     # Refresh the book, ensuring everything is up to date.
+    book.write(content=form.get("content"), force=True)
     book.read()
 
     return RedirectResponse(f"/book/{bid}", status_code=HTTP.SEE_OTHER)
@@ -804,7 +818,7 @@ def get(auth, bid: str):
     title = f"{Tx('Delete book')} '{book.title}'?"
     return (
         Title(title),
-        components.header(title=title, book=book, status=book.status),
+        components.header(title, book=book, status=book.status),
         Main(
             H3(Tx("Delete"), "?"),
             *segments,
@@ -827,7 +841,10 @@ def post(auth, bid: str):
 @rt("/search/{bid:str}")
 def post(auth, bid: str, form: dict):
     "Actually search the book for a given term."
-    book = books.get_book(bid)
+    if bid == constants.REFERENCES:
+        book = books.get_references()
+    else:
+        book = books.get_book(bid)
     term = form.get("term")
     if term:
         items = [
@@ -851,10 +868,10 @@ def post(auth, bid: str, form: dict):
         components.references_link(),
     ]
 
-    title = f'{Tx("Search in")} {Tx("book")}'
+    title = f'{Tx("Search")} {Tx("book")}'
     return (
         Title(title),
-        components.header(title=title, book=book, status=book.status, menu=menu),
+        components.header(title, book=book, status=book.status, menu=menu),
         Main(
             components.search_form(f"/search/{bid}", term=term),
             result,
@@ -866,10 +883,13 @@ def post(auth, bid: str, form: dict):
 @rt("/book/{bid:str}/{path:path}")
 def get(auth, bid: str, path: str):
     "View of book text or section contents."
-    book = books.get_book(bid)
+    if bid == constants.REFERENCES:
+        return RedirectResponse(f"/reference/{path}", status_code=HTTP.SEE_OTHER)
 
     if not path:
         return RedirectResponse(f"/book/{bid}", status_code=HTTP.SEE_OTHER)
+
+    book = books.get_book(bid)
     item = book[path]
 
     menu = []
@@ -887,6 +907,7 @@ def get(auth, bid: str, path: str):
         menu.append(A(NotStr(f"&ShortRightArrow; {item.next.title}"), href=url))
 
     menu.append(A(Tx("Edit"), href=f"/edit/{bid}/{path}"))
+    menu.append(A(Tx("Append"), href=f"/append/{bid}/{path}"))
 
     if item.is_text:
         menu.append(A(Tx("Convert to section"), href=f"/to_section/{bid}/{path}"))
@@ -917,11 +938,15 @@ def get(auth, bid: str, path: str):
 
     return (
         Title(item.title),
-        components.header(title=item.title, book=book, menu=menu, status=item.status),
+        components.header(item.title, book=book, menu=menu, status=item.status),
         Main(
             *segments,
             NotStr(item.html),
-            components.edit_button(f"/edit/{bid}/{path}", right=True),
+            Div(
+                Div(A(Tx("Edit"), role="button", href=f"/edit/{bid}/{path}")),
+                Div(A(Tx("Append"), role="button", href=f"/append/{bid}/{path}")),
+                cls="grid",
+            ),
             cls="container",
         ),
         components.footer(item),
@@ -940,20 +965,12 @@ def get(auth, bid: str, path: str):
     )
     if item.is_text:
         item.read()
-        status_options = []
-        for status in constants.STATUSES:
-            if item.status == status:
-                status_options.append(
-                    Option(Tx(str(status)), selected=True, value=repr(status))
-                )
-            else:
-                status_options.append(Option(Tx(str(status)), value=repr(status)))
         fields = [
             Div(
                 title_field,
                 Fieldset(
                     Legend(Tx("Status")),
-                    Select(*status_options, name="status", required=True),
+                    components.get_status_field(item),
                 ),
                 cls="grid",
             )
@@ -963,14 +980,14 @@ def get(auth, bid: str, path: str):
     fields.append(
         Fieldset(
             Legend(Tx("Text")),
-            Textarea(NotStr(item.content), name="content", rows="30"),
+            Textarea(NotStr(item.content), name="content", rows="20"),
         )
     )
 
-    title = f"{Tx('Edit')} {item.title}"
+    title = f"{Tx('Edit')} '{item.title}'"
     return (
         Title(title),
-        components.header(title=title, book=book, status=item.status),
+        components.header(title, book=book, status=item.status),
         Main(
             Form(
                 *fields, Button(Tx("Save")), action=f"/edit/{bid}/{path}", method="post"
@@ -992,11 +1009,70 @@ def post(auth, bid: str, path: str, title: str, content: str, status: str = None
         if status is not None:
             item.status = status
     item.write(content=content)
-    book.write()
+
     # Refresh the book, ensuring everything is up to date.
+    book.write()
     book.read()
 
     return RedirectResponse(f"/book/{bid}/{item.path}", status_code=HTTP.SEE_OTHER)
+
+
+@rt("/append/{bid:str}/{path:path}")
+def get(auth, bid: str, path: str):
+    "Append to the content of an item."
+    if not path:
+        raise Error("no path given")
+
+    if bid == constants.REFERENCES:
+        book = books.get_references()
+    else:
+        book = books.get_book(bid)
+    item = book[path]
+
+    title = f'{Tx("Append")} {item.title}'
+    return (
+        Title(title),
+        components.header(title, book=book),
+        Main(
+            Form(
+                Textarea(name="content", rows="20", autofocus=True),
+                Button(Tx("Append")),
+                action=f"/append/{bid}/{path}",
+                method="post",
+            ),
+            components.cancel_button(f"/book/{bid}/{path}"), # This works for all.
+            cls="container",
+        ),
+    )
+
+
+@rt("/append/{bid:str}/{path:path}")
+def post(auth, bid: str, path: str, content: str):
+    "Actually append to the content of an item."
+    if not path:
+        raise Error("no path given")
+
+    if bid == constants.REFERENCES:
+        book = books.get_references()
+    else:
+        book = books.get_book(bid)
+    item = book[path]
+
+    # Slot in appended content before footnotes, if any.
+    lines = item.content.split("\n")
+    for pos, line in enumerate(lines):
+        if line.startswith("[^"):
+            lines.insert(pos - 1, content + "\n")
+            break
+    else:
+        lines.append(content)
+    item.write(content="\n".join(lines))
+
+    # Refresh the book, ensuring everything is up to date.
+    book.write()
+    book.read()
+
+    return RedirectResponse(f"/append/{bid}/{path}", status_code=HTTP.SEE_OTHER)
 
 
 @rt("/search/{bid:str}/{path:path}")
@@ -1022,10 +1098,10 @@ def post(auth, bid: str, path: str, form: dict):
     else:
         result = P()
 
-    title = f"{Tx('Search in')} '{item.fulltitle}'"
+    title = f"{Tx('Search')} '{item.fulltitle}'"
     return (
         Title(title),
-        components.header(title=title, book=book, status=item.status),
+        components.header(title, book=book, status=item.status),
         Main(
             components.search_form(f"/search/{bid}/{path}", term=term),
             result,
@@ -1083,13 +1159,13 @@ def get(auth, bid: str, path: str):
         segments = []
 
     if bid == constants.REFERENCES:
-        title = f'{Tx("Delete reference")} {item["name"]}?'
+        title = f"{Tx('Delete')} {Tx('reference')} '{item['name']}'?"
     else:
         title = f"{Tx('Delete')} {Tx(item.type)} '{item.fulltitle}'?"
 
     return (
         Title(title),
-        components.header(title=title, book=book, status=item.status),
+        components.header(title, book=book, status=item.status),
         Main(
             H3(Tx("Delete"), "?"),
             *segments,
@@ -1126,7 +1202,7 @@ def get(auth, bid: str, path: str):
     title = f"{Tx('Convert to section')}: '{text.fulltitle}'"
     return (
         Title(title),
-        components.header(title=title, book=book, status=text.status),
+        components.header(title, book=book, status=text.status),
         Main(
             Form(
                 Button(Tx("Convert")), action=f"/to_section/{bid}/{path}", method="post"
@@ -1144,8 +1220,9 @@ def post(auth, bid: str, path: str):
     text = book[path]
     assert text.is_text
     section = text.to_section()
-    book.write()
+
     # Refresh the book, ensuring everything is up to date.
+    book.write()
     book.read()
 
     return RedirectResponse(f"/book/{bid}/{section.path}", status_code=HTTP.SEE_OTHER)
@@ -1164,7 +1241,7 @@ def get(auth, bid: str, path: str):
 
     return (
         Title(title),
-        components.header(title=title, book=book),
+        components.header(title, book=book),
         Main(
             Form(
                 Fieldset(
@@ -1191,8 +1268,9 @@ def post(auth, bid: str, path: str, title: str = None):
         parent = book[path]
         assert parent.is_section
     new = book.create_text(title, parent=parent)
-    book.write()
+
     # Refresh the book, ensuring everything is up to date.
+    book.write()
     book.read()
 
     return RedirectResponse(f"/edit/{bid}/{new.path}", status_code=HTTP.SEE_OTHER)
@@ -1211,7 +1289,7 @@ def get(auth, bid: str, path: str):
 
     return (
         Title(title),
-        components.header(title=title, book=book),
+        components.header(title, book=book),
         Main(
             Form(
                 Fieldset(
@@ -1237,8 +1315,9 @@ def post(auth, bid: str, path: str, title: str = None):
         parent = book[path]
         assert parent.is_section
     new = book.create_section(title, parent=parent)
-    book.write()
+
     # Refresh the book, ensuring everything is up to date.
+    book.write()
     book.read()
 
     return RedirectResponse(f"/edit/{bid}/{new.path}", status_code=HTTP.SEE_OTHER)
@@ -1264,6 +1343,7 @@ def get(auth, bid: str):
 
     menu = [
         A(f'{Tx("Edit")}', href=f"/edit/{bid}"),
+        A(f'{Tx("Append")}', href=f"/append/{bid}"),
         A(f'{Tx("Download")} {Tx("DOCX file")}', href=f"/docx/{bid}"),
         A(f'{Tx("Download")} {Tx("PDF file")}', href=f"/pdf/{bid}"),
         A(f'{Tx("Download")} {Tx("TGZ file")}', href=f"/tgz/{bid}"),
@@ -1272,7 +1352,7 @@ def get(auth, bid: str):
     title = Tx("Information")
     return (
         Title(title),
-        components.header(title=title, book=book, menu=menu, status=book.status),
+        components.header(title, book=book, menu=menu, status=book.status),
         Main(*segments, cls="container"),
     )
 
@@ -1293,7 +1373,7 @@ def get(auth, bid: str):
     title = Tx("Index")
     return (
         Title(title),
-        components.header(book=book, title=title),
+        components.header(title, book=book),
         Main(Ul(*items), cls="container"),
     )
 
@@ -1301,7 +1381,10 @@ def get(auth, bid: str):
 @rt("/statuslist/{bid:str}")
 def get(auth, bid: str):
     "List each status and texts of the book in it."
-    book = books.get_book(bid)
+    if bid == constants.REFERENCES:
+        book = books.get_references()
+    else:
+        book = books.get_book(bid)
     rows = [Tr(Th(Tx("Status"), Th(Tx("Texts"))))]
     for status in constants.STATUSES:
         texts = []
@@ -1310,12 +1393,15 @@ def get(auth, bid: str):
                 if texts:
                     texts.append(Br())
                 texts.append(A(t.heading, href=f"/book/{bid}/{t.path}"))
-        rows.append(Tr(Td(Tx(str(status)), valign="top"), Td(*texts)))
+        rows.append(Tr(Td(components.blank(0.5, f"background-color: {status.color};"),
+                          components.blank(0.2),
+                          Tx(str(status)), valign="top"),
+                       Td(*texts)))
 
     title = Tx("Status list")
     return (
         Title(title),
-        components.header(title=title, book=book, status=book.status),
+        components.header(title, book=book, status=book.status),
         Main(Table(*rows), cls="container"),
     )
 
@@ -1437,7 +1523,7 @@ def get_docx(bid, path=""):
     title = f'{Tx("Download")} {Tx("DOCX file")}: {title}'
     return (
         Title(title),
-        components.header(title=title, book=book, status=status),
+        components.header(title, book=book, status=status),
         Main(
             Form(*fields, action=f"/docx/{bid}", method="post"),
             components.cancel_button(f"/book/{bid}/{path}"),
@@ -1578,7 +1664,7 @@ def pdf(auth, bid: str):
     title = f'{Tx("Download")} {Tx("PDF file")}'
     return (
         Title(title),
-        components.header(title=title, book=book, status=book.status),
+        components.header(title, book=book, status=book.status),
         Main(
             Form(
                 *fields,
@@ -1655,7 +1741,7 @@ def get(auth):
     title = Tx("System")
     return (
         Title(title),
-        components.header(title=title),
+        components.header(title),
         Main(
             Table(
                 Tr(Td(Tx("User")), Td(auth, " ", A("logout", href="/logout"))),
@@ -1847,7 +1933,7 @@ def get(auth):
     title = Tx("Differences")
     return (
         Title(title),
-        components.header(title=title),
+        components.header(title),
         Main(
             Table(
                 Thead(
@@ -1935,7 +2021,7 @@ def get(auth, bid: str):
 
         return (
             Title(title),
-            components.header(title=title, book=book),
+            components.header(title, book=book),
             Main(*segments, cls="container"),
         )
 
@@ -1968,7 +2054,7 @@ def get(auth, bid: str):
     title = f"{Tx('Differences in')} {Tx('book')} '{book.title}'"
     return (
         Title(title),
-        components.header(title=title, book=book),
+        components.header(title, book=book),
         Main(
             Table(
                 Thead(

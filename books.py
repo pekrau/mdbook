@@ -187,7 +187,10 @@ class Book:
 
     def __getitem__(self, path):
         "Return the item (section or text) given its URL path."
-        return self.path_lookup[path]
+        try:
+            return self.path_lookup[path]
+        except KeyError:
+            raise Error(f"no such text '{path}'", HTTP.NOT_FOUND)
 
     def read(self):
         """ "Read the book from file.
@@ -584,7 +587,6 @@ class Book:
             item.check_integrity()
         for text in self.all_texts:
             assert isinstance(text, Text), (self, text)
-        # XXX Check that no extra files/dirs exist?
 
 
 class Item:

@@ -2,11 +2,11 @@
 
 Web display of a book written in Markdown.
 
-- Contents partitionen into sections and texts.
+- Contents hierarchically organized into sections and texts.
 - Indexing of terms.
 - Reference handling.
 - Footnotes.
-- Write contents to DOCX or PDF file.
+- Export contents to DOCX or PDF file.
 
 ## Installation notes
 
@@ -18,6 +18,10 @@ Environment variables:
 - MDBOOK_DEVELOPMENT: When defined, puts app into development mode. Optional.
 - MDBOOK_APIKEY: When defined, allows using a http request header entry
   'mdbook_apikey' for access. Optional.
+
+## Software
+
+This code has been lovingly hand-crafted. No AI tools were used in its development.
 
 Written in [Python](https://www.python.org/) using:
 

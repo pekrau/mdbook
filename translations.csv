@@ -66,8 +66,6 @@ text heading,textens titel
 none,ingen
 add reference,lägg till referens
 added reference(s),lade till referens(er)
-edit reference,redigera referens
-delete reference,radera referens
 status list,statuslista
 section,sektion
 text,text
@@ -121,7 +119,6 @@ BibTex data,BibTex data
 delete book,radera bok
 note: all contents will be lost!,notera: allt innehåll kommer att försvinna!
 search,sök
-search in,sök i
 term,term
 no result,inget resultat
 menu,meny
@@ -132,3 +129,4 @@ copy*,kopia
 forward,framåt
 backward,bakåt
 referenced by,refererad av
+append,lägg till

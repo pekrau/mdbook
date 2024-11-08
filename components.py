@@ -12,6 +12,16 @@ import utils
 from utils import Tx, Error
 
 
+def blank(width, style=None):
+    if isinstance(width, (int, float)):
+        width = str(width) + "em"
+    if style:
+        style += f" padding: 0 {width};"
+    else:
+        style = f"padding: 0 {width};"
+    return Span(NotStr("&nbsp;"), style=style)
+
+
 def references_link():
     return A(Tx("References"), href="/references")
 
@@ -26,13 +36,6 @@ def information_link(book):
 
 def statuslist_link(book):
     return (A(Tx("Status list"), href=f"/statuslist/{book.bid}"),)
-
-
-def edit_button(href, right=False):
-    result = A(Tx("Edit"), role="button", href=href)
-    if right:
-        result = Div(result, style = "text-align: right;")
-    return result
 
 
 def cancel_button(href):
@@ -110,14 +113,14 @@ def toc(book, items, show_arrows=False):
     for item in items:
         if show_arrows:
             arrows = [
-                NotStr("&nbsp;"),
+                blank(0),
                 A(
                     NotStr("&ShortUpArrow;"),
                     title=Tx("Backward"),
                     cls="plain",
                     href=f"/backward/{book.bid}/{item.path}",
                 ),
-                NotStr("&nbsp;"),
+                blank(0),
                 A(
                     NotStr("&ShortDownArrow;"),
                     title=Tx("Forward"),
@@ -126,7 +129,7 @@ def toc(book, items, show_arrows=False):
                 ),
             ]
             if item.parent is not book:
-                arrows.append(NotStr("&nbsp;"))
+                arrows.append(blank(0))
                 arrows.append(
                     A(
                         NotStr("&ShortLeftArrow;"),
@@ -136,7 +139,7 @@ def toc(book, items, show_arrows=False):
                     )
                 )
             if item.prev_section:
-                arrows.append(NotStr("&nbsp;"))
+                arrows.append(blank(0))
                 arrows.append(
                     A(
                         NotStr("&ShortRightArrow;"),
@@ -154,7 +157,7 @@ def toc(book, items, show_arrows=False):
                     style=f"color: {item.status.color};",
                     href=f"/book/{item.book.bid}/{item.path}",
                 ),
-                NotStr("&nbsp;&nbsp;&nbsp;"),
+                blank(0.5),
                 Small(
                     f"{Tx(item.type)}; ",
                     f"{Tx(repr(item.status))}; ",
@@ -183,6 +186,19 @@ def footer(item):
         ),
         cls="container",
     )
+
+
+def get_status_field(item):
+    "Return select input field for status."
+    status_options = []
+    for status in constants.STATUSES:
+        if item.status == status:
+            status_options.append(
+                Option(Tx(str(status)), selected=True, value=repr(status))
+            )
+        else:
+            status_options.append(Option(Tx(str(status)), value=repr(status)))
+    return Select(*status_options, name="status", required=True)
 
 
 def get_reference_fields(ref=None, type=None):
