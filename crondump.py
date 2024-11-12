@@ -1,7 +1,7 @@
 "Fetch and save gzipped tar files from an instance."
 
-import os
 import json
+from pathlib import Path
 import sys
 import requests
 
@@ -24,15 +24,14 @@ def fetch_and_save(url, apikey, dirpath):
     if len(parts) != 3:
         raise ValueError("no filename in content-disposition in response")
 
-    filepath = os.path.join(dirpath, parts[1])
-    with open(filepath, "wb") as outfile:
+    filepath = dirpath.joinpath(parts[1])
+    with filepath.open("wb") as outfile:
         outfile.write(response.content)
     print(f"wrote mdbook.tgz to {filepath}")
 
 
 if __name__ == "__main__":
-    dirpath = sys.argv[1]
-    print(dirpath)
-    with open(os.path.join(dirpath, "config.json")) as infile:
+    dirpath = Path(sys.argv[1])
+    with dirpath.joinpath("config.json").open() as infile:
         config = json.load(infile)
     fetch_and_save(config["site"].rstrip("/") + "/tgz", config["apikey"], dirpath)

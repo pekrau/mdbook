@@ -6,6 +6,7 @@ import hashlib
 from http import HTTPStatus as HTTP
 import io
 import os
+from pathlib import Path
 import re
 import shutil
 import tarfile
@@ -31,21 +32,20 @@ def read_books():
     global _books
     global _references
     _books.clear()
-    for bid in os.listdir(os.environ["MDBOOK_DIR"]):
-        dirpath = os.path.join(os.environ["MDBOOK_DIR"], bid)
-        if not os.path.isdir(dirpath):
+    for bookpath in Path(os.environ["MDBOOK_DIR"]).iterdir():
+        if not bookpath.is_dir():
             continue
-        if bid == constants.REFERENCES:
+        if bookpath.name == constants.REFERENCES:
             continue
         try:
-            book = Book(dirpath)
+            book = Book(bookpath)
             _books[book.bid] = book
         except FileNotFoundError:
             pass
-    dirpath = os.path.join(os.environ["MDBOOK_DIR"], constants.REFERENCES)
-    if not os.path.exists(dirpath):
-        os.mkdir(dirpath)
-    _references = Book(dirpath)
+    refspath = Path(os.environ["MDBOOK_DIR"]) / constants.REFERENCES
+    if not refspath.exists():
+        refspath.mkdir()
+    _references = Book(refspath)
 
 
 def get_books():
@@ -160,13 +160,17 @@ def update_markdown(target, content):
 
 def get_copy_abspath(abspath):
     "Get the abspath for the next valid copy, and the number."
-    abspath, ext = os.path.splitext(abspath)
+    # XXX Remove when fully refactored.
+    if isinstance(abspath, str):
+        abspath = Path(abspath)
+    stem = abspath.stem
     for number in [None] + list(range(2, constants.MAX_COPY_NUMBER + 1)):
         if number:
-            newpath = f'{abspath}_{Tx("copy*")}_{number}{ext}'
+            newpath = abspath.with_name(f'{stem}_{Tx("copy*")}_{number}')
         else:
-            newpath = f'{abspath}_{Tx("copy*")}{ext}'
-        if not os.path.exists(newpath):
+            newpath = abspath.with_name(f'{stem}_{Tx("copy*")}')
+        newpath = newpath.with_suffix(abspath.suffix)
+        if not newpath.exists():
             return newpath, number
     else:
         raise Error("could not form copy identifier; too many copies", HTTP.BAD_REQUEST)
@@ -202,22 +206,27 @@ class Book:
         self.items = []
 
         # Section and Text instances for directories and files that actually exist.
-        for name in sorted(os.listdir(self.abspath)):
-            # Skip emacs temporary edit file.
-            if name.startswith(".#"):
+        for path in sorted(self.abspath.iterdir()):
+
+            # Skip emacs temporary files.
+            if path.name.startswith("#"):
                 continue
+            if path.name.startswith(".#"):
+                continue
+
             # Do not include 'index.md' file; handled separately.
-            if name == "index.md":
+            if path.name == "index.md":
                 continue
 
-            if os.path.isdir(os.path.join(self.abspath, name)):
-                # This will recursively read all items beneath this one.
-                self.items.append(Section(self, self, name))
+            # Recursively read all items beneath this one.
+            if path.is_dir():
+                self.items.append(Section(self, self, path.name))
 
-            elif name.endswith(constants.MARKDOWN_EXT):
-                item = Text(self, self, os.path.splitext(name)[0])
+            elif path.suffix == constants.MARKDOWN_EXT:
+                item = Text(self, self, path.stem)
                 if not item.frontmatter.get("exclude"):
                     self.items.append(item)
+
             # Ignore other files.
             else:
                 pass
@@ -298,12 +307,12 @@ class Book:
     @property
     def bid(self):
         "The identifier of the book instance is not stored in its 'index.md'."
-        return os.path.basename(self.abspath)
+        return self.abspath.name
 
     @property
     def absfilepath(self):
         "Return the absolute file path of the 'index.md' file."
-        return os.path.join(self.abspath, "index.md")
+        return self.abspath / "index.md"
 
     @property
     def title(self):
@@ -490,11 +499,11 @@ class Book:
         if parent is None:
             parent = self
         name = utils.nameify(title)
-        dirpath = os.path.join(parent.abspath, name)
-        filepath = dirpath + constants.MARKDOWN_EXT
-        if os.path.exists(dirpath) or os.path.exists(filepath):
+        dirpath = parent.abspath / name
+        filepath = dirpath.with_suffix(constants.MARKDOWN_EXT)
+        if dirpath.exists() or filepath.exists():
             raise ValueError(f"The title '{title}' is already used within '{parent}'.")
-        os.mkdir(dirpath)
+        dirpath.mkdir()
         section = Section(self, parent, name)
         section.title = title
         parent.items.append(section)
@@ -511,9 +520,9 @@ class Book:
         if parent is None:
             parent = self
         name = utils.nameify(title)
-        dirpath = os.path.join(parent.abspath, name)
-        filepath = dirpath + constants.MARKDOWN_EXT
-        if os.path.exists(dirpath) or os.path.exists(filepath):
+        dirpath = parent.abspath / name
+        filepath = dirpath.with_suffix(constants.MARKDOWN_EXT)
+        if dirpath.exists() or filepath.exists():
             raise ValueError(f"The title '{title}' is already used within '{parent}'.")
         text = Text(self, parent, name)
         text.title = title
@@ -576,10 +585,10 @@ class Book:
         return result
 
     def check_integrity(self):
-        assert os.path.exists(self.absfilepath)
-        assert os.path.isfile(self.absfilepath)
-        assert os.path.exists(self.abspath)
-        assert os.path.isdir(self.abspath)
+        assert self.absfilepath.exists()
+        assert self.absfilepath.is_file()
+        assert self.abspath.exists()
+        assert self.abspath.is_dir()
         assert len(self.path_lookup) == len(self.all_items)
         for item in self.all_items:
             assert item.book is self, (self, item)
@@ -646,17 +655,15 @@ class Item:
             return
         if not name:
             raise ValueError("Empty string given for name.")
-        newabspath = os.path.join(self.parent.abspath, self.filename(new=name))
-        if name in self.parent.items or os.path.exists(newabspath):
-            raise ValueError("The name is already in use.")
-        if os.path.exists(newabspath):
+        newabspath = self.parent.abspath / self.filename(new=name)
+        if name in self.parent.items or newabspath.exists():
             raise ValueError("The name is already in use.")
         items = [self] + self.all_items
         for item in items:
             self.book.path_lookup.pop(item.path)
         oldabspath = self.abspath
         self._name = name
-        os.rename(oldabspath, newabspath)
+        oldabspath.rename(newabspath)
         for item in items:
             self.book.path_lookup[item.path] = item
         self.book.write()
@@ -667,7 +674,7 @@ class Item:
         if self.parent is self.book:
             return self.name
         else:
-            return os.path.join(self.parent.path, self.name)
+            return f"{self.parent.path}/{self.name}"
 
     @property
     def title(self):
@@ -776,7 +783,7 @@ class Item:
         - Section: Directory path.
         - Text: File path.
         """
-        return os.path.join(self.parent.abspath, self.filename())
+        return self.parent.abspath / self.filename()
 
     @property
     def absfilepath(self):
@@ -825,14 +832,14 @@ class Item:
         if self.parent is self.book:
             return
         old_abspath = self.abspath
-        new_abspath = os.path.join(self.parent.parent.abspath, self.filename())
+        new_abspath = self.parent.parent.abspath / self.filename()
         # Must check both file and directory for name collision.
         for path in [
-            new_abspath,
-            os.path.splitext(new_abspath)[0],
-            new_abspath + constants.MARKDOWN_EXT,
+                new_abspath,
+                new_abspath.with_suffix(''),
+                new_abspath.with_suffix(constants.MARKDOWN_EXT),
         ]:  # Doesn't matter if '.md.md'
-            if os.path.exists(path):
+            if path.exists():
                 raise Error(
                     "cannot move item; name collision with an existing item",
                     HTTP.CONFLICT,
@@ -844,7 +851,7 @@ class Item:
         # Remove item from its parent's list of items.
         self.parent.items.remove(self)
         # Actually move the item on disk.
-        os.rename(old_abspath, new_abspath)
+        old_abspath.rename(new_abspath)
         # Add item into the parent above, after the position of its old parent.
         pos = self.parent.parent.items.index(self.parent) + 1
         self.parent.parent.items.insert(pos, self)
@@ -866,14 +873,14 @@ class Item:
         if not section:
             return
         old_abspath = self.abspath
-        new_abspath = os.path.join(section.abspath, self.filename())
+        new_abspath = section.abspath / self.filename()
         # Must check both file and directory for name collision.
         for path in [
-            new_abspath,
-            os.path.splitext(new_abspath)[0],
-            new_abspath + constants.MARKDOWN_EXT,
+                new_abspath,
+                new_abspath.with_suffix(''),
+                new_abspath.with_suffix(constants.MARKDOWN_EXT),
         ]:  # Doesn't matter if '.md.md'
-            if os.path.exists(path):
+            if path.exists():
                 raise Error(
                     "cannot move item; name collision with an existing item",
                     HTTP.CONFLICT,
@@ -885,7 +892,7 @@ class Item:
         # Remove item from its parent's list of items.
         self.parent.items.remove(self)
         # Actually move the item on disk.
-        os.rename(old_abspath, new_abspath)
+        old_abspath.rename(new_abspath)
         # Add item into the section, as the last one.
         section.items.append(self)
         # Set the new parent for this item.
@@ -916,7 +923,7 @@ class Item:
         assert isinstance(self.book, Book)
         assert self in self.parent.items
         assert self.path in self.book.path_lookup
-        assert os.path.exists(self.abspath)
+        assert self.abspath.exists()
 
 
 class Section(Item):
@@ -931,21 +938,31 @@ class Section(Item):
         This is recursive; all sections and texts below this are also read.
         """
         read_markdown(self, self.absfilepath)
-        for name in sorted(os.listdir(self.abspath)):
+        for path in sorted(self.abspath.iterdir()):
+
             # Skip temporary emacs files.
-            if name.startswith(".#"):
+            if path.name.startswith("#"):
                 continue
+            if path.name.startswith(".#"):
+                continue
+
             # Skip the already read 'index.md' file.
-            if name == "index.md":
+            if path.name == "index.md":
                 continue
-            if os.path.isdir(os.path.join(self.abspath, name)):
-                self.items.append(Section(self.book, self, name))
-            elif name.endswith(constants.MARKDOWN_EXT):
-                self.items.append(Text(self.book, self, os.path.splitext(name)[0]))
-            else:  # Skip any non-Markdown files.
+
+            # Recursively read all items beneath this one.
+            if path.is_dir():
+                self.items.append(Section(self.book, self, path.name))
+
+            elif path.suffix == constants.MARKDOWN_EXT:
+                self.items.append(Text(self.book, self, path.stem))
+
+            # Ignore other files.
+            else:
                 pass
+
         # Repair if no 'index.md' in the directory.
-        if not os.path.exists(self.absfilepath):
+        if not self.absfilepath.exists():
             write_markdown(self, self.absfilepath)
 
     def write(self, content=None, force=False):
@@ -1033,7 +1050,7 @@ class Section(Item):
     @property
     def absfilepath(self):
         "The absolute filepath of the 'index.md' for this section."
-        return os.path.join(self.abspath, "index.md")
+        return self.abspath / "index.md"
 
     def filename(self, new=None):
         """Return the filename of this section.
@@ -1051,7 +1068,7 @@ class Section(Item):
             shutil.copytree(self.abspath, abspath)
         except shutil.Error as error:
             raise Error(error, HTTP.CONFLICT)
-        section = Section(self.book, self.parent, os.path.basename(abspath))
+        section = Section(self.book, self.parent, abspath.stem)
         if number:
             section.frontmatter["title"] = f'{self.title} ({Tx("copy*")} {number})'
         else:
@@ -1089,7 +1106,7 @@ class Section(Item):
 
     def check_integrity(self):
         super().check_integrity()
-        assert os.path.isdir(self.abspath)
+        assert self.abspath.is_dir()
 
 
 class Text(Item):
@@ -1197,9 +1214,9 @@ class Text(Item):
     def to_section(self):
         "Create a section with the title of this text and move this text into it."
         oldtextpath = self.abspath
-        sectionpath = os.path.splitext(oldtextpath)[0]
-        os.mkdir(sectionpath)
-        os.rename(oldtextpath, os.path.join(sectionpath, self.filename()))
+        sectionpath = oldtextpath.with_suffix('')
+        sectionpath.mkdir()
+        oldtextpath.rename(sectionpath / self.filename())
         section = Section(self.book, self.parent, self.name)
         section.title = self.title
         section.items[0] = self
@@ -1210,18 +1227,13 @@ class Text(Item):
 
     def copy(self):
         "Make a copy of this text."
-        from icecream import ic
-
         abspath, number = get_copy_abspath(self.abspath)
-        ic(self.abspath, abspath)
         try:
             shutil.copy2(self.abspath, abspath)
         except shutil.Error as error:
             raise Error(error, HTTP.CONFLICT)
 
-        text = Text(
-            self.book, self.parent, os.path.splitext(os.path.basename(abspath))[0]
-        )
+        text = Text(self.book, self.parent, abspath.stem)
         if number:
             text.frontmatter["title"] = f'{self.title} ({Tx("copy*")} {number})'
         else:
@@ -1238,7 +1250,7 @@ class Text(Item):
         "Delete this text from the book."
         self.book.path_lookup.pop(self.path)
         self.parent.items.remove(self)
-        os.remove(self.abspath)
+        self.abspath.unlink()
         self.book.write()
 
     def search(self, term, ignorecase=True):
@@ -1254,7 +1266,7 @@ class Text(Item):
 
     def check_integrity(self):
         super().check_integrity()
-        assert os.path.isfile(self.abspath)
+        assert self.abspath.is_file()
 
 
 if __name__ == "__main__":

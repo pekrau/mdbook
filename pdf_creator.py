@@ -1,16 +1,13 @@
 "Create PDF file."
 
-import copy
 import datetime
 import io
-import os
 
 import fpdf  # fpdf2, actually!
 
 import utils
 import constants
-
-Tx = utils.Tx
+from utils import Tx, Error
 
 
 class Creator:
@@ -26,8 +23,8 @@ class Creator:
         settings = book.frontmatter["pdf"]
         self.title_page_metadata = settings["title_page_metadata"]
         self.contents_pages = settings["contents_pages"]
-        self.contents_level = settings["contents_level"]
-        self.page_break_level = settings["page_break_level"]
+        self.contents_level = int(settings["contents_level"])
+        self.page_break_level = int(settings["page_break_level"])
         self.footnotes_location = settings["footnotes_location"]
         self.indexed_xref = settings["indexed_xref"]
 
@@ -47,7 +44,7 @@ class Creator:
         self.list_stack = []
         # Key: fulltitle; value: dict(label, number, ast_children)
         self.footnotes = {}
-        # Reference ids
+        # References, key: refid; value: reference
         self.referenced = set()
         # Key: canonical; value: dict(ordinal, fulltitle, heading, page)
         self.indexed = {}
@@ -65,62 +62,62 @@ class Creator:
         self.pdf.add_font(
             "FreeSans",
             style="",
-            fname=os.path.join(constants.FONT_DIRPATH, "FreeSans.ttf"),
+            fname=constants.FONT_DIRPATH / "FreeSans.ttf",
         )
         self.pdf.add_font(
             "FreeSans",
             style="B",
-            fname=os.path.join(constants.FONT_DIRPATH, "FreeSansBold.ttf"),
+            fname=constants.FONT_DIRPATH / "FreeSansBold.ttf",
         )
         self.pdf.add_font(
             "FreeSans",
             style="I",
-            fname=os.path.join(constants.FONT_DIRPATH, "FreeSansOblique.ttf"),
+            fname=constants.FONT_DIRPATH / "FreeSansOblique.ttf",
         )
         self.pdf.add_font(
             "FreeSans",
             style="BI",
-            fname=os.path.join(constants.FONT_DIRPATH, "FreeSansBoldOblique.ttf"),
+            fname=constants.FONT_DIRPATH / "FreeSansBoldOblique.ttf",
         )
         self.pdf.add_font(
             "FreeSerif",
             style="",
-            fname=os.path.join(constants.FONT_DIRPATH, "FreeSerif.ttf"),
+            fname=constants.FONT_DIRPATH / "FreeSerif.ttf",
         )
         self.pdf.add_font(
             "FreeSerif",
             style="B",
-            fname=os.path.join(constants.FONT_DIRPATH, "FreeSerifBold.ttf"),
+            fname=constants.FONT_DIRPATH / "FreeSerifBold.ttf",
         )
         self.pdf.add_font(
             "FreeSerif",
             style="I",
-            fname=os.path.join(constants.FONT_DIRPATH, "FreeSerifItalic.ttf"),
+            fname=constants.FONT_DIRPATH / "FreeSerifItalic.ttf",
         )
         self.pdf.add_font(
             "FreeSerif",
             style="BI",
-            fname=os.path.join(constants.FONT_DIRPATH, "FreeSerifBoldItalic.ttf"),
+            fname=constants.FONT_DIRPATH / "FreeSerifBoldItalic.ttf",
         )
         self.pdf.add_font(
             "FreeMono",
             style="",
-            fname=os.path.join(constants.FONT_DIRPATH, "FreeMono.ttf"),
+            fname=constants.FONT_DIRPATH / "FreeMono.ttf",
         )
         self.pdf.add_font(
             "FreeMono",
             style="B",
-            fname=os.path.join(constants.FONT_DIRPATH, "FreeMonoBold.ttf"),
+            fname=constants.FONT_DIRPATH / "FreeMonoBold.ttf",
         )
         self.pdf.add_font(
             "FreeMono",
             style="I",
-            fname=os.path.join(constants.FONT_DIRPATH, "FreeMonoOblique.ttf"),
+            fname=constants.FONT_DIRPATH / "FreeMonoOblique.ttf",
         )
         self.pdf.add_font(
             "FreeMono",
             style="BI",
-            fname=os.path.join(constants.FONT_DIRPATH, "FreeMonoBoldOblique.ttf"),
+            fname=constants.FONT_DIRPATH / "FreeMonoBoldOblique.ttf",
         )
 
         self.state = State(self.pdf)
@@ -307,10 +304,10 @@ class Creator:
         for refid in sorted(self.referenced):
             try:
                 reference = self.references[refid]
-            except KeyError:
+            except Error:
                 continue
             self.state.set(style="B")
-            self.state.write(refid)
+            self.state.write(reference["name"])
             self.state.reset()
             self.state.write("  ")
             self.write_reference_authors(reference)
@@ -662,9 +659,9 @@ class Creator:
         self.footnotes[fulltitle][key]["ast_children"] = ast["children"]
 
     def render_reference(self, ast):
-        self.referenced.add(ast["reference"])
+        self.referenced.add(ast["id"])
         self.state.set(style="U")
-        self.state.write(ast["reference"])
+        self.state.write(ast["name"])
         self.state.reset()
 
 

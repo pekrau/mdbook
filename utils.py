@@ -129,7 +129,7 @@ def get_state_remote(bid=None):
             "remote update apikey undefined; missing MDBOOK_UPDATE_APIKEY",
             HTTP.INTERNAL_SERVER_ERROR,
         )
-    url = os.path.join(os.environ["MDBOOK_UPDATE_SITE"].rstrip("/"), "state")
+    url = os.environ["MDBOOK_UPDATE_SITE"].rstrip("/") + "/state"
     if bid:
         url += "/" + bid
     headers = dict(apikey=os.environ["MDBOOK_UPDATE_APIKEY"])
@@ -150,8 +150,8 @@ def get_tgzfile(dirpath):
     """
     result = io.BytesIO()
     with tarfile.open(fileobj=result, mode="w:gz") as tgzfile:
-        for name in os.listdir(dirpath):
-            tgzfile.add(os.path.join(dirpath, name), arcname=name, recursive=True)
+        for path in dirpath.iterdir():
+            tgzfile.add(path, arcname=path.name, recursive=True)
     return result
 
 
@@ -173,7 +173,7 @@ def unpack_tgzfile(dirpath, content, references=False):
                         "reference TGZ file must contain only *.md files",
                         HTTP.BAD_REQUEST,
                     )
-                if os.path.basename(name) != name:
+                if Path(name).name != name:
                     raise Error(
                         "reference TGZ file must contain no directories",
                         HTTP.BAD_REQUEST,

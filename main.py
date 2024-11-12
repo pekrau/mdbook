@@ -3,6 +3,7 @@
 import io
 from http import HTTPStatus as HTTP
 import os
+from pathlib import Path
 import shutil
 import string
 import sys
@@ -327,7 +328,7 @@ def get(auth):
 async def post(auth, tgzfile: UploadFile):
     "Actually add or replace references by contents of the uploaded file."
     utils.unpack_tgzfile(
-        os.path.join(os.environ["MDBOOK_DIR"], constants.REFERENCES),
+        Path(os.environ["MDBOOK_DIR"]) / constants.REFERENCES,
         await tgzfile.read(),
         references=True,
     )
@@ -526,18 +527,20 @@ def get(auth, refid: str):
     ]
 
     title = f'{ref["name"]} ({Tx(ref["type"])})'
+    edit_buttons = Div(
+                 Div(A(Tx("Edit"), role="button", href=f"/reference/edit/{refid}")),
+                 Div(A(Tx("Append"), role="button", href=f"/append/references/{refid}")),
+                 cls="grid"
+             )
     return (
         Title(title),
         Script(src="/clipboard.min.js"),
         Script("new ClipboardJS('.to_clipboard');"),
         components.header(title, book=references, status=ref.status, menu=menu),
         Main(Table(*rows), 
-             Div(NotStr(ref.html)),
-             Div(
-                 Div(A(Tx("Edit"), role="button", href=f"/reference/edit/{refid}")),
-                 Div(A(Tx("Append"), role="button", href=f"/append/references/{refid}")),
-                 cls="grid"
-             ),
+             edit_buttons,
+             Div(NotStr(ref.html), style="margin-top: 1em;"),
+             edit_buttons,
              cls="container"),
         components.footer(ref),
     )
@@ -616,8 +619,8 @@ async def post(auth, title: str, tgzfile: UploadFile):
     bid = utils.nameify(title)
     if not bid:
         raise Error("book bid may not be empty", HTTP.BAD_REQUEST)
-    dirpath = os.path.join(os.environ["MDBOOK_DIR"], bid)
-    if os.path.exists(dirpath):
+    dirpath = Path(os.environ["MDBOOK_DIR"]) / bid
+    if dirpath.exists():
         raise Error(f"book {bid} already exists", HTTP.CONFLICT)
     content = await tgzfile.read()
     if content:
@@ -627,7 +630,7 @@ async def post(auth, title: str, tgzfile: UploadFile):
             raise Error(f"error reading TGZ file: {message}", HTTP.BAD_REQUEST)
     # Just create the directory; no content.
     else:
-        os.mkdir(dirpath)
+        dirpath.mkdir()
     # Re-read all books, ensuring everything is up to date.
     books.read_books()
     # Set the title and owner of the new book.
@@ -684,7 +687,7 @@ def get(auth, bid: str):
         components.header(title, book=book, menu=menu, status=book.status),
         Main(
             *segments,
-            NotStr(book.html),
+            Div(NotStr(book.html)),
             Div(
                 Div(A(Tx("Edit"), role="button", href=f"/edit/{bid}")),
                 Div(A(Tx("Append"), role="button", href=f"/append/{bid}/")),
@@ -936,17 +939,20 @@ def get(auth, bid: str, path: str):
     menu.append(A(f'{Tx("Copy")}', href=f"/copy/{bid}/{path}"))
     menu.append(A(f'{Tx("Delete")}', href=f"/delete/{bid}/{path}"))
 
+    edit_buttons = Div(
+                Div(A(Tx("Edit"), role="button", href=f"/edit/{bid}/{path}")),
+                Div(A(Tx("Append"), role="button", href=f"/append/{bid}/{path}")),
+                cls="grid",
+            )
+
     return (
         Title(item.title),
         components.header(item.title, book=book, menu=menu, status=item.status),
         Main(
             *segments,
-            NotStr(item.html),
-            Div(
-                Div(A(Tx("Edit"), role="button", href=f"/edit/{bid}/{path}")),
-                Div(A(Tx("Append"), role="button", href=f"/append/{bid}/{path}")),
-                cls="grid",
-            ),
+            edit_buttons,
+            Div(NotStr(item.html), style="margin-top: 1em;"),
+            edit_buttons,
             cls="container",
         ),
         components.footer(item),
@@ -1564,7 +1570,7 @@ def post(auth, bid: str, form: dict):
 
 
 @rt("/pdf/{bid:str}")
-def pdf(auth, bid: str):
+def get(auth, bid: str):
     "Get the parameters for downloading PDF file of the whole book."
     book = books.get_book(bid)
     settings = book.frontmatter.setdefault("pdf", {})
@@ -1848,7 +1854,7 @@ def get(auth):
     "Download a gzipped tar file of all books."
     filename = f"mdbook_{utils.timestr(safe=True)}.tgz"
     return Response(
-        content=utils.get_tgzfile(os.environ["MDBOOK_DIR"]).getvalue(),
+        content=utils.get_tgzfile(Path(os.environ["MDBOOK_DIR"])).getvalue(),
         media_type=constants.GZIP_MIMETYPE,
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
@@ -1871,7 +1877,7 @@ def get(auth):
     rows = []
     here_books = state["books"].copy()
     for bid, rbook in remote["books"].items():
-        rurl = f'{os.environ["MDBOOK_UPDATE_SITE"].rstrip("/")}/book/{bid}'
+        rurl = os.environ["MDBOOK_UPDATE_SITE"].rstrip("/") + f"/book/{bid}"
         lbook = here_books.pop(bid, {})
         title = lbook.get("title") or rbook.get("title")
         if lbook:
@@ -1969,7 +1975,7 @@ def get(auth, bid: str):
             here = book.state
         except Error:
             here = {}
-    rurl = f'{os.environ["MDBOOK_UPDATE_SITE"].rstrip("/")}/book/{bid}'
+    rurl = os.environ["MDBOOK_UPDATE_SITE"].rstrip("/") + f"/book/{bid}"
     lurl = f"/book/{bid}"
 
     rows, rflag, lflag = items_diffs(
@@ -1980,7 +1986,7 @@ def get(auth, bid: str):
     if remote and here:
         row, rf, lf = item_diff(
             remote,
-            f'{os.environ["MDBOOK_UPDATE_SITE"].rstrip("/")}/book/{bid}',
+            os.environ["MDBOOK_UPDATE_SITE"].rstrip("/") + f"/book/{bid}",
             here,
             f"/book/{bid}",
         )
@@ -2183,8 +2189,8 @@ def post(auth, bid: str):
     if not bid:
         raise Error("no book id provided", HTTP.BAD_REQUEST)
 
-    url = f'{os.environ["MDBOOK_UPDATE_SITE"].rstrip("/")}/tgz/{bid}'
-    dirpath = os.path.join(os.environ["MDBOOK_DIR"], bid)
+    url = os.environ["MDBOOK_UPDATE_SITE"].rstrip("/") + f"/tgz/{bid}"
+    dirpath = Path(os.environ["MDBOOK_DIR"]) / bid
     headers = dict(apikey=os.environ["MDBOOK_UPDATE_APIKEY"])
 
     response = requests.get(url, headers=headers)
@@ -2198,17 +2204,17 @@ def post(auth, bid: str):
         raise Error("empty TGZ file from remote", HTTP.BAD_REQUEST)
 
     # Temporarily save old contents.
-    old_dirpath = os.path.join(os.environ["MDBOOK_DIR"], "_old")
-    os.rename(dirpath, old_dirpath)
+    saved_dirpath = Path(os.environ["MDBOOK_DIR"]) / "_saved"
+    dirpath.replace(saved_dirpath)
     try:
         utils.unpack_tgzfile(dirpath, content, references=bid == constants.REFERENCES)
     except ValueError as message:
-        # Reinstate old contents.
-        os.rename(old_dirpath, dirpath)
+        # Reinstate saved contents.
+        saved_dirpath.replace(dirpath)
         raise Error(f"error reading TGZ file from remote: {message}", HTTP.BAD_REQUEST)
     else:
-        # Remove old contents after new was successful unpacked.
-        shutil.rmtree(old_dirpath)
+        # Remove saved contents after new was successful unpacked.
+        shutil.rmtree(saved_dirpath)
 
     if bid == constants.REFERENCES:
         books.get_references(refresh=True)
@@ -2223,8 +2229,8 @@ def post(auth, bid: str):
     "Update book at the remote site by uploading it from this site."
     if not bid:
         raise Error("no book id provided", HTTP.BAD_REQUEST)
-    url = f'{os.path.join(os.environ["MDBOOK_UPDATE_SITE"].rstrip("/"))}/receive/{bid}'
-    dirpath = os.path.join(os.environ["MDBOOK_DIR"], bid)
+    url = os.environ["MDBOOK_UPDATE_SITE"].rstrip("/") + f"/receive/{bid}"
+    dirpath = Path(os.environ["MDBOOK_DIR"]) / bid
     tgzfile = utils.get_tgzfile(dirpath)
     tgzfile.seek(0)
     headers = dict(apikey=os.environ["MDBOOK_UPDATE_APIKEY"])
@@ -2250,20 +2256,20 @@ async def post(auth, bid: str, tgzfile: UploadFile = None):
     if not content:
         raise Error("no content in TGZ file", HTTP.BAD_REQUEST)
 
-    dirpath = os.path.join(os.environ["MDBOOK_DIR"], bid)
-    if os.path.exists(dirpath):
+    dirpath = Path(os.environ["MDBOOK_DIR"]) / bid
+    if dirpath.exists():
         # Temporarily save old contents.
-        old_dirpath = os.path.join(os.environ["MDBOOK_DIR"], "_old")
-        os.rename(dirpath, old_dirpath)
+        saved_dirpath = Path(os.environ["MDBOOK_DIR"]) / "_saved"
+        dirpath.rename(saved_dirpath)
     else:
-        old_dirpath = None
+        saved_dirpath = None
     try:
         utils.unpack_tgzfile(dirpath, content)
-        if old_dirpath:
-            shutil.rmtree(old_dirpath)
+        if saved_dirpath:
+            shutil.rmtree(saved_dirpath)
     except ValueError as message:
-        if old_dirpath:
-            os.rename(old_dirpath, dirpath)
+        if saved_dirpath:
+            saved_dirpath.rename(dirpath)
         raise Error(f"error reading TGZ file: {message}", HTTP.BAD_REQUEST)
 
     if bid == constants.REFERENCES:

@@ -1,19 +1,14 @@
 "Create DOCX file."
 
-from icecream import ic
-
-import copy
 import datetime
 import io
-import os
 
 import docx
 import docx.oxml
 
 import constants
 import utils
-
-Tx = utils.Tx
+from utils import Tx, Error
 
 
 class Creator:
@@ -267,7 +262,7 @@ class Creator:
         for refid in sorted(self.referenced):
             try:
                 reference = self.references[refid]
-            except KeyError:
+            except Error:
                 continue
             paragraph = self.document.add_paragraph()
             run = paragraph.add_run(reference["name"])

@@ -1,19 +1,19 @@
 "Constants."
 
 import functools
-import os.path
+from pathlib import Path
 
 SOFTWARE = "mdbook"
-VERSION = (5, 15, 0)
+VERSION = (5, 15, 1)
 __version__ = ".".join([str(n) for n in VERSION])
 
 
 LANGUAGE_CODES = ("sv-SE", "en-GB", "en-US")
 
 MARKDOWN_EXT = ".md"
-SOURCE_DIRPATH = os.path.dirname(__file__)
-FONT_DIRPATH = os.path.join(SOURCE_DIRPATH, "freefont")
-TRANSLATIONS_FILEPATH = os.path.join(SOURCE_DIRPATH, "translations.csv")
+SOURCE_DIRPATH = Path(__file__).parent
+FONT_DIRPATH = SOURCE_DIRPATH / "freefont"
+TRANSLATIONS_FILEPATH = SOURCE_DIRPATH / "translations.csv"
 
 DATETIME_ISO_FORMAT = "%Y-%m-%d %H:%M:%S"
 MONTHS = {
