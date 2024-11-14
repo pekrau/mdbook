@@ -30,6 +30,7 @@ number,nummer
 pages,sidor
 date,datum
 update,uppdatera
+update here,uppdatera här
 edition published,utgåva publicerad
 publisher,förlag
 type,typ
@@ -99,7 +100,6 @@ identifier,identifierare
 modified,modifierad
 differences,skillnader
 differences in,skillnader i
-here,här
 identical,identiska
 State (JSON),Tillstånd (JSON)
 age,ålder

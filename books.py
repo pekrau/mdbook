@@ -66,7 +66,12 @@ def get_book(bid, refresh=False):
             book.read()
         return book
     except KeyError:
-        raise Error(f"no such book '{bid}'", HTTP.NOT_FOUND)
+        try:                    # May happen after update here of entire book.
+            book = Book(Path(os.environ["MDBOOK_DIR"]) / bid)
+            _books[book.bid] = book
+            return book
+        except FileNotFoundError:
+            raise Error(f"no such book '{bid}'", HTTP.NOT_FOUND)
 
 
 def get_references(refresh=False):

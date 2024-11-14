@@ -790,8 +790,10 @@ def post(auth, bid: str, form: dict):
         a.strip() for a in form.get("authors", "").split("\n")
     ]
     for key in ["subtitle", "status", "language"]:
-        value = form.get("subtitle", "").strip()
-        if not value:
+        value = form.get(key, "").strip()
+        if value:
+            book.frontmatter[key] = value
+        else:
             book.frontmatter.pop(key, None)
 
     # Refresh the book, ensuring everything is up to date.
@@ -815,7 +817,7 @@ def get(auth, bid: str):
     "Confirm deleting book."
     book = books.get_book(bid)
 
-    if book.items:
+    if book.items or book.content:
         segments = [P(Strong(Tx("Note: all contents will be lost!")))]
     else:
         segments = []
@@ -1919,7 +1921,9 @@ def get(auth):
                         f'{utils.thousands(rbook["sum_characters"])} {Tx("characters")}',
                     ),
                     Td("-"),
-                    Td("?"),
+                    Td(Form(Button(Tx("Update here"), type="submit"),
+                            method="post",
+                            action=f"/pull/{bid}")),
                 )
             )
     for bid, lbook in here_books.items():
@@ -2012,7 +2016,7 @@ def get(auth, bid: str):
             segments = (
                 H4(Tx("Not present here")),
                 Form(
-                    Button(f'{Tx("Update")} {Tx("here")}'),
+                    Button(Tx("Update here")),
                     action=f"/pull/{bid}",
                     method="post",
                 ),
@@ -2049,7 +2053,7 @@ def get(auth, bid: str):
             Td(
                 Form(
                     Button(
-                        f'{Tx("Update")} {Tx("here")}', cls=None if lflag else "outline"
+                        Tx("Update here"), cls=None if lflag else "outline"
                     ),
                     action=f"/pull/{bid}",
                     method="post",
@@ -2206,17 +2210,22 @@ def post(auth, bid: str):
         raise Error("empty TGZ file from remote", HTTP.BAD_REQUEST)
 
     # Temporarily save old contents.
-    saved_dirpath = Path(os.environ["MDBOOK_DIR"]) / "_saved"
-    dirpath.replace(saved_dirpath)
+    if dirpath.exists():
+        saved_dirpath = Path(os.environ["MDBOOK_DIR"]) / "_saved"
+        dirpath.replace(saved_dirpath)
+    else:
+        saved_dirpath = None
     try:
         utils.unpack_tgzfile(dirpath, content, references=bid == constants.REFERENCES)
     except ValueError as message:
-        # Reinstate saved contents.
-        saved_dirpath.replace(dirpath)
+        # If failure, reinstate saved contents.
+        if saved_dirpath:
+            saved_dirpath.replace(dirpath)
         raise Error(f"error reading TGZ file from remote: {message}", HTTP.BAD_REQUEST)
     else:
         # Remove saved contents after new was successful unpacked.
-        shutil.rmtree(saved_dirpath)
+        if saved_dirpath:
+            shutil.rmtree(saved_dirpath)
 
     if bid == constants.REFERENCES:
         books.get_references(refresh=True)
