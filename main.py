@@ -622,6 +622,7 @@ async def post(auth, title: str, tgzfile: UploadFile):
     dirpath = Path(os.environ["MDBOOK_DIR"]) / bid
     if dirpath.exists():
         raise Error(f"book {bid} already exists", HTTP.CONFLICT)
+
     content = await tgzfile.read()
     if content:
         try:
@@ -631,6 +632,7 @@ async def post(auth, title: str, tgzfile: UploadFile):
     # Just create the directory; no content.
     else:
         dirpath.mkdir()
+
     # Re-read all books, ensuring everything is up to date.
     books.read_books()
     # Set the title and owner of the new book.

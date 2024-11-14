@@ -37,6 +37,8 @@ def read_books():
             continue
         if bookpath.name == constants.REFERENCES:
             continue
+        if bookpath.name.startswith("_"):
+            continue
         try:
             book = Book(bookpath)
             _books[book.bid] = book
