@@ -1028,14 +1028,14 @@ def post(auth, bid: str, path: str, title: str, content: str, status: str = None
 @rt("/append/{bid:str}/{path:path}")
 def get(auth, bid: str, path: str):
     "Append to the content of an item."
-    if not path:
-        raise Error("no path given")
-
     if bid == constants.REFERENCES:
         book = books.get_references()
     else:
         book = books.get_book(bid)
-    item = book[path]
+    if path:
+        item = book[path]
+    else:
+        item = book
 
     title = f'{Tx("Append")} {item.title}'
     return (
@@ -1057,14 +1057,14 @@ def get(auth, bid: str, path: str):
 @rt("/append/{bid:str}/{path:path}")
 def post(auth, bid: str, path: str, content: str):
     "Actually append to the content of an item."
-    if not path:
-        raise Error("no path given")
-
     if bid == constants.REFERENCES:
         book = books.get_references()
     else:
         book = books.get_book(bid)
-    item = book[path]
+    if path:
+        item = book[path]
+    else:
+        item = book
 
     # Slot in appended content before footnotes, if any.
     lines = item.content.split("\n")
