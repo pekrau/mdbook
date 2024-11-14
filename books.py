@@ -66,7 +66,7 @@ def get_book(bid, refresh=False):
             book.read()
         return book
     except KeyError:
-        try:                    # May happen after update here of entire book.
+        try:  # May happen after update here of entire book.
             book = Book(Path(os.environ["MDBOOK_DIR"]) / bid)
             _books[book.bid] = book
             return book
@@ -842,9 +842,9 @@ class Item:
         new_abspath = self.parent.parent.abspath / self.filename()
         # Must check both file and directory for name collision.
         for path in [
-                new_abspath,
-                new_abspath.with_suffix(''),
-                new_abspath.with_suffix(constants.MARKDOWN_EXT),
+            new_abspath,
+            new_abspath.with_suffix(""),
+            new_abspath.with_suffix(constants.MARKDOWN_EXT),
         ]:  # Doesn't matter if '.md.md'
             if path.exists():
                 raise Error(
@@ -883,9 +883,9 @@ class Item:
         new_abspath = section.abspath / self.filename()
         # Must check both file and directory for name collision.
         for path in [
-                new_abspath,
-                new_abspath.with_suffix(''),
-                new_abspath.with_suffix(constants.MARKDOWN_EXT),
+            new_abspath,
+            new_abspath.with_suffix(""),
+            new_abspath.with_suffix(constants.MARKDOWN_EXT),
         ]:  # Doesn't matter if '.md.md'
             if path.exists():
                 raise Error(
@@ -1221,7 +1221,7 @@ class Text(Item):
     def to_section(self):
         "Create a section with the title of this text and move this text into it."
         oldtextpath = self.abspath
-        sectionpath = oldtextpath.with_suffix('')
+        sectionpath = oldtextpath.with_suffix("")
         sectionpath.mkdir()
         oldtextpath.rename(sectionpath / self.filename())
         section = Section(self.book, self.parent, self.name)

@@ -141,10 +141,8 @@ class Creator:
         if self.title_page_metadata:
             paragraph = self.document.add_paragraph()
             paragraph.paragraph_format.space_before = docx.shared.Pt(50)
-            status = str(
-                min([t.status for t in self.book.all_texts] + [max(constants.STATUSES)])
-            )
-            paragraph.add_run(f"{Tx('Status')}: {Tx(status)}")
+
+            paragraph.add_run(f"{Tx('Status')}: {Tx(self.book.status)}")
             now = datetime.datetime.now().strftime(constants.DATETIME_ISO_FORMAT)
             self.document.add_paragraph(f"{Tx('Created')}: {now}")
 

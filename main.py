@@ -523,25 +523,27 @@ def get(auth, refid: str):
         components.references_link(),
         A(Tx("Edit"), href=f"/reference/edit/{refid}"),
         A(Tx("Append"), href=f"/append/references/{refid}"),
-        A(Tx("Delete"), href=f"/delete/references/{refid}"), # Yes, plural.
+        A(Tx("Delete"), href=f"/delete/references/{refid}"),  # Yes, plural.
     ]
 
     title = f'{ref["name"]} ({Tx(ref["type"])})'
     edit_buttons = Div(
-                 Div(A(Tx("Edit"), role="button", href=f"/reference/edit/{refid}")),
-                 Div(A(Tx("Append"), role="button", href=f"/append/references/{refid}")),
-                 cls="grid"
-             )
+        Div(A(Tx("Edit"), role="button", href=f"/reference/edit/{refid}")),
+        Div(A(Tx("Append"), role="button", href=f"/append/references/{refid}")),
+        cls="grid",
+    )
     return (
         Title(title),
         Script(src="/clipboard.min.js"),
         Script("new ClipboardJS('.to_clipboard');"),
         components.header(title, book=references, status=ref.status, menu=menu),
-        Main(Table(*rows), 
-             edit_buttons,
-             Div(NotStr(ref.html), style="margin-top: 1em;"),
-             edit_buttons,
-             cls="container"),
+        Main(
+            Table(*rows),
+            edit_buttons,
+            Div(NotStr(ref.html), style="margin-top: 1em;"),
+            edit_buttons,
+            cls="container",
+        ),
         components.footer(ref),
     )
 
@@ -723,23 +725,17 @@ def get(auth, bid: str):
         Fieldset(
             Legend(Tx("Authors")),
             Textarea(
-                "\n".join(book.frontmatter.get("authors", [])), name="authors", rows="10"
+                "\n".join(book.frontmatter.get("authors", [])),
+                name="authors",
+                rows="10",
             ),
         ),
     ]
     if len(book.items) == 0:
-        status_options = []
-        for status in constants.STATUSES:
-            if book.status == status:
-                status_options.append(
-                    Option(Tx(str(status)), selected=True, value=repr(status))
-                )
-            else:
-                status_options.append(Option(Tx(str(status)), value=repr(status)))
         fields.append(
             Fieldset(
                 Legend(Tx("Status")),
-                Select(*status_options, name="status", required=True),
+                components.get_status_field(book),
             )
         )
     language_options = []
@@ -944,10 +940,10 @@ def get(auth, bid: str, path: str):
     menu.append(A(f'{Tx("Delete")}', href=f"/delete/{bid}/{path}"))
 
     edit_buttons = Div(
-                Div(A(Tx("Edit"), role="button", href=f"/edit/{bid}/{path}")),
-                Div(A(Tx("Append"), role="button", href=f"/append/{bid}/{path}")),
-                cls="grid",
-            )
+        Div(A(Tx("Edit"), role="button", href=f"/edit/{bid}/{path}")),
+        Div(A(Tx("Append"), role="button", href=f"/append/{bid}/{path}")),
+        cls="grid",
+    )
 
     return (
         Title(item.title),
@@ -1050,7 +1046,7 @@ def get(auth, bid: str, path: str):
                 action=f"/append/{bid}/{path}",
                 method="post",
             ),
-            components.cancel_button(f"/book/{bid}/{path}"), # This works for all.
+            components.cancel_button(f"/book/{bid}/{path}"),  # This works for all.
             cls="container",
         ),
     )
@@ -1403,10 +1399,17 @@ def get(auth, bid: str):
                 if texts:
                     texts.append(Br())
                 texts.append(A(t.heading, href=f"/book/{bid}/{t.path}"))
-        rows.append(Tr(Td(components.blank(0.5, f"background-color: {status.color};"),
-                          components.blank(0.2),
-                          Tx(str(status)), valign="top"),
-                       Td(*texts)))
+        rows.append(
+            Tr(
+                Td(
+                    components.blank(0.5, f"background-color: {status.color};"),
+                    components.blank(0.2),
+                    Tx(str(status)),
+                    valign="top",
+                ),
+                Td(*texts),
+            )
+        )
 
     title = Tx("Status list")
     return (
@@ -1921,9 +1924,13 @@ def get(auth):
                         f'{utils.thousands(rbook["sum_characters"])} {Tx("characters")}',
                     ),
                     Td("-"),
-                    Td(Form(Button(Tx("Update here"), type="submit"),
+                    Td(
+                        Form(
+                            Button(Tx("Update here"), type="submit"),
                             method="post",
-                            action=f"/pull/{bid}")),
+                            action=f"/pull/{bid}",
+                        )
+                    ),
                 )
             )
     for bid, lbook in here_books.items():
@@ -2052,9 +2059,7 @@ def get(auth, bid: str):
             ),
             Td(
                 Form(
-                    Button(
-                        Tx("Update here"), cls=None if lflag else "outline"
-                    ),
+                    Button(Tx("Update here"), cls=None if lflag else "outline"),
                     action=f"/pull/{bid}",
                     method="post",
                 ),

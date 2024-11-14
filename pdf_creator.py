@@ -175,10 +175,7 @@ class Creator:
 
         if self.title_page_metadata:
             self.state.ln(2)
-            status = str(
-                min([t.status for t in self.book.all_texts] + [max(constants.STATUSES)])
-            )
-            self.state.write(f'{Tx("Status")}: {Tx(status)}')
+            self.state.write(f'{Tx("Status")}: {Tx(self.book.status)}')
             self.state.ln()
             now = datetime.datetime.now().strftime(constants.DATETIME_ISO_FORMAT)
             self.state.write(f'{Tx("Created")}: {now}')
