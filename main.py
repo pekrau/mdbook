@@ -685,10 +685,9 @@ def get(auth, bid: str):
     else:
         segments.append(components.toc(book, book.items, show_arrows=True))
 
-    title = Tx("Book contents")
     return (
-        Title(title),
-        components.header(title, book=book, menu=menu, status=book.status),
+        Title(book.title),
+        components.header(Tx("Contents"), book=book, menu=menu, status=book.status),
         Main(
             *segments,
             Div(NotStr(book.html)),
