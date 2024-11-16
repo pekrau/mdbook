@@ -1554,7 +1554,7 @@ def post(auth, bid: str, form: dict):
     else:
         item = None
     settings = book.frontmatter.setdefault("docx", {})
-    settings["title_page_metadata"] = form["title_page_metadata"]
+    settings["title_page_metadata"] = bool(form.get("title_page_metadata", False))
     settings["page_break_level"] = int(form["page_break_level"])
     settings["footnotes_location"] = form["footnotes_location"]
     settings["reference_font"] = form["reference_font"]
@@ -1695,7 +1695,7 @@ def post(auth, bid: str, form: dict):
     "Actually download the PDF file of the book."
     book = books.get_book(bid)
     settings = book.frontmatter.setdefault("pdf", {})
-    settings["title_page_metadata"] = form["title_page_metadata"]
+    settings["title_page_metadata"] = bool(form.get("title_page_metadata", False))
     settings["page_break_level"] = form["page_break_level"]
     settings["contents_pages"] = form["contents_pages"]
     settings["contents_level"] = form["contents_level"]
