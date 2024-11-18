@@ -4,16 +4,34 @@ import functools
 from pathlib import Path
 
 SOFTWARE = "mdbook"
-VERSION = (5, 15, 7)
+VERSION = (5, 16, 0)
 __version__ = ".".join([str(n) for n in VERSION])
 
 
 LANGUAGE_CODES = ("sv-SE", "en-GB", "en-US")
+ENCODING = "utf-8"
 
 MARKDOWN_EXT = ".md"
 SOURCE_DIRPATH = Path(__file__).parent
 FONT_DIRPATH = SOURCE_DIRPATH / "freefont"
 TRANSLATIONS_FILEPATH = SOURCE_DIRPATH / "translations.csv"
+
+USERS_DATABASE_FILENAME = "users.yaml"
+# Hard-coded groups.
+ADMIN_GROUP = "admin"
+USER_GROUP = "user"
+
+PUBLIC_RESOURCES = set(
+    [
+        "/login",
+        "/ping",
+        "/favicon.ico",
+        "/mods.css",
+        "/mdbook.png",
+        "/clipboard.min.js",
+        "/clipboard.svg",
+    ]
+)
 
 DATETIME_ISO_FORMAT = "%Y-%m-%d %H:%M:%S"
 MONTHS = {

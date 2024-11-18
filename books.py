@@ -20,15 +20,15 @@ import utils
 from utils import Error, Tx
 
 
-# Book instances cache. Key: bid; value: Book instance.
+# Book instances in-memory database. Key: bid; value: Book instance.
 _books = {}
 
-# Cached references book.
+# References book in-memory.
 _references = None
 
 
 def read_books():
-    # Read in all books into memory, including the references.
+    "Read in all books into memory, including the references."
     global _books
     global _references
     _books.clear()

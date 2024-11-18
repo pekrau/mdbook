@@ -35,23 +35,12 @@ def before(req, sess):
     else:
         auth = req.scope["auth"] = sess.get("auth", None)
     if not auth:
+        # Allow access to public resources without login.
+        if req.url.path in constants.PUBLIC_RESOURCES:
+            return
         return RedirectResponse(
             f"/login?path={req.url.path}", status_code=HTTP.SEE_OTHER
         )
-
-
-beforeware = Beforeware(
-    before,
-    skip=[
-        r"/favicon\.ico",
-        r".*\.css",
-        r".*\.js",
-        r".*\.svg",
-        r".*\.png",
-        "/login",
-        "/ping",
-    ],
-)
 
 
 def errorhandler(request, exc):
@@ -61,7 +50,7 @@ def errorhandler(request, exc):
 app, rt = fast_app(
     live="MDBOOK_DEVELOPMENT" in os.environ,
     static_path="static",
-    before=beforeware,
+    before=before,
     hdrs=(Link(rel="stylesheet", href="/mods.css", type="text/css"),),
     exception_handlers={Error: errorhandler},
 )
@@ -1809,7 +1798,7 @@ def get(auth):
 
 
 @rt("/login")
-def get(form: dict):
+def get(path: str = None):
     "Login form."
     if not (os.environ.get("MDBOOK_USER") and os.environ.get("MDBOOK_PASSWORD")):
         return Titled(
@@ -1818,9 +1807,9 @@ def get(form: dict):
             P("Environment variables MDBOOK_USER and/or MDBOOK_PASSWORD not set."),
         )
     else:
-        try:
-            hidden = [Input(type="hidden", name="path", value=form["path"])]
-        except KeyError:
+        if path:
+            hidden = [Input(type="hidden", name="path", value=path)]
+        else:
             hidden = []
         return Titled(
             f"{constants.SOFTWARE} login",
@@ -1836,14 +1825,13 @@ def get(form: dict):
 
 
 @rt("/login")
-def post(user: str, password: str, path: str, sess):
+def post(sess, user: str, password: str, path: str = None):
     "Actually login."
     if not user or not password:
         return RedirectResponse("/login", status_code=HTTP.SEE_OTHER)
     if user != os.environ["MDBOOK_USER"] or password != os.environ["MDBOOK_PASSWORD"]:
         raise Error("invalid credentials", HTTP.FORBIDDEN)
     sess["auth"] = user
-    print(path)
 
     return RedirectResponse(path or "/", status_code=HTTP.SEE_OTHER)
 
