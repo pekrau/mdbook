@@ -1,4 +1,4 @@
-"Users database and permissions handling."
+"Users database."
 
 import hashlib
 from http import HTTPStatus as HTTP
@@ -24,7 +24,7 @@ class Users:
         self.read()
 
     def read(self):
-        "Read entire database."
+        "Read the entire database."
         self.users.clear()
         try:
             with self.filepath.open() as infile:
@@ -36,7 +36,7 @@ class Users:
             pass
 
     def write(self):
-        "Write entire database."
+        "Write the entire database."
         with self.filepath.open("w") as outfile:
             outfile.write(
                 yaml.dump(dict(users=list(self.users.values())), allow_unicode=True)
