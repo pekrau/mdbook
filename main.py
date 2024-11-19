@@ -241,6 +241,7 @@ def get(auth):
     )
     menu.append(A(f'{Tx("Add reference")}: BibTex', href="/reference/bibtex"))
     menu.append(components.statuslist_link(references)),
+    menu.append(A(Tx("Recently modified"), href="/recent/references"))
     menu.append(
         A(
             f'{Tx("Download")} {Tx("references")} {Tx("TGZ file")}',
@@ -363,7 +364,10 @@ def get(auth):
         components.header(title),
         Main(
             Form(
-                Fieldset(Legend(Tx("BibTex data")), Textarea(name="data", rows="20")),
+                Fieldset(
+                    Legend(Tx("BibTex data")),
+                    Textarea(name="data", rows="20", autofocus=True),
+                ),
                 Button("Add"),
                 action="/reference/bibtex",
                 method="post",
@@ -649,6 +653,7 @@ def get(auth, bid: str):
         A(Tx("Append"), href=f"/append/{bid}/"),
         A(f'{Tx("Create")} {Tx("section")}', href=f"/section/{bid}"),
         A(f'{Tx("Create")} {Tx("text")}', href=f"/text/{bid}"),
+        A(Tx("Recently modified"), href=f"/recent/{bid}"),
         components.index_link(book),
         components.statuslist_link(book),
         components.references_link(),
@@ -854,10 +859,9 @@ def post(auth, bid: str, form: dict):
     else:
         result = P()
 
-    menu = [
-        components.index_link(book),
-        components.references_link(),
-    ]
+    menu = [components.index_link(book)]
+    if bid != constants.REFERENCES:
+        menu.append(components.references_link())
 
     title = f'{Tx("Search")} {Tx("book")}'
     return (
@@ -866,6 +870,46 @@ def post(auth, bid: str, form: dict):
         Main(
             components.search_form(f"/search/{bid}", term=term),
             result,
+            cls="container",
+        ),
+    )
+
+
+@rt("/recent/{bid:str}")
+def get(auth, bid: str):
+    "Display the most recently modified items in the book."
+    if bid == constants.REFERENCES:
+        book = books.get_references()
+    else:
+        book = books.get_book(bid)
+
+    items = book.all_items
+    items.sort(key=lambda i: i.modified, reverse=True)
+    items = items[: constants.MAX_RECENT]
+
+    menu = [components.index_link(book)]
+
+    if bid == constants.REFERENCES:
+        menu.append(components.references_link())
+        rows = [
+            Tr(
+                Td(A(i["name"], href=f"/reference/{i.path}"), ": ", i.fulltitle),
+                Td(i.modified),
+            )
+            for i in items
+        ]
+    else:
+        rows = [
+            Tr(Td(A(i.fulltitle, href=f"/book/{bid}/{i.path}")), Td(i.modified))
+            for i in items
+        ]
+
+    title = Tx("Recently modified")
+    return (
+        Title(title),
+        components.header(title, book=book, status=book.status, menu=menu),
+        Main(
+            P(Table(Tbody(*rows))),
             cls="container",
         ),
     )

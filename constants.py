@@ -111,6 +111,7 @@ ARTICLE = "article"
 BOOK = "book"
 LINK = "link"
 
+MAX_RECENT = 20
 MAX_COPY_NUMBER = 20
 
 MAX_DISPLAY_AUTHORS = 4
