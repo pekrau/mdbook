@@ -4,7 +4,7 @@ import functools
 from pathlib import Path
 
 SOFTWARE = "mdbook"
-VERSION = (5, 16, 0)
+VERSION = (5, 17, 0)
 __version__ = ".".join([str(n) for n in VERSION])
 
 
@@ -96,14 +96,12 @@ class Status:
 
 STARTED = Status("started", 0, "gray")
 OUTLINE = Status("outline", 1, "salmon")
-INCOMPLETE = Status("incomplete", 2, "tomato")
-DRAFT = Status("draft", 3, "crimson")
-WRITTEN = Status("written", 4, "dodgerblue")
-REVISED = Status("revised", 5, "blue")
-DONE = Status("done", 6, "forestgreen")
-PROOFS = Status("proofs", 7, "yellowgreen")
-FINAL = Status("final", 8, "black")
-STATUSES = (STARTED, OUTLINE, INCOMPLETE, DRAFT, WRITTEN, REVISED, DONE, PROOFS, FINAL)
+DRAFT = Status("draft", 2, "crimson")
+WRITTEN = Status("written", 3, "dodgerblue")
+REVISED = Status("revised", 4, "blue")
+DONE = Status("done", 5, "forestgreen")
+FINAL = Status("final", 6, "black")
+STATUSES = (STARTED, OUTLINE, DRAFT, WRITTEN, REVISED, DONE, FINAL)
 STATUS_LOOKUP = dict([(s.name, s) for s in STATUSES])
 STATUS_LOOKUP.update(dict([(str(s), s) for s in STATUSES]))
 
