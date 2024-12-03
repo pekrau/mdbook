@@ -16,10 +16,10 @@ SOURCE_DIRPATH = Path(__file__).parent
 FONT_DIRPATH = SOURCE_DIRPATH / "freefont"
 TRANSLATIONS_FILEPATH = SOURCE_DIRPATH / "translations.csv"
 
-USERS_DATABASE_FILENAME = "users.yaml"
-# Hard-coded groups.
-ADMIN_GROUP = "admin"
-USER_GROUP = "user"
+USERS_DB_FILENAME = "users.yaml"
+# Roles.
+ADMIN_ROLE = "admin"
+USER_ROLE = "user"
 
 PUBLIC_RESOURCES = set(
     [

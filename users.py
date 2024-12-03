@@ -70,7 +70,7 @@ class Users:
         else:
             return None
 
-    def add_user(self, userid, password, name, email, groups=None):
+    def add_user(self, userid, password, name, email, role=constants.USER_ROLE):
         "Add a new user, and write out."
         if userid in self.users:
             raise Error(f"user '{userid}' already registered", HTTP.BAD_REQUEST)
@@ -80,7 +80,7 @@ class Users:
             id=userid,
             name=name,
             email=email,
-            groups=groups or [constants.USER_ROLE],
+            role=role,
             apikey=uuid.uuid4().hex,
         )
         self.apikey_lookup[user["apikey"]] = user
@@ -112,7 +112,7 @@ def get_users():
     global _users
     if not _users:
         _users = Users(
-            Path(os.environ["MDBOOK_DIR"]) / constants.USERS_DATABASE_FILENAME
+            Path(os.environ["MDBOOK_DIR"]) / constants.USERS_DB_FILENAME
         )
     return _users
 
@@ -128,7 +128,7 @@ if __name__ == "__main__":
             password=password,
             name="Kraulis, Per",
             email="per.kraulis@gmail.com",
-            groups=[constants.ADMIN_GROUP, constants.USER_GROUP],
+            role=constants.ADMIN_ROLE,
         )
     else:
         print("login", users.login(userid, password))

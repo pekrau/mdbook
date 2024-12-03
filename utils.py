@@ -8,6 +8,7 @@ import io
 import json
 import os
 from pathlib import Path
+import re
 import string
 import tarfile
 import time
@@ -70,6 +71,13 @@ def nameify(title):
     return "".join(
         [c.lower() if c in SAFE_CHARACTERS else "-" for c in result.decode("utf-8")]
     )
+
+
+VALID_ID_RX = re.compile(r"[a-z][a-z0-9_]*")
+
+def valid_id(id):
+    "Check that the identifier is valid."
+    return bool(VALID_ID_RX.match(id))
 
 
 def get_digest(c):
@@ -244,7 +252,5 @@ class Timer:
 
 
 if __name__ == "__main__":
-    for s in ["Uvö", "Västerby 5:256", "Är detta en såpass bra rubrik?"]:
-        print(s, nameify(s))
-    for s in ["newline\nin this", "many    whitespaces", "bla\n  blopp  bloppity"]:
-        print(s, cleanup_whitespaces(s))
+    for id in ["id", "i", "å", "2an", "z9123_", "z_123", "a___"]:
+        print(id, valid_id(id))
