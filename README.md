@@ -1,5 +1,7 @@
 # mdbook
 
+*This repo has been discontinued. See: https://github.com/pekrau/writethatbook*
+
 Web display of a book written in Markdown.
 
 - Contents hierarchically organized into sections and texts.
